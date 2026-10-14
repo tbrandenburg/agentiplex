@@ -1,0 +1,322 @@
+# Agentiplex — Architecture
+
+**Status:** Initial design proposal / v0.1 demonstrator  
+**Date:** 2026-10-14  
+**Requirements:** [PRD](PRD.md)
+
+## 1. Architecture decisions
+
+| Decision | Rationale |
+|---|---|
+| One Go module; library-first modular monolith | Small public API, minimal glue, easy local build and future embedding. |
+| Separate `agentiplexd` and `agentiplex` binaries | Headless daemon owns state and lifecycle; remote CLI uses the daemon API, never local database files. |
+| NATS JetStream is an explicit infrastructure dependency | Reuse broker persistence, pull consumers, ACK/retry, KV, pub/sub and clustering; no generic broker abstraction or custom queue. |
+| Native A2A 1.0 HTTP at the boundaries | Interoperate with existing agents and clients using official SDKs; NATS is internal, not a new claimed A2A binding. |
+| AI Catalog as publication/discovery representation | Use existing catalog types and validation. JetStream KV implements the local mutable registry; no custom discovery standard. |
+| No workflow orchestration | Supply communication primitives; applications own contracts, routing intent and reasoning. |
+| Deployment via configuration | Same daemon for native, OCI and Kubernetes; platform packaging outside the Go core. |
+
+These are proposed initial decisions, not evidence of a working implementation.
+
+## 2. System context
+
+```mermaid
+flowchart TB
+    CLI[agentiplex CLI] -->|Admin HTTP API| API
+    UI[Optional dashboard] -->|HTTP and SSE| API
+    Caller[Independent A2A client] -->|A2A HTTP| IN
+    subgraph D[agentiplexd]
+        API[API and lifecycle] --> Core[Agentiplex Go core]
+        IN[A2A ingress] --> Core
+        Core --> Cat[Registry and AI Catalog]
+        Core --> Bus[Messaging and delivery worker]
+        Bus --> OUT[A2A client adapter]
+    end
+    Cat --> JS[(NATS JetStream and KV)]
+    Bus <--> JS
+    OUT -->|A2A HTTP| OC[OpenCode A2A gateway]
+    OUT -->|A2A HTTP| Mock[Independent A2A agent services]
+    OC -->|ACP stdio| Runtime[OpenCode]
+```
+
+Agentiplex is both an A2A server (ingress) and client (egress). Each A2A interaction has client/server roles; a server-only agent does not automatically initiate outbound requests. Existing OpenCode gateway remains unchanged. Mock agents or external A2A clients can initiate work with the daemon. A later MCP adapter can expose collaboration tools to agent runtimes.
+
+## 3. Component boundaries
+
+| Component | Owns | Reuses |
+|---|---|---|
+| Registry | Stable local IDs, endpoint/card metadata, membership, reachability observations, registration CRUD | A2A card resolver, JetStream KV |
+| Catalog | Generate and validate current catalog; standard publication path | AI Catalog Go SDK |
+| Messaging | Submission, subject conventions, direct/broadcast/pool intent, durable enqueue receipts | nats.go JetStream |
+| Delivery | Durable consumption, A2A request/task correlation, retry classification, per-agent concurrency, recovery | JetStream consumers, A2A client |
+| State | Namespaced application state, revisions, bounded values | JetStream KV |
+| A2A ingress | Agent Card, structured operation requests, bus-task status, protocol errors | Official A2A server SDK |
+| Daemon | Configuration, wiring, process lifecycle, health/readiness | Go standard library |
+| Admin API / CLI | Explicit operator commands and queries | net/http, Cobra, Viper |
+| Observability | Correlation, structured logs, event feed, optional dashboard | log/slog, SSE, embed; Prometheus/OTel as needed |
+
+Keep domain types small. Use SDK types at protocol boundaries; preserve native A2A messages rather than lossy text-only conversion. Avoid duplicating SDK protocol models. Use narrow interfaces only for genuine boundaries/test seams. No speculative plugin system.
+
+## 4. Registry and catalog
+
+Registration input: stable local ID, base URL or card URL, optional group/pool membership and operator metadata. Resolve the card using the A2A SDK; verify protocol compatibility and supported interface; record the resolved endpoint, original card snapshot and fetch time. Validate subject-safe IDs or encode them without collisions. Agent names are display metadata, not authenticated identity.
+
+Use KV revision checks for updates. Registration is not a heartbeat. Keep an unavailable agent registered and catalogued unless explicitly removed. Show reachability as observed reachable/unreachable/unknown with a timestamp. Removing a registration prevents new delivery; existing queued work must be explicitly handled, not silently discarded.
+
+Publish the AI Catalog at `/.well-known/ai-catalog.json` with `application/ai-catalog+json`. Entries reference native A2A Agent Cards using the specification's artifact media type. Use SDK validation; do not invent catalog fields for local groups, health or queue status. For the local demo use URLs resolvable by the consumer; do not silently publish container-internal or unreachable addresses. Discovery filters are local application behavior, not a claim to implement an ARD registry API or federated discovery.
+
+## 5. Messaging and storage
+
+Use a configured namespace to isolate deployments on a shared NATS installation. The names below are illustrative logical resources; actual NATS stream/KV names are derived safely from the namespace.
+
+| Resource | Subjects / keys | Policy |
+|---|---|---|
+| MAILBOXES stream | `<ns>.mailbox.<agent-id>` | File-backed work-queue retention; one non-overlapping durable pull consumer per agent; explicit ACK |
+| POOLS stream (P1) | `<ns>.pool.<pool-id>` | File-backed work-queue retention; one shared durable pull consumer per pool |
+| EVENTS stream | `<ns>.events.>` | Limits retention; replayable event history separate from work queues |
+| REGISTRY KV | Agent IDs and group/pool definitions | Persisted cards/metadata, revision-based updates |
+| DELIVERIES KV | Delivery ID | Request correlation, assigned recipient, attempts, outcome and task reference |
+| INGRESS KV | Ingress A2A task ID | Durable inbound task correlation/state; use SDK store seam or implement only the small required persistent store |
+| AGENT_STATE KV (P1) | Namespaced agent ID/key | Bounded application context, compare-and-set updates |
+
+File storage and bounded retention/size/age are explicit configuration. Work streams use reject-new behavior when full where supported; never silently evict pending work as a success. Surface expiry or exhaustion. A single node is not HA. Use replication factor one locally and configure replicated external JetStream only when the cluster supports it.
+
+Use JetStream Publish with server acknowledgment, not Core NATS publish, for durable operations. Broker delivery ACK and A2A task acceptance/completion are different events. Events are for visibility, not the authoritative work queue.
+
+### 5.1 Internal envelope (versioned storage format, not a public wire protocol)
+
+Fields: schema version, delivery ID, caller idempotency key (scoped to sender/operation), correlation ID, sender identity or declared local label, destination kind and ID, native A2A message payload, creation timestamp, optional parent broadcast ID, optional deadline. Do not expose broker subject syntax as the agent protocol.
+
+### 5.2 Direct send
+
+```mermaid
+sequenceDiagram
+    participant C as CLI or A2A client
+    participant D as Agentiplex
+    participant J as JetStream
+    participant A as Target A2A agent
+    C->>D: Submit with target and message
+    D->>J: Persist message with delivery ID
+    J-->>D: Publish ACK
+    D-->>C: Queued receipt / bus task
+    J->>D: Durable consumer delivery
+    D->>A: A2A SendMessage
+    A-->>D: Message or task reference
+    D->>J: Persist downstream result / task reference
+    D->>J: ACK work item
+    opt Task still active
+        D->>A: GetTask using saved reference
+        A-->>D: Current task status / result
+        D->>J: Persist outcome and emit event
+    end
+    C->>D: Query delivery / bus task
+    D-->>C: Actual recorded status
+```
+
+Record a stable ID before publish; acknowledge caller only after the broker confirms publication and the receipt is recoverable. Because KV, stream publish and HTTP are not one transaction, reconcile missing or incomplete records from durable messages on startup, and use the same ID for retries. JetStream deduplication is window-bounded; persistent idempotency records and revision checks are necessary beyond that window. Validate recovery under failure injection.
+
+### 5.3 Delivery lifecycle and failure semantics
+
+| State | Meaning |
+|---|---|
+| queued | Durable publish confirmed; not yet handed to target |
+| attempting | Worker owns the current attempt |
+| accepted | Downstream task reference durably recorded; execution may still be pending |
+| input-required / auth-required | Downstream requires intervention; do not claim success |
+| completed | Actual downstream result or completed task recorded |
+| failed | Definitive rejection/failure, cancellation or exhausted safe retry policy (retain detail) |
+| uncertain | Request may have executed but outcome is not known; requires reconciliation or operator decision |
+
+Persist attempt intent before invoking external agents. On definitive transient pre-accept failures use bounded delayed redelivery; keep offline messages pending within configured limits. Extend ACK deadline while processing a long HTTP request. Persist downstream task ID/context ID or terminal message before acknowledging the work item. Recover accepted tasks by polling their existing ID, not by issuing a new prompt. Preserve downstream state separately from bus state. Persist terminal failure/uncertainty before settling the broker message; inspect or explicitly replay via operator action. Reconcile exhausted deliveries/advisories rather than assuming JetStream creates a dead-letter queue automatically.
+
+An HTTP timeout or crash after transmission but before receipt may conceal a successful remote execution. A2A message IDs do not universally guarantee target-side idempotency. In the demo, mark such attempts uncertain unless the target demonstrably supports safe retries or correlation-based reconciliation. Do not automatically duplicate potentially side-effecting work. Broker at-least-once delivery is not end-to-end exactly-once execution. No claim of atomicity between application Git commits and message publication.
+
+For OpenCode, serialize prompts per endpoint/session (one active prompt); retain task/context identifiers where supported. Never interpret canceled, failed, input-required or unknown tasks as completed.
+
+### 5.4 Broadcast and pooling (P1)
+
+Broadcast snapshots group membership, creates deterministic child delivery IDs, and publishes one direct work item per recipient. Record a recoverable parent/child manifest and reconcile partial publication. Report aggregate and individual outcomes; not atomic all-or-nothing delivery.
+
+Pool dispatch publishes one item to the pool subject. Worker loops associated with eligible agents share one durable pull consumer (not one independent consumer per member); only available members pull. Persist assignment before external invocation; honor capacity and keep the same target after acceptance or ambiguity. Only reassign definitively unaccepted work. For the single-daemon demo, local per-agent concurrency gates suffice; cross-replica ownership and leases are future work. Native queue groups alone are not durable pooling.
+
+## 6. External interfaces
+
+### 6.1 A2A
+
+Expose the daemon's own `/.well-known/agent-card.json` and official SDK HTTP handler. Advertise only implemented skills and capabilities. P0 supports a documented structured DataPart routing request with operation, target logical ID and payload; the rest is native A2A. This is an application-level skill contract, not a new A2A transport binding or standardized routing extension.
+
+Return a bus-owned A2A task ID and persist its mapping to delivery ID. Support SendMessage and GetTask for implemented operations. The task tracks the requested operation through downstream completion/failure or intervention; a durable enqueue receipt is not completion. If the SDK needs a custom durable task store, implement that seam and test restart lookup; do not silently use a volatile task store while claiming recovery. Clearly document how downstream input-required/auth-required is surfaced; full permission relay, streaming, push notifications and cancellation propagation are deferred. Reject unsupported operations explicitly. Future skills may add discovery, broadcast and pool dispatch.
+
+### 6.2 Admin HTTP API and CLI
+
+Illustrative versioned API (not an implemented contract yet):
+
+| Method/path | Purpose |
+|---|---|
+| POST /api/v1/agents | Register by URL and stable ID |
+| GET /api/v1/agents | List/filter registrations |
+| GET, DELETE /api/v1/agents/{id} | Inspect/remove |
+| POST /api/v1/agents/{id}/refresh | Refresh card |
+| POST /api/v1/messages | Submit direct delivery |
+| POST /api/v1/broadcasts | Submit group broadcast (P1) |
+| POST /api/v1/dispatches | Submit pool work (P1) |
+| GET /api/v1/deliveries/{id} | Delivery status and task reference |
+| GET /api/v1/events | SSE or replayable event feed |
+| GET /healthz, /readyz | Liveness; readiness checks dependencies |
+| GET /metrics | Optional metrics |
+| GET /ui/ | Optional embedded dashboard |
+
+The CLI uses the HTTP API (not direct NATS access):
+
+```sh
+agentiplexd --config config.yaml
+agentiplex --server http://127.0.0.1:8080 register architect http://127.0.0.1:41241
+agentiplex agents list
+agentiplex discover --skill testing
+agentiplex catalog get
+agentiplex send architect "Review the requirements"
+agentiplex messages status <delivery-id>
+agentiplex events --follow
+# P1:
+agentiplex broadcast engineering "Contract updated"
+agentiplex dispatch testers "Verify requirement 42"
+```
+
+Commands and schemas are proposed; implement and document only the supported subset.
+
+## 7. Configuration and deployment
+
+Configuration precedence: CLI flags > environment variables > file > defaults. Use Cobra/Viper (or Go stdlib where simpler); validate at startup. Example:
+
+```yaml
+server:
+  listen: "127.0.0.1:8080"
+  public_url: "http://127.0.0.1:8080"
+broker:
+  mode: embedded
+  listen: "127.0.0.1:4222"
+  storage: "./data"
+  replicas: 1
+  # url: "nats://nats:4222"  # external mode
+registry:
+  namespace: engineering
+catalog:
+  enabled: true
+protocols:
+  a2a:
+    enabled: true
+delivery:
+  max_attempts: 10
+  retry_delay: 5s
+  timeout: 120s
+  max_pending_per_agent: 1
+observability:
+  log_level: info
+  dashboard: false
+```
+
+Set explicit retention, payload limits and storage quotas before admitting work. Secrets belong in environment/secret files, not committed YAML. Embedded NATS listens locally; external NATS uses configured credentials and TLS where applicable. Readiness reflects connected broker, provisioned resources and ready handlers. Handle SIGTERM: stop admission/pulls, settle or safely release work, drain connections, stop embedded server.
+
+| Mode | Topology |
+|---|---|
+| Native demo | One daemon with embedded NATS and persistent directory; CLI and agents are separate local processes |
+| OCI container | Same daemon binary, mounted persistent storage (embedded) or external broker |
+| Docker Compose | Daemon + official NATS container, persistent volume; other services on private network |
+| Kubernetes | Single daemon replica initially; external NATS with official Helm chart and persistent volumes; service/port-forward or controlled ingress |
+| Future HA | Multiple daemon replicas only after safe delivery ownership, reconciliation, auth and failover are demonstrated |
+
+Use the same runtime code in all modes. No Docker/Kubernetes imports in the core. A container cannot reach a host's loopback address by using its own loopback; keep the first OpenCode demo native or use an explicitly isolated shared network namespace. Do not expose its unauthenticated gateway via a public proxy.
+
+## 8. Security and operational limits
+
+The first demonstrator is trusted local infrastructure, not a production network service. Bind loopback by default; if using a private container network, restrict access and do not publish unauthenticated ports publicly. Allow only explicitly operator-approved outbound hosts/ports (including card-resolved interfaces); bound HTTP requests, redirects, response sizes and deadlines. Reject unapproved redirects, link-local/metadata services and endpoint changes; production SSRF/DNS-rebinding protections remain required. Treat cards/messages as untrusted data. Do not execute commands from cards.
+
+Do not treat declared sender names as authenticated principals. Production deployment needs authenticated agent/operator identity, authorization, TLS, broker ACLs and credential isolation. Do not store or log provider credentials; protect persistent state and avoid raw prompt/response bodies in default logs or metrics. Document that OpenCode read-only policy is not an OS sandbox; use trusted disposable workspace, minimal credentials and no unrestricted shell for the demo.
+
+## 9. Repository layout
+
+Target layout (create directories only when implementing their functionality):
+
+```text
+agentiplex/
+├── cmd/
+│   ├── agentiplex/main.go
+│   └── agentiplexd/main.go
+├── bus.go                     # Small public Go API / constructor
+├── agent.go                   # Public agent types
+├── registry.go
+├── messaging.go
+├── state.go
+├── config.go
+├── internal/
+│   ├── daemon/                # Composition and lifecycle
+│   ├── cli/                   # Remote CLI commands
+│   ├── api/                   # Admin HTTP and SSE
+│   ├── delivery/              # A2A delivery / recovery
+│   ├── nats/                  # Embedded/external broker, streams, KV
+│   ├── catalog/               # SDK integration
+│   ├── adapters/
+│   │   └── a2a/               # Ingress, egress, cards
+│   ├── observability/         # Logging/events; metrics later
+│   └── dashboard/             # Embedded static UI (P1)
+├── deploy/
+│   ├── compose/
+│   ├── helm/agentiplex/
+│   └── systemd/
+├── examples/
+│   ├── simulated-agents/
+│   ├── opencode/
+│   └── engineering-team/
+├── tests/
+│   ├── integration/
+│   ├── interoperability/
+│   └── e2e/
+├── docs/
+│   ├── PRD.md
+│   ├── ARCH.md
+│   └── adr/                   # Add decisions as needed
+├── .github/workflows/
+├── Dockerfile
+├── config.example.yaml
+├── Taskfile.yaml
+├── go.mod
+├── go.sum
+├── README.md
+└── LICENSE
+```
+
+The root exposes a small embeddable API and can construct built-in integrations. Keep shared implementation types in a leaf package if required to avoid import cycles; internal packages must not import the root if the root imports them. CLI calls the remote API, not embedded storage. Unit tests live beside code; integration/e2e tests use real broker/agents. No empty placeholders for future adapters. Add AHP (host control), ACP (runtime integration) and MCP (collaboration tools) under adapters only when needed.
+
+## 10. Dependencies and implementation order
+
+| Existing dependency | Use |
+|---|---|
+| [a2a-go/v2](https://github.com/a2aproject/a2a-go) | A2A 1.0 native server/client, cards, task APIs |
+| [ai-catalog-go](https://github.com/Agent-Card/ai-catalog-go) | Catalog types, validation and discovery |
+| [nats-server/v2](https://github.com/nats-io/nats-server) | Embedded broker |
+| [nats.go](https://github.com/nats-io/nats.go) | JetStream, KV and consumer APIs |
+| [Cobra](https://github.com/spf13/cobra) / [Viper](https://github.com/spf13/viper) | CLI/configuration |
+| Go standard library | HTTP, logging, cancellation, testing, embedded web UI |
+| [a2a-cli](https://github.com/a2aproject/a2a-cli) | Independent interoperability smoke test |
+| [opencode-a2a-lite](https://github.com/tbrandenburg/opencode-a2a-lite) | Optional real agent via A2A/ACP |
+
+Pin actual compatible versions in go.mod/go.sum and the demo setup after smoke tests. Verify SDK interfaces before writing adapters.
+
+Implementation sequence:
+1. Embedded/external JetStream lifecycle and deterministic SDK-based mock agent; persistent storage smoke test.
+2. Registration, card resolution, validated AI Catalog publication and discovery.
+3. Durable direct-send path, CLI, delivery status and failure classification; offline/restart tests.
+4. Native A2A ingress with durable bus task status; independent client test.
+5. P1 broadcast and pools, state, dashboard, real OpenCode smoke test, container packaging.
+6. Future production security, multi-replica coordination and additional adapters after evidence.
+
+## 11. Validation and reference material
+
+Trace acceptance to [PRD](PRD.md). CI should run unit/integration tests and a provider-free end-to-end test with independent mock services, plus restart and ambiguous-failure injection. Add catalog validation and official A2A CLI interoperability tests; record tested protocol/SDK versions. Verify real OpenCode separately on its documented supported runtime and report failures. The current design is not yet implemented or tested.
+
+- [A2A protocol](https://a2a-protocol.org/) and [official Go SDK](https://github.com/a2aproject/a2a-go)
+- [AI Catalog specification](https://github.com/Agent-Card/ai-catalog/blob/main/specification/ai-catalog.md) and [Go SDK](https://github.com/Agent-Card/ai-catalog-go)
+- [JetStream](https://docs.nats.io/concepts/jetstream), [consumers](https://docs.nats.io/nats-concepts/jetstream/consumers), [streams](https://docs.nats.io/nats-concepts/jetstream/streams) and [KV](https://docs.nats.io/nats-concepts/jetstream/key-value-store)
+- [NATS Kubernetes packaging](https://github.com/nats-io/k8s)
+- [Go module layout](https://go.dev/doc/modules/layout)
+- [OpenCode gateway limitations](https://github.com/tbrandenburg/opencode-a2a-lite)
