@@ -1,0 +1,79 @@
+// Package nats owns broker lifecycle and resource provisioning.
+package nats
+
+import (
+	"errors"
+	"fmt"
+	"time"
+
+	"github.com/nats-io/nats-server/v2/server"
+	nc "github.com/nats-io/nats.go"
+)
+
+type Store struct {
+	Conn *nc.Conn
+	JS nc.JetStreamContext
+	Registry nc.KeyValue
+	Deliveries nc.KeyValue
+	Work *nc.Subscription
+	WorkSubject string
+	EventSubject string
+	EventStream string
+	embedded *server.Server
+}
+
+func Open(mode, url, storage, namespace string, replicas int, timeout time.Duration) (_ *Store, err error) {
+	s := &Store{}
+	defer func() { if err != nil { s.Close() } }()
+	if mode == "embedded" {
+		s.embedded, err = server.NewServer(&server.Options{
+			Host: "127.0.0.1", Port: -1, JetStream: true, StoreDir: storage, NoLog: true, NoSigs: true,
+		})
+		if err != nil { return nil, err }
+		go s.embedded.Start()
+		if !s.embedded.ReadyForConnections(10*time.Second) { return nil, errors.New("embedded NATS did not become ready") }
+		url = s.embedded.ClientURL()
+	}
+	s.Conn, err = nc.Connect(url, nc.Timeout(5*time.Second), nc.MaxReconnects(-1))
+	if err != nil { return nil, err }
+	s.JS, err = s.Conn.JetStream(nc.MaxWait(5*time.Second))
+	if err != nil { return nil, err }
+	workStream := namespace + "_MAILBOXES"
+	s.EventStream = namespace + "_EVENTS"
+	s.WorkSubject = namespace + ".mailbox"
+	s.EventSubject = namespace + ".events"
+	for _, cfg := range []*nc.StreamConfig{
+		{Name: workStream, Subjects: []string{s.WorkSubject}, Retention: nc.WorkQueuePolicy, Storage: nc.FileStorage, Replicas: replicas, MaxBytes: 64<<20, MaxMsgs: 10000, MaxMsgSize: 1024, Discard: nc.DiscardNew, Duplicates: 2*time.Minute},
+		{Name: s.EventStream, Subjects: []string{s.EventSubject}, Retention: nc.LimitsPolicy, Storage: nc.FileStorage, Replicas: replicas, MaxMsgs: 10000, MaxBytes: 16<<20, MaxAge: 7*24*time.Hour, Discard: nc.DiscardOld},
+	} {
+		info, e := s.JS.StreamInfo(cfg.Name)
+		if errors.Is(e, nc.ErrStreamNotFound) {
+			_, e = s.JS.AddStream(cfg)
+		} else if e == nil && (info.Config.Storage != nc.FileStorage || info.Config.Replicas != replicas || info.Config.Retention != cfg.Retention || len(info.Config.Subjects) != 1 || info.Config.Subjects[0] != cfg.Subjects[0]) {
+			e = fmt.Errorf("existing stream %s incompatible with configuration", cfg.Name)
+		}
+		if e != nil { return nil, e }
+	}
+	for _, b := range []struct{name string; dest *nc.KeyValue}{
+		{namespace+"_REGISTRY", &s.Registry}, {namespace+"_DELIVERIES", &s.Deliveries},
+	} {
+		*b.dest, err = s.JS.KeyValue(b.name)
+		if errors.Is(err, nc.ErrBucketNotFound) {
+			*b.dest, err = s.JS.CreateKeyValue(&nc.KeyValueConfig{Bucket: b.name, Storage: nc.FileStorage, Replicas: replicas, History: 1, MaxBytes: 128<<20, MaxValueSize: 512<<10})
+		}
+		if err != nil { return nil, err }
+	}
+	const durable = "delivery"
+	if _, err = s.JS.ConsumerInfo(workStream, durable); errors.Is(err, nc.ErrConsumerNotFound) {
+		_, err = s.JS.AddConsumer(workStream, &nc.ConsumerConfig{Durable: durable, AckPolicy: nc.AckExplicitPolicy, AckWait: 2*timeout+30*time.Second, MaxAckPending: 1, FilterSubject: s.WorkSubject})
+	}
+	if err != nil { return nil, err }
+	s.Work, err = s.JS.PullSubscribe(s.WorkSubject, durable, nc.Bind(workStream, durable))
+	if err != nil { return nil, err }
+	return s, nil
+}
+
+func (s *Store) Close() {
+	if s.Conn != nil { s.Conn.Close() }
+	if s.embedded != nil { s.embedded.Shutdown(); s.embedded.WaitForShutdown() }
+}
