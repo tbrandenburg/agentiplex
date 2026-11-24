@@ -1,0 +1,12 @@
+version: '3'
+tasks:
+  build:
+    cmds:
+      - go build -o bin/agentiplex ./cmd/agentiplex
+      - go build -o bin/agentiplexd ./cmd/agentiplexd
+  test:
+    cmds:
+      - go test -race ./...
+  demo-agent:
+    cmds:
+      - go run ./examples/simulated-agent --name architect --skill architecture --port 8001
