@@ -56,3 +56,5 @@ Container: build `docker build -t agentiplex:dev .`, run `docker run --rm -p 127
 - Review conservative uncertainty behavior and limits. Do not claim production readiness.
 
 Authoring limitation: the available local execution environment uses Go 1.23.2 and cannot reach GitHub or module proxies. No local compilation, dependency resolution, Go tests or container tests were possible. CI is configured to run the checks; the PR remains draft until actual evidence exists.
+
+Recovery design: the durable consumer uses a 10-second acknowledgment lease, renewed every two seconds during an active attempt; graceful shutdown flushes pending broker acknowledgments. Both immediate shutdown after enqueue and shutdown after an observed offline probe have integration tests. These changes are awaiting CI verification.
