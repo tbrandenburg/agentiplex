@@ -17,7 +17,8 @@ func(b *Bus) Register(ctx context.Context,id,url string)(Agent,error){
 	if !validID.MatchString(id){return Agent{},fmt.Errorf("%w: invalid agent ID",ErrInvalid)}
 	card,cardURL,endpoint,err:=b.adapter.Resolve(ctx,url)
 	if err!=nil{return Agent{},fmt.Errorf("%w: card resolution or validation failed: %v",ErrInvalid,err)}
-	a:=Agent{ID:id,CardURL:cardURL,Endpoint:endpoint,Card:card,UpdatedAt:time.Now().UTC()}
+	now:=time.Now().UTC()
+	a:=Agent{ID:id,CardURL:cardURL,Endpoint:endpoint,Card:card,UpdatedAt:now,Reachability:"reachable",ObservedAt:&now}
 	raw,err:=json.Marshal(a);if err!=nil{return Agent{},err}
 	b.mu.Lock();defer b.mu.Unlock()
 	_,err=b.store.Registry.Create(id,raw)
@@ -29,7 +30,9 @@ func(b *Bus) Register(ctx context.Context,id,url string)(Agent,error){
 
 func(b *Bus) Agent(id string)(Agent,error){
 	if !validID.MatchString(id){return Agent{},ErrInvalid}
-	a,_,err:=read[Agent](b.store.Registry,id);return a,err
+	a,_,err:=read[Agent](b.store.Registry,id)
+	if a.Reachability==""{a.Reachability="unknown"}
+	return a,err
 }
 
 func(b *Bus) Agents(skill,tag string)([]Agent,error){return b.Discover(skill,tag,"")}
