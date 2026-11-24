@@ -342,3 +342,7 @@ Replace the handcrafted UI with the Apache-2.0 AMIS 6.13.0 browser SDK. The enti
 ### PR #5 implementation refinement
 
 Registration card snapshots are refreshed only for the same endpoint, using native KV revision checks; observations have their own timestamp and do not overwrite card metadata on failure. Removal rejects agents referenced by current collections or nonterminal delivery snapshots. Health means a compatible card was observed, not a guaranteed executable endpoint. Busy is derived separately from persisted active endpoints. Application state uses one dedicated bounded AGENT_STATE KV bucket per deployment namespace, keys encoded as namespace.key, native CAS and KV Watch; namespaces are labels rather than security boundaries. See [STATE.md](STATE.md).
+
+### PR #6 implementation refinement
+
+The official MCP Go SDK supplies an optional stateless Streamable HTTP adapter at /mcp. Typed tools reuse Bus methods directly, including durable admission, delivery lookup and native KV CAS; no agent runtime, protocol translation service, second broker or task store. Tool metadata is distinct from A2A Agent Cards; no unsupported MCP resources/subscriptions or sampling advertised. MCP is disabled by default, loopback-only with browser Origin rejection and SDK DNS rebinding protection, not an authenticated boundary. See [MCP.md](MCP.md).
