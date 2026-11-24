@@ -54,6 +54,7 @@ port_dev=$((base_port+3))
 port_test1=$((base_port+4))
 port_test2=$((base_port+5))
 port_quality=$((base_port+6))
+go generate ./internal/dashboard
 printf 'Building Agentiplex and independent A2A simulator...\n'
 go build -mod=readonly -o "$work/agentiplexd" ./cmd/agentiplexd
 go build -mod=readonly -o "$work/agentiplex" ./cmd/agentiplex

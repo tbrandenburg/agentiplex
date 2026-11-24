@@ -32,9 +32,13 @@ func TestDashboardUsesStoredDeliveryState(t *testing.T) {
 	}
 	code,h,html:=get("/ui/")
 	if code!=200||!strings.Contains(html,"Agent collaboration console")||!strings.Contains(h.Get("Content-Security-Policy"),"script-src 'self'"){t.Fatalf("invalid embedded UI %d",code)}
-	for _,path:=range []string{"/ui/app.js","/ui/style.css"}{
+	for _,path:=range []string{"/ui/bootstrap.js","/ui/vendor/sdk.js","/ui/vendor/cxd.css","/ui/vendor/LICENSE"}{
 		if code,_,body:=get(path);code!=200||len(body)<100{t.Fatalf("asset missing %s %d",path,code)}
 	}
+	code,_,configJSON:=get("/ui/config.json")
+	if code!=200||!strings.Contains(configJSON,`"theme":"cxd"`){t.Fatalf("config missing %d",code)}
+	code,_,snapshot:=get("/api/v1/dashboard")
+	if code!=200||!strings.Contains(snapshot,`"completedCount":1`)||strings.Contains(snapshot,"private fixture prompt"){t.Fatalf("snapshot invalid %d %s",code,snapshot)}
 	code,_,raw:=get("/api/v1/deliveries?limit=1")
 	if code!=200||strings.Contains(raw,"private fixture prompt")||strings.Contains(raw,"SIMULATED"){t.Fatalf("summary must omit payloads: %d %s",code,raw)}
 	var summaries []agentiplex.DeliverySummary

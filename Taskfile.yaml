@@ -1,10 +1,15 @@
 version: '3'
 tasks:
+  dashboard-assets:
+    cmds:
+      - go generate ./internal/dashboard
   build:
+    deps: [dashboard-assets]
     cmds:
       - go build -o bin/agentiplex ./cmd/agentiplex
       - go build -o bin/agentiplexd ./cmd/agentiplexd
   test:
+    deps: [dashboard-assets]
     cmds:
       - go test -race ./...
   demo-agent:

@@ -104,3 +104,15 @@ func (b *Bus) workSubscriptions() []*nats.Subscription {
 	for _,id:=range ids{out=append(out,b.poolConsumers[id])}
 	return out
 }
+
+// RecentEvents returns the newest retained events in reverse sequence order.
+func (b *Bus) RecentEvents(limit int)([]Event,error){
+	if limit<1||limit>100{return nil,ErrInvalid}
+	info,err:=b.store.JS.StreamInfo(b.store.EventStream)
+	if err!=nil{return nil,err}
+	after:=uint64(0)
+	if info.State.LastSeq>uint64(limit){after=info.State.LastSeq-uint64(limit)}
+	events,err:=b.Events(after);if err!=nil{return nil,err}
+	for i,j:=0,len(events)-1;i<j;i,j=i+1,j-1{events[i],events[j]=events[j],events[i]}
+	return events,nil
+}

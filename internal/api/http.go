@@ -19,17 +19,22 @@ import (
 
 // Handler exposes the administration API and native A2A ingress when configured.
 func Handler(b *agentiplex.Bus, publicURL ...string) http.Handler {
-	return handler(b,true,publicURL...)
+	u,_:=dashboard.New(dashboard.DefaultConfig())
+	return handler(b,u,publicURL...)
 }
 
 // HandlerWithDashboard allows operators to disable the static UI.
 func HandlerWithDashboard(b *agentiplex.Bus, enabled bool, publicURL string) http.Handler {
-	return handler(b,enabled,publicURL)
+	var u *dashboard.UI
+	if enabled{u,_=dashboard.New(dashboard.DefaultConfig())}
+	return handler(b,u,publicURL)
 }
 
-func handler(b *agentiplex.Bus, dashboardEnabled bool, publicURL ...string) http.Handler {
+func HandlerWithUI(b *agentiplex.Bus,u *dashboard.UI,publicURL string)http.Handler{return handler(b,u,publicURL)}
+
+func handler(b *agentiplex.Bus, u *dashboard.UI, publicURL ...string) http.Handler {
 	mux:=http.NewServeMux()
-	if dashboardEnabled{dashboard.Mount(mux)}
+	if u!=nil{u.Mount(mux);mountDashboardData(mux,b)}
 	if len(publicURL)>0 && publicURL[0]!="" { adapter.Mount(mux,b,publicURL[0]) }
 	mux.HandleFunc("GET /healthz",func(w http.ResponseWriter,r *http.Request){write(w,200,map[string]bool{"alive":true})})
 	mux.HandleFunc("GET /readyz",func(w http.ResponseWriter,r *http.Request){

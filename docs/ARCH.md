@@ -334,3 +334,7 @@ The direct and pool consumers permit a bounded window of 64 outstanding broker m
 ### PR #4 implementation refinement
 
 A read-only, embedded dashboard at /ui/ renders actual registry, collections, recent delivery summaries and retained/live SSE events. GET /api/v1/deliveries returns up to 100 top-level metadata-only summaries; detail lookup explicitly retrieves stored payloads. It uses a KV scan suitable for the small demonstrator, not a production index. The separate example driver starts six independent native A2A simulator processes and the daemon, executes a scripted requirement-review scenario, tests offline recovery across daemon restart and can substitute an operator-started OpenCode Architect. The script is not a workflow engine. See [DEMO.md](DEMO.md).
+
+### PR #4 dashboard refinement
+
+Replace the handcrafted UI with the Apache-2.0 AMIS 6.13.0 browser SDK. The entire default visual layout is declarative JSON; only a bootstrap and read-only presentation data adapter are maintained. Pin and package unmodified assets at build time, embed into the daemon, and support operator-provided trusted schema files and upstream themes. AMIS automatic polling replaces handwritten DOM/SSE updates; the existing API and SSE event contract are unchanged. See [DASHBOARD.md](DASHBOARD.md).
