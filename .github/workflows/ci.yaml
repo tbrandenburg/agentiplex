@@ -26,12 +26,21 @@ jobs:
         run: |
           gofmt -w $(git ls-files '*.go')
           tar -czf /tmp/agentiplex-formatted.tar.gz $(git ls-files '*.go') go.mod go.sum
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
       - name: Build
         run: go build ./cmd/... ./examples/...
       - name: Unit and integration tests
         run: go test -race -count=1 -v ./...
       - name: Vet
         run: go vet ./...
+      - name: Simulated engineering team and dashboard
+        run: |
+          bash -n examples/engineering-team/demo.sh
+          node --check internal/dashboard/static/app.js
+          node --check examples/engineering-team/browser-check.mjs
+          bash examples/engineering-team/demo.sh --check --browser-check
       - name: Save resolved dependency manifest
         if: always()
         uses: actions/upload-artifact@v4
@@ -55,6 +64,7 @@ jobs:
           for i in $(seq 1 30); do
             if curl -fsS http://127.0.0.1:18080/readyz; then
               curl -fsS http://127.0.0.1:18080/.well-known/agent-card.json | jq -e '.name == "Agentiplex" and .supportedInterfaces[0].url == "http://127.0.0.1:18080/a2a"'
+              curl -fsS http://127.0.0.1:18080/ui/ | grep -q 'Agent collaboration console'
               exit 0
             fi
             sleep 1

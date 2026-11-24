@@ -9,8 +9,19 @@ Lightweight, open-source middleware for AI agent collaboration. Agent discovery,
 - [Foundation scope, demo instructions and merge gates](docs/FOUNDATION.md)
 - [Native A2A ingress contract and examples](docs/A2A.md)
 - [Collaboration primitives and demo](docs/COLLABORATION.md)
+- [Six-agent demonstrator and OpenCode integration](docs/DEMO.md)
 
 Agentiplex reuses the official A2A SDK, AI Catalog SDK and NATS JetStream. A headless daemon (`agentiplexd`) owns infrastructure; a separate CLI (`agentiplex`) administers it remotely.
+
+## Quick demo
+
+With Go 1.26+, Bash, curl and jq:
+
+```sh
+bash examples/engineering-team/demo.sh
+```
+
+Open http://127.0.0.1:18080/ui/. Six independent simulated A2A agents exercise the real collaboration infrastructure; Ctrl+C cleans up. Use `--check` for a noninteractive smoke test. See [DEMO.md](docs/DEMO.md) for replacing the Architect with OpenCode.
 
 ## Development
 
