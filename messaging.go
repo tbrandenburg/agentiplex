@@ -31,19 +31,25 @@ func(b *Bus) save(d *Delivery,state,detail string)error{
 // Send accepts text in the foundation. The caller gets a receipt only after
 // JetStream confirms publication. A caller retry can reuse its idempotency key.
 func(b *Bus) Send(ctx context.Context,target,text,key string)(Delivery,error){
-	if strings.TrimSpace(text)==""||len(text)>64<<10||len(key)>256{return Delivery{},ErrInvalid}
+	if len(key)>256{return Delivery{},ErrInvalid}
 	id:=a2a.NewMessageID()
 	if key!=""{h:=sha256.Sum256([]byte(key));id=hex.EncodeToString(h[:])}
+	return b.sendWithID(ctx,target,text,id,"")
+}
+
+// sendWithID shares the durable admission path with native A2A ingress.
+func(b *Bus) sendWithID(ctx context.Context,target,text,id,ingressMessageID string)(Delivery,error){
+	if strings.TrimSpace(text)==""||len(text)>64<<10||!validID.MatchString(id){return Delivery{},ErrInvalid}
 	b.mu.Lock();defer b.mu.Unlock()
 	old,err:=b.Delivery(id)
 	if err==nil{
-		if old.Target!=target||old.Text!=text{return Delivery{},ErrConflict}
+		if old.Target!=target||old.Text!=text||old.IngressMessageID!=ingressMessageID{return Delivery{},ErrConflict}
 		if old.State=="preparing"{err=b.publish(ctx,&old)}
 		return old,err
 	}
 	if !errors.Is(err,ErrNotFound){return Delivery{},err}
 	a,err:=b.Agent(target);if err!=nil{return Delivery{},err}
-	d:=Delivery{ID:id,Target:target,Text:text,Endpoint:a.Endpoint,CardURL:a.CardURL,State:"preparing",UpdatedAt:time.Now().UTC()}
+	d:=Delivery{ID:id,IngressMessageID:ingressMessageID,Target:target,Text:text,Endpoint:a.Endpoint,CardURL:a.CardURL,State:"preparing",UpdatedAt:time.Now().UTC()}
 	raw,err:=json.Marshal(d);if err!=nil{return Delivery{},err}
 	if _,err=b.store.Deliveries.Create(id,raw);err!=nil{return Delivery{},err}
 	err=b.publish(ctx,&d)
