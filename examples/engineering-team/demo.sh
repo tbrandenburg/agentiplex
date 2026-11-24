@@ -78,7 +78,7 @@ await_http() {
 start_daemon() {
   assert_free "$base_port"
   AGENTIPLEX_DELIVERY_RETRY_DELAY=1s AGENTIPLEX_DELIVERY_MAX_ATTEMPTS=40 \
-    "$work/agentiplexd" --listen "127.0.0.1:$base_port" --storage "$work/state" --dashboard >"$work/daemon.log" 2>&1 &
+    "$work/agentiplexd" --listen "127.0.0.1:$base_port" --public-url "$server" --broker-mode embedded --namespace demo --storage "$work/state" --dashboard >"$work/daemon.log" 2>&1 &
   daemon_pid=$!
   daemon_index=${#pids[@]}
   pids+=("$daemon_pid")
