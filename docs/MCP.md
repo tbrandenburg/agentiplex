@@ -39,17 +39,19 @@ Use distinct stable keys per intended operation. Keys share the existing operati
 
 ## OpenCode host
 
-For a trusted disposable OpenCode workspace, add to opencode.json (merge with existing settings):
+For a trusted disposable OpenCode v2 workspace, add to opencode.json (merge with existing settings; see [official MCP configuration](https://opencode.ai/docs/mcp-servers/)). For v1 use the older directly nested mcp map. No OAuth challenge is issued by the local endpoint.
 
 ```json
 {
   "$schema": "https://opencode.ai/config.json",
   "mcp": {
-    "agentiplex": {
-      "type": "remote",
-      "url": "http://127.0.0.1:8080/mcp",
-      "enabled": true,
-      "oauth": false
+    "servers": {
+      "agentiplex": {
+        "type": "remote",
+        "url": "http://127.0.0.1:8080/mcp",
+        "protocol": "auto",
+        "codemode": false
+      }
     }
   }
 }
@@ -60,3 +62,15 @@ This is the caller-side MCP integration, separate from the recipient-side openco
 ## Validation
 
 Checks exercises real HTTP initialization and tool discovery, direct delegation, broadcast, pool dispatch, idempotent replay, state CAS and errors against independent A2A simulators and persistent JetStream. The existing team demonstrator, AMIS browser and container checks remain.
+
+## Provider-free caller demo
+
+In one terminal run `bash examples/engineering-team/demo.sh --mcp`. In another, after registration, run:
+
+```sh
+go run ./examples/mcp-client --url http://127.0.0.1:18080/mcp
+# Explicitly delegate to a registered simulator:
+go run ./examples/mcp-client --url http://127.0.0.1:18080/mcp --target architect --text 'Review requirement REQ-42' --key mcp-review-1
+```
+
+The caller lists tools and discovers agents; optional delegation is explicit and uses a stable key. It reads the delivery until completion/intervention, or a bounded timeout without canceling durable work. Run after the scripted team's assertions have finished to avoid changing its expected counts. No model or new agent runtime is involved.

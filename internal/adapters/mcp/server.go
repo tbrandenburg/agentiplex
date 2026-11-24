@@ -4,7 +4,6 @@ package mcp
 import (
 	"context"
 	"errors"
-	"fmt"
 	"net"
 	"net/http"
 	"net/netip"
@@ -140,7 +139,7 @@ func Handler(b *agentiplex.Bus)http.Handler{
 		host=strings.Trim(host,"[]")
 		hostIP,e:=netip.ParseAddr(host)
 		if !strings.EqualFold(host,"localhost")&&(e!=nil||!hostIP.Unmap().IsLoopback()){
-			http.Error(w,fmt.Sprintf("MCP requires a loopback Host"),http.StatusForbidden);return
+			http.Error(w,"MCP requires a loopback Host",http.StatusForbidden);return
 		}
 		h.ServeHTTP(w,r)
 	})
