@@ -1,10 +1,10 @@
 FROM golang:1.26 AS build
 WORKDIR /src
-COPY go.mod ./
+COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
-RUN CGO_ENABLED=0 go build -mod=mod -trimpath -o /out/agentiplexd ./cmd/agentiplexd && \
-    CGO_ENABLED=0 go build -mod=mod -trimpath -o /out/agentiplex ./cmd/agentiplex
+RUN CGO_ENABLED=0 go build -mod=readonly -trimpath -o /out/agentiplexd ./cmd/agentiplexd && \
+    CGO_ENABLED=0 go build -mod=readonly -trimpath -o /out/agentiplex ./cmd/agentiplex
 
 FROM debian:bookworm-slim
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates && rm -rf /var/lib/apt/lists/* && \

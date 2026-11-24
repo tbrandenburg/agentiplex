@@ -12,6 +12,6 @@ Agentiplex reuses the official A2A SDK, AI Catalog SDK and NATS JetStream. A hea
 
 ## Development
 
-Go 1.26 or newer. Resolve and lock dependencies with `go mod tidy`, then run `go test -race ./...`. The provider-free demonstration uses an independently running A2A server. See the foundation guide for commands and current limitations.
+Go 1.26 or newer. Dependencies are locked in go.mod and go.sum; run `go test -race ./...`. The provider-free demonstration uses an independently running A2A server. See the foundation guide for commands and current limitations.
 
 This development version is trusted-local only: it has no authentication. Do not expose it publicly.
