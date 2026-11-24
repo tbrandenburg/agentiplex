@@ -4,7 +4,7 @@ Agentiplex embeds the published [AMIS](https://github.com/baidu/amis) 6.13.0 SDK
 
 ## Build
 
-Run `go generate ./internal/dashboard` before `go build ./cmd/agentiplexd` or `go test ./...`. The Taskfile, demo, Checks and Docker build package the assets automatically. Node/npm and network access are build-time only. The script fetches the exact npm release with npm's integrity verification and disables lifecycle scripts, copies the unmodified SDK and package license, and ignores generated files in Git. The binary embeds the assets; no CDN, Node or frontend service is needed at runtime. A bare Go build without generated assets is possible for headless usage; start with --dashboard=false or package assets first. An enabled dashboard without assets fails startup with an actionable error.
+Run `go generate ./internal/dashboard` before `go build ./cmd/agentiplexd` or `go test ./...`. The Taskfile, demo, Checks and Docker build package the assets automatically. Node/npm and network access are build-time only. The script fetches the exact npm release with npm's integrity verification and disables lifecycle scripts, checks the archive SHA-1 in addition to npm integrity verification, copies the unmodified SDK and matching upstream release license, and ignores generated files in Git. The binary embeds the assets; no CDN, Node or frontend service is needed at runtime. A bare Go build without generated assets is possible for headless usage; start with --dashboard=false or package assets first. An enabled dashboard without assets fails startup with an actionable error.
 
 ## Configuration
 
