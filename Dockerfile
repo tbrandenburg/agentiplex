@@ -15,4 +15,4 @@ USER 65532:65532
 VOLUME ["/data"]
 EXPOSE 8080
 ENTRYPOINT ["agentiplexd"]
-CMD ["--listen", "0.0.0.0:8080", "--trusted-network", "--storage", "/data"]
+CMD ["--listen", "0.0.0.0:8080", "--trusted-network", "--public-url", "http://127.0.0.1:8080", "--storage", "/data"]
