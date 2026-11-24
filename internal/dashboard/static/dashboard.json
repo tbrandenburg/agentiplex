@@ -20,7 +20,7 @@
     {
       "type": "alert",
       "level": "info",
-      "body": "Trusted-local read-only console. Registration is not reachability. Simulated responses are fixtures, not engineering evidence."
+      "body": "Trusted-local read-only console. Reachability is a timestamped card observation, not a guarantee of availability. Bus busy reflects tracked active work. Simulated responses are fixtures, not engineering evidence."
     },
     {
       "type": "service",
@@ -113,6 +113,21 @@
               {
                 "name": "endpoint",
                 "label": "Endpoint",
+                "type": "plain"
+              },
+              {
+                "name": "reachability",
+                "label": "Last observed",
+                "type": "plain"
+              },
+              {
+                "name": "observedAt",
+                "label": "Observed at",
+                "type": "plain"
+              },
+              {
+                "name": "busy",
+                "label": "Bus busy",
                 "type": "plain"
               }
             ],

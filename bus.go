@@ -42,6 +42,7 @@ func Open(ctx context.Context,cfg Config)(*Bus,error){
 	b.wg.Add(2)
 	go func(){defer b.wg.Done();b.work(ctx)}()
 	go func(){defer b.wg.Done();b.recoverFanouts(ctx)}()
+	if cfg.HealthInterval>0{b.wg.Add(1);go func(){defer b.wg.Done();b.observeAgents(ctx)}()}
 	return b,nil
 }
 
