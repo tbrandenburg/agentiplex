@@ -17,6 +17,12 @@ import (
 
 func(b *Bus) Delivery(id string)(Delivery,error){
 	if !validID.MatchString(id){return Delivery{},ErrInvalid}
+	d,err:=b.rawDelivery(id)
+	if err==nil&&d.Kind=="broadcast"{return b.broadcastView(d)}
+	return d,err
+}
+
+func(b *Bus) rawDelivery(id string)(Delivery,error){
 	d,_,err:=read[Delivery](b.store.Deliveries,id);return d,err
 }
 
@@ -39,17 +45,21 @@ func(b *Bus) Send(ctx context.Context,target,text,key string)(Delivery,error){
 
 // sendWithID shares the durable admission path with native A2A ingress.
 func(b *Bus) sendWithID(ctx context.Context,target,text,id,ingressMessageID string)(Delivery,error){
+	return b.sendChild(ctx,target,text,id,ingressMessageID,"")
+}
+
+func(b *Bus) sendChild(ctx context.Context,target,text,id,ingressMessageID,parent string)(Delivery,error){
 	if strings.TrimSpace(text)==""||len(text)>64<<10||!validID.MatchString(id){return Delivery{},ErrInvalid}
 	b.mu.Lock();defer b.mu.Unlock()
-	old,err:=b.Delivery(id)
+	old,err:=b.rawDelivery(id)
 	if err==nil{
-		if old.Target!=target||old.Text!=text||old.IngressMessageID!=ingressMessageID{return Delivery{},ErrConflict}
+		if old.Kind!=""||old.ParentID!=parent||old.Target!=target||old.Text!=text||old.IngressMessageID!=ingressMessageID{return Delivery{},ErrConflict}
 		if old.State=="preparing"{err=b.publish(ctx,&old)}
 		return old,err
 	}
 	if !errors.Is(err,ErrNotFound){return Delivery{},err}
 	a,err:=b.Agent(target);if err!=nil{return Delivery{},err}
-	d:=Delivery{ID:id,IngressMessageID:ingressMessageID,Target:target,Text:text,Endpoint:a.Endpoint,CardURL:a.CardURL,State:"preparing",UpdatedAt:time.Now().UTC()}
+	d:=Delivery{ID:id,ParentID:parent,IngressMessageID:ingressMessageID,Target:target,Text:text,Endpoint:a.Endpoint,CardURL:a.CardURL,State:"preparing",UpdatedAt:time.Now().UTC()}
 	raw,err:=json.Marshal(d);if err!=nil{return Delivery{},err}
 	if _,err=b.store.Deliveries.Create(id,raw);err!=nil{return Delivery{},err}
 	err=b.publish(ctx,&d)
@@ -59,7 +69,9 @@ func(b *Bus) sendWithID(ctx context.Context,target,text,id,ingressMessageID stri
 func(b *Bus) publish(ctx context.Context,d *Delivery)error{
 	// Both the durable intent record and a broker publish ACK are required.
 	// Recovery republishes preparing records with the same ID.
-	_,err:=b.store.JS.Publish(b.store.WorkSubject,[]byte(d.ID),nats.MsgId(d.ID),nats.Context(ctx))
+	subject:=b.store.WorkSubject
+	if d.Kind=="dispatch"{subject=b.store.PoolPrefix+d.Target}
+	_,err:=b.store.JS.Publish(subject,[]byte(d.ID),nats.MsgId(d.ID),nats.Context(ctx))
 	if err!=nil{return err}
 	return b.save(d,"queued","")
 }
@@ -67,7 +79,7 @@ func(b *Bus) publish(ctx context.Context,d *Delivery)error{
 func(b *Bus) recoverPreparing(ctx context.Context)error{
 	ks,err:=keys(b.store.Deliveries);if err!=nil{return err}
 	for _,id:=range ks{
-		d,err:=b.Delivery(id);if err!=nil{return err}
+		d,err:=b.rawDelivery(id);if err!=nil{return err}
 		if d.State=="preparing"{if err=b.publish(ctx,&d);err!=nil{return err}}
 	}
 	return nil
@@ -75,12 +87,20 @@ func(b *Bus) recoverPreparing(ctx context.Context)error{
 
 func(b *Bus) work(ctx context.Context){
 	for ctx.Err()==nil{
-		msgs,err:=b.store.Work.Fetch(1,nats.MaxWait(time.Second))
-		if err!=nil{
-			if !errors.Is(err,nats.ErrTimeout){slog.Warn("delivery fetch failed");select{case<-ctx.Done():return;case<-time.After(time.Second):}}
-			continue
+		// One execution loop across direct and pool consumers. Each pool has
+		// one durable queue; no independent copies per member.
+		subs:=b.workSubscriptions()
+		wait:=time.Second
+		if len(subs)>1{wait=100*time.Millisecond}
+		for _,sub:=range subs{
+			if ctx.Err()!=nil{return}
+			msgs,err:=sub.Fetch(1,nats.MaxWait(wait))
+			if err!=nil{
+				if !errors.Is(err,nats.ErrTimeout){slog.Warn("delivery fetch failed");select{case<-ctx.Done():return;case<-time.After(time.Second):}}
+				continue
+			}
+			for _,m:=range msgs{b.processWithLease(ctx,m)}
 		}
-		for _,m:=range msgs{b.processWithLease(ctx,m)}
 	}
 }
 
@@ -119,7 +139,7 @@ func(b *Bus) later(m *nats.Msg,d *Delivery,state,detail string){
 
 func(b *Bus) process(ctx context.Context,m *nats.Msg){
 	b.mu.Lock()
-	d,err:=b.Delivery(string(m.Data))
+	d,err:=b.rawDelivery(string(m.Data))
 	b.mu.Unlock()
 	if err!=nil{_ = m.NakWithDelay(b.cfg.RetryDelay);return}
 	switch d.State{
@@ -135,17 +155,19 @@ func(b *Bus) process(ctx context.Context,m *nats.Msg){
 		b.settle(m,&d,"uncertain","unrecognized delivery state");return
 	}
 	if ctx.Err()!=nil{_ = m.Nak();return}
-	// Read-only card resolution is a safe reachability probe. Never retry
-	// SendMessage itself after an ambiguous HTTP or SDK failure.
-	d.Attempts++
-	probe,stop:=context.WithTimeout(ctx,5*time.Second)
-	_,_,endpoint,err:=b.adapter.Resolve(probe,d.CardURL);stop()
+	// Probe only before submission. A dispatch may choose another member
+	// until attempt intent is persisted; never reassign an accepted or
+	// ambiguous request.
+	ready,busy,err:=b.prepareRecipient(ctx,&d)
 	if ctx.Err()!=nil{_ = m.Nak();return}
-	if err!=nil{
-		if d.Attempts>=b.cfg.MaxAttempts{b.settle(m,&d,"failed","target unavailable before send; retry limit reached")}else{b.later(m,&d,"queued","target unavailable before send")}
+	if err!=nil{_ = m.NakWithDelay(b.cfg.RetryDelay);return}
+	if !ready{
+		if busy{_ = m.NakWithDelay(b.cfg.RetryDelay);return}
+		d.Attempts++
+		if d.Attempts>=b.cfg.MaxAttempts{b.settle(m,&d,"failed","no reachable eligible target before send; retry limit reached")}else{b.later(m,&d,"queued","no reachable eligible target before send")}
 		return
 	}
-	if endpoint!=d.Endpoint{b.settle(m,&d,"failed","registered interface changed; register again");return}
+	d.Attempts++
 	if err=b.save(&d,"attempting","");err!=nil{_ = m.NakWithDelay(b.cfg.RetryDelay);return}
 	call,cancel:=context.WithTimeout(ctx,b.cfg.Timeout)
 	result,err:=b.adapter.Send(call,d.Endpoint,d.ID,d.Text);cancel()
