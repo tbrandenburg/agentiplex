@@ -283,6 +283,16 @@ func testAcceptedTaskSurvivesRestart(t *testing.T,pool bool) {
 	if working.Status.State != a2a.TaskStateWorking {
 		t.Fatalf("accepted task not working: %s", working.Status.State)
 	}
+	if pool{
+		// While the first downstream task is working, the second eligible
+		// member must receive a distinct dispatch without waiting for release.
+		next,err:=b.Dispatch(ctx,"testers","concurrent verification","pool-active-other")
+		if err!=nil{t.Fatal(err)}
+		done:=wait(t,b,next.ID,"completed")
+		if done.AssignedAgent!="tester-z"||alternate.calls.Load()!=1||calls.Load()!=1{
+			t.Fatalf("busy member was reused or available member blocked: %+v",done)
+		}
+	}
 	_ = c.Destroy()
 	s.Close()
 	b.Close()
@@ -298,7 +308,7 @@ func testAcceptedTaskSurvivesRestart(t *testing.T,pool bool) {
 	if err != nil || d.TaskID != accepted.TaskID || d.ContextID != accepted.ContextID || calls.Load() != 1 {
 		t.Fatalf("downstream task was not recovered: %+v %v; calls %d", d, err, calls.Load())
 	}
-	if pool && (d.AssignedAgent!="tester"||alternate.calls.Load()!=0){t.Fatalf("accepted pool task reassigned: %+v",d)}
+	if pool && (d.AssignedAgent!="tester"||alternate.calls.Load()!=1){t.Fatalf("accepted pool task reassigned: %+v",d)}
 	raw, err := json.Marshal(done.Artifacts)
 	if err != nil || !strings.Contains(string(raw), "verified") {
 		t.Fatalf("downstream artifact missing: %s %v", raw, err)

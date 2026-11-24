@@ -38,17 +38,18 @@ func TestBroadcastSnapshotOfflineAndRestart(t *testing.T){
 	if _,err:=b.SetCollection(ctx,"group","engineering",[]string{"tester-2","tester-1"});err!=nil{t.Fatal(err)}
 	if _,err:=b.SetCollection(ctx,"group","bad",[]string{"tester-1","tester-1"});!errors.Is(err,agentiplex.ErrInvalid){t.Fatalf("duplicate member: %v",err)}
 	if _,err:=b.SetCollection(ctx,"pool","bad",[]string{"missing"});!errors.Is(err,agentiplex.ErrNotFound){t.Fatalf("unknown member: %v",err)}
-	second.stop()
+	// The first sorted recipient is offline. The second must still complete.
+	first.stop()
 	d,err:=b.Broadcast(ctx,"engineering","contract updated","broadcast-1")
 	if err!=nil||len(d.Children)!=2{t.Fatalf("broadcast: %+v %v",d,err)}
-	wait(t,b,d.Children[0].ID,"completed")
-	if first.calls.Load()!=1||second.calls.Load()!=0{t.Fatal("wrong initial fan-out")}
+	wait(t,b,d.Children[1].ID,"completed")
+	if first.calls.Load()!=0||second.calls.Load()!=1{t.Fatal("wrong initial fan-out")}
 	if _,err=b.SetCollection(ctx,"group","engineering",[]string{"tester-1"});err!=nil{t.Fatal(err)}
 	found,err:=b.Discover("architecture","","engineering")
 	if err!=nil||len(found)!=1||found[0].ID!="tester-1"{t.Fatalf("group discovery: %+v %v",found,err)}
 	b.Close()
 	b2:=open(t,cfg)
-	second.start(t,false)
+	first.start(t,false)
 	done:=wait(t,b2,d.ID,"completed")
 	if len(done.Children)!=2||first.calls.Load()!=1||second.calls.Load()!=1{t.Fatalf("snapshot or restart lost: %+v calls %d %d",done,first.calls.Load(),second.calls.Load())}
 	duplicate,err:=b2.Broadcast(ctx,"engineering","contract updated","broadcast-1")
