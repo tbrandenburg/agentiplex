@@ -15,6 +15,8 @@ var (
 )
 
 type Agent struct {
+	Reachability string `json:"reachability,omitempty"`
+	ObservedAt *time.Time `json:"observedAt,omitempty"`
 	ID string `json:"id"`
 	CardURL string `json:"cardUrl"`
 	Endpoint string `json:"endpoint"`

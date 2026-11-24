@@ -52,6 +52,7 @@ func handler(b *agentiplex.Bus, u *dashboard.UI, publicURL ...string) http.Handl
 	mux.HandleFunc("GET /api/v1/agents/{id}",func(w http.ResponseWriter,r *http.Request){
 		a,err:=b.Agent(r.PathValue("id"));respond(w,200,a,err)
 	})
+	mountLifecycle(mux,b)
 	mux.HandleFunc("GET "+cat.Path,func(w http.ResponseWriter,r *http.Request){
 		data,err:=b.Catalog();if err!=nil{respond(w,200,nil,err);return}
 		w.Header().Set("Content-Type",cat.MediaType);w.WriteHeader(200);_,_=w.Write(data)

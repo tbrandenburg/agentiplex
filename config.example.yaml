@@ -9,6 +9,7 @@ broker:
   # url: "nats://127.0.0.1:4222" # external mode
 registry:
   namespace: engineering
+  health_interval: 30s # zero disables periodic observations
 delivery:
   timeout: 120s
   retry_delay: 5s

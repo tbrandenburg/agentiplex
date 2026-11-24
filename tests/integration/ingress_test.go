@@ -279,6 +279,8 @@ func testAcceptedTaskSurvivesRestart(t *testing.T,pool bool) {
 		t.Fatalf("invalid downstream correlation: %+v, calls %d", accepted, calls.Load())
 	}
 	if pool && accepted.AssignedAgent!="tester"{t.Fatalf("wrong initial assignment: %+v",accepted)}
+	health,err:=b.AgentHealth("tester")
+	if err!=nil||!health.Busy{t.Fatalf("active endpoint not marked busy: %+v %v",health,err)}
 	working := nativeTask(t, c, task.ID)
 	if working.Status.State != a2a.TaskStateWorking {
 		t.Fatalf("accepted task not working: %s", working.Status.State)
@@ -309,6 +311,7 @@ func testAcceptedTaskSurvivesRestart(t *testing.T,pool bool) {
 		t.Fatalf("downstream task was not recovered: %+v %v; calls %d", d, err, calls.Load())
 	}
 	if pool && (d.AssignedAgent!="tester"||alternate.calls.Load()!=1){t.Fatalf("accepted pool task reassigned: %+v",d)}
+	health,err=b2.AgentHealth("tester");if err!=nil||health.Busy{t.Fatalf("completed endpoint still busy: %+v %v",health,err)}
 	raw, err := json.Marshal(done.Artifacts)
 	if err != nil || !strings.Contains(string(raw), "verified") {
 		t.Fatalf("downstream artifact missing: %s %v", raw, err)

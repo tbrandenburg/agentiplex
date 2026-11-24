@@ -338,3 +338,7 @@ A read-only, embedded dashboard at /ui/ renders actual registry, collections, re
 ### PR #4 dashboard refinement
 
 Replace the handcrafted UI with the Apache-2.0 AMIS 6.13.0 browser SDK. The entire default visual layout is declarative JSON; only a bootstrap and read-only presentation data adapter are maintained. Pin and package unmodified assets at build time, embed into the daemon, and support operator-provided trusted schema files and upstream themes. AMIS automatic polling replaces handwritten DOM/SSE updates; the existing API and SSE event contract are unchanged. See [DASHBOARD.md](DASHBOARD.md).
+
+### PR #5 implementation refinement
+
+Registration card snapshots are refreshed only for the same endpoint, using native KV revision checks; observations have their own timestamp and do not overwrite card metadata on failure. Removal rejects agents referenced by current collections or nonterminal delivery snapshots. Health means a compatible card was observed, not a guaranteed executable endpoint. Busy is derived separately from persisted active endpoints. Application state uses one dedicated bounded AGENT_STATE KV bucket per deployment namespace, keys encoded as namespace.key, native CAS and KV Watch; namespaces are labels rather than security boundaries. See [STATE.md](STATE.md).
