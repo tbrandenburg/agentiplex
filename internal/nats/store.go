@@ -10,6 +10,10 @@ import (
 	nc "github.com/nats-io/nats.go"
 )
 
+// Bound outstanding broker deliveries while allowing delayed/accepted work
+// to coexist with work for other available recipients.
+const maxAckPending = 64
+
 type Store struct {
 	Conn *nc.Conn
 	JS nc.JetStreamContext
@@ -72,7 +76,7 @@ func Open(mode, url, storage, namespace string, replicas int, timeout time.Durat
 	const durable = "delivery"
 	// Keep crash recovery bounded independently of downstream HTTP timeouts.
 	// The worker renews the broker lease while an attempt is active.
-	consumer := &nc.ConsumerConfig{Durable: durable, AckPolicy: nc.AckExplicitPolicy, AckWait: 10*time.Second, MaxAckPending: 1, FilterSubject: s.WorkSubject}
+	consumer := &nc.ConsumerConfig{Durable: durable, AckPolicy: nc.AckExplicitPolicy, AckWait: 10*time.Second, MaxAckPending: maxAckPending, FilterSubject: s.WorkSubject}
 	info, lookupErr := s.JS.ConsumerInfo(workStream, durable)
 	switch {
 	case errors.Is(lookupErr, nc.ErrConsumerNotFound):
@@ -80,8 +84,9 @@ func Open(mode, url, storage, namespace string, replicas int, timeout time.Durat
 	case lookupErr != nil:
 		err = lookupErr
 	default:
-		if info.Config.AckWait != consumer.AckWait {
+		if info.Config.AckWait != consumer.AckWait || info.Config.MaxAckPending != consumer.MaxAckPending {
 			info.Config.AckWait = consumer.AckWait
+			info.Config.MaxAckPending = consumer.MaxAckPending
 			_, err = s.JS.UpdateConsumer(workStream, &info.Config)
 		}
 	}
@@ -106,11 +111,11 @@ func (s *Store) Close() {
 func (s *Store) PoolConsumer(id string) (*nc.Subscription,error) {
 	subject:=s.PoolPrefix+id
 	durable:="pool_"+id
-	cfg:=&nc.ConsumerConfig{Durable:durable,AckPolicy:nc.AckExplicitPolicy,AckWait:10*time.Second,MaxAckPending:1,FilterSubject:subject}
+	cfg:=&nc.ConsumerConfig{Durable:durable,AckPolicy:nc.AckExplicitPolicy,AckWait:10*time.Second,MaxAckPending:maxAckPending,FilterSubject:subject}
 	info,err:=s.JS.ConsumerInfo(s.PoolStream,durable)
 	if errors.Is(err,nc.ErrConsumerNotFound) {
 		_,err=s.JS.AddConsumer(s.PoolStream,cfg)
-	} else if err==nil && (info.Config.FilterSubject!=subject || info.Config.AckPolicy!=nc.AckExplicitPolicy || info.Config.MaxAckPending!=1 || info.Config.AckWait!=cfg.AckWait) {
+	} else if err==nil && (info.Config.FilterSubject!=subject || info.Config.AckPolicy!=nc.AckExplicitPolicy || info.Config.MaxAckPending!=maxAckPending || info.Config.AckWait!=cfg.AckWait) {
 		return nil,fmt.Errorf("incompatible pool consumer %s",id)
 	}
 	if err!=nil{return nil,err}
