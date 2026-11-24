@@ -7,6 +7,7 @@ import (
 	"errors"
 	"log/slog"
 	"sync"
+	"sort"
 	"time"
 
 	adapter "github.com/tbrandenburg/agentiplex/internal/adapters/a2a"
@@ -19,7 +20,10 @@ type Bus struct {
 	store *store.Store
 	adapter *adapter.Client
 	mu sync.Mutex // Single-daemon admission and delivery state transitions.
+	ctx context.Context
 	cancel context.CancelFunc
+	poolConsumers map[string]*nats.Subscription
+	poolCursor map[string]int
 	wg sync.WaitGroup
 	closeOnce sync.Once
 }
@@ -32,10 +36,12 @@ func Open(ctx context.Context,cfg Config)(*Bus,error){
 	s,err:=store.Open(cfg.BrokerMode,cfg.BrokerURL,cfg.Storage,cfg.Namespace,cfg.Replicas,cfg.Timeout)
 	if err!=nil{return nil,err}
 	ctx,cancel:=context.WithCancel(ctx)
-	b:=&Bus{cfg:cfg,store:s,adapter:a,cancel:cancel}
+	b:=&Bus{cfg:cfg,store:s,adapter:a,ctx:ctx,cancel:cancel,poolConsumers:map[string]*nats.Subscription{},poolCursor:map[string]int{}}
+	if err=b.restorePools();err!=nil{b.Close();return nil,err}
 	if err=b.recoverPreparing(ctx);err!=nil{b.Close();return nil,err}
-	b.wg.Add(1)
+	b.wg.Add(2)
 	go func(){defer b.wg.Done();b.work(ctx)}()
+	go func(){defer b.wg.Done();b.recoverFanouts(ctx)}()
 	return b,nil
 }
 
@@ -86,4 +92,15 @@ func (b *Bus) Events(after uint64)([]Event,error){
 		out=append(out,e)
 	}
 	return out,nil
+}
+
+func (b *Bus) workSubscriptions() []*nats.Subscription {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	ids:=make([]string,0,len(b.poolConsumers))
+	for id:=range b.poolConsumers{ids=append(ids,id)}
+	sort.Strings(ids)
+	out:=[]*nats.Subscription{b.store.Work}
+	for _,id:=range ids{out=append(out,b.poolConsumers[id])}
+	return out
 }

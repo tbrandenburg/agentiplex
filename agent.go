@@ -23,6 +23,11 @@ type Agent struct {
 }
 
 type Delivery struct {
+	Kind string `json:"kind,omitempty"`
+	ParentID string `json:"parentId,omitempty"`
+	Members []string `json:"members,omitempty"`
+	AssignedAgent string `json:"assignedAgent,omitempty"`
+	Children []ChildDelivery `json:"children,omitempty"`
 	ID string `json:"id"`
 	IngressMessageID string `json:"ingressMessageId,omitempty"`
 	Target string `json:"target"`
@@ -45,4 +50,18 @@ type Event struct {
 	ID string `json:"id"`
 	State string `json:"state,omitempty"`
 	At time.Time `json:"at"`
+}
+
+type Collection struct {
+	ID string `json:"id"`
+	Kind string `json:"kind"`
+	Members []string `json:"members"`
+	UpdatedAt time.Time `json:"updatedAt"`
+}
+
+type ChildDelivery struct {
+	ID string `json:"id"`
+	Target string `json:"target"`
+	State string `json:"state"`
+	Detail string `json:"detail,omitempty"`
 }

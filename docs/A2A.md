@@ -63,3 +63,7 @@ The service is **trusted-local only**, including task lookups. No authentication
 - Blocking and immediate return modes; offline queue survives restart and completes.
 - Unknown tasks, invalid payloads and unsupported operations return errors.
 - Existing outbound/CLI tests remain green; Checks builds, runs race tests, vets and smoke-tests the container.
+
+## Collaboration skills (PR #3)
+
+The same structured data contract accepts operation=broadcast (target is a group ID) and operation=dispatch (target is a pool ID). Broadcast tasks return a broadcast-recipients artifact with child IDs and statuses; a partial result maps to A2A FAILED with deliveryState=partial. Dispatch metadata includes assignedAgent. See [COLLABORATION.md](COLLABORATION.md). Streaming A2A task events remain unsupported; the separate admin event SSE API is not an A2A transport.

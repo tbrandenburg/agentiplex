@@ -211,6 +211,11 @@ func TestA2AIngressAmbiguousOutcome(t *testing.T) {
 }
 
 func TestA2AIngressAcceptedTaskSurvivesRestart(t *testing.T) {
+	t.Run("direct",func(t *testing.T){testAcceptedTaskSurvivesRestart(t,false)})
+	t.Run("pool",func(t *testing.T){testAcceptedTaskSurvivesRestart(t,true)})
+}
+
+func testAcceptedTaskSurvivesRestart(t *testing.T,pool bool) {
 	cfg := config(t)
 	b := open(t, cfg)
 	ctx := context.Background()
@@ -257,16 +262,36 @@ func TestA2AIngressAcceptedTaskSurvivesRestart(t *testing.T) {
 	if _, err := b.Register(ctx, "tester", target.URL); err != nil {
 		t.Fatal(err)
 	}
+	var alternate *agentService
+	if pool {
+		alternate=&agentService{}
+		alternate.start(t,false)
+		t.Cleanup(alternate.stop)
+		if _,err:=b.Register(ctx,"tester-z",alternate.URL());err!=nil{t.Fatal(err)}
+		if _,err:=b.SetCollection(ctx,"pool","testers",[]string{"tester","tester-z"});err!=nil{t.Fatal(err)}
+	}
 	s, c := ingressClient(t, b)
 	req := sendRequest("native-active", "tester", "verify requirement", true)
+	if pool{req.Message.Parts=a2a.ContentParts{a2a.NewDataPart(map[string]any{"operation":"dispatch","target":"testers","text":"verify requirement"})}}
 	task := nativeSend(t, c, req)
 	accepted := wait(t, b, string(task.ID), "accepted")
 	if accepted.TaskID == "" || accepted.TaskID == task.ID || calls.Load() != 1 {
 		t.Fatalf("invalid downstream correlation: %+v, calls %d", accepted, calls.Load())
 	}
+	if pool && accepted.AssignedAgent!="tester"{t.Fatalf("wrong initial assignment: %+v",accepted)}
 	working := nativeTask(t, c, task.ID)
 	if working.Status.State != a2a.TaskStateWorking {
 		t.Fatalf("accepted task not working: %s", working.Status.State)
+	}
+	if pool{
+		// While the first downstream task is working, the second eligible
+		// member must receive a distinct dispatch without waiting for release.
+		next,err:=b.Dispatch(ctx,"testers","concurrent verification","pool-active-other")
+		if err!=nil{t.Fatal(err)}
+		done:=wait(t,b,next.ID,"completed")
+		if done.AssignedAgent!="tester-z"||alternate.calls.Load()!=1||calls.Load()!=1{
+			t.Fatalf("busy member was reused or available member blocked: %+v",done)
+		}
 	}
 	_ = c.Destroy()
 	s.Close()
@@ -283,6 +308,7 @@ func TestA2AIngressAcceptedTaskSurvivesRestart(t *testing.T) {
 	if err != nil || d.TaskID != accepted.TaskID || d.ContextID != accepted.ContextID || calls.Load() != 1 {
 		t.Fatalf("downstream task was not recovered: %+v %v; calls %d", d, err, calls.Load())
 	}
+	if pool && (d.AssignedAgent!="tester"||alternate.calls.Load()!=1){t.Fatalf("accepted pool task reassigned: %+v",d)}
 	raw, err := json.Marshal(done.Artifacts)
 	if err != nil || !strings.Contains(string(raw), "verified") {
 		t.Fatalf("downstream artifact missing: %s %v", raw, err)

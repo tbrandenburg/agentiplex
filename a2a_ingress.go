@@ -56,8 +56,9 @@ func (b *Bus) SendMessage(ctx context.Context, req *a2a.SendMessageRequest) (a2a
 		return nil, a2a.ErrUnsupportedContentType
 	}
 	data, ok := part.Data().(map[string]any)
-	if !ok || len(data) != 3 || data["operation"] != "send" {
-		return nil, a2a.NewError(a2a.ErrInvalidParams, "expected data {operation: send, target: agent-id, text: prompt}")
+	operation, operationOK := data["operation"].(string)
+	if !ok || len(data) != 3 || !operationOK || (operation!="send"&&operation!="broadcast"&&operation!="dispatch") {
+		return nil, a2a.NewError(a2a.ErrInvalidParams, "expected data {operation: send|broadcast|dispatch, target: agent/group/pool ID, text: prompt}")
 	}
 	target, targetOK := data["target"].(string)
 	text, textOK := data["text"].(string)
@@ -68,11 +69,17 @@ func (b *Bus) SendMessage(ctx context.Context, req *a2a.SendMessageRequest) (a2a
 	// The reserved prefix cannot collide with UUIDs or hex-only CLI hashes.
 	hash := sha256.Sum256([]byte(msg.ID))
 	id := ingressPrefix + hex.EncodeToString(hash[:30])
-	d, err := b.sendWithID(ctx, target, text, id, msg.ID)
+	var d Delivery
+	var err error
+	if operation=="send"{
+		d,err=b.sendWithID(ctx,target,text,id,msg.ID)
+	}else{
+		d,err=b.submitCollection(ctx,operation,target,text,id,msg.ID)
+	}
 	if err != nil {
 		switch {
 		case errors.Is(err, ErrNotFound):
-			return nil, a2a.NewError(a2a.ErrInvalidParams, "unknown target agent")
+			return nil, a2a.NewError(a2a.ErrInvalidParams, "unknown target agent or collection")
 		case errors.Is(err, ErrConflict):
 			return nil, a2a.NewError(a2a.ErrInvalidParams, "messageId already used for different work")
 		case errors.Is(err, ErrInvalid):
@@ -153,6 +160,7 @@ func ingressTask(d Delivery, history *int) *a2a.Task {
 		Metadata: map[string]any{ingressMetadata: map[string]any{
 			"deliveryId": d.ID, "deliveryState": d.State, "target": d.Target,
 			"downstreamTaskId": string(d.TaskID), "downstreamContextId": d.ContextID,
+			"operation": d.Kind, "assignedAgent": d.AssignedAgent,
 		}},
 	}
 	detail := d.Detail
@@ -163,12 +171,17 @@ func ingressTask(d Delivery, history *int) *a2a.Task {
 		task.Status.Message = a2a.NewMessageForTask(a2a.MessageRoleAgent, task, a2a.NewTextPart(detail))
 		task.Status.Message.ID = fmt.Sprintf("status-%s-%d", d.ID, d.UpdatedAt.UnixNano())
 	}
+	operation:=d.Kind
+	if operation==""{operation="send"}
 	if history == nil || *history > 0 {
 		message := a2a.NewMessageForTask(a2a.MessageRoleUser, task, a2a.NewDataPart(map[string]any{
-			"operation": "send", "target": d.Target, "text": d.Text,
+			"operation": operation, "target": d.Target, "text": d.Text,
 		}))
 		message.ID = d.IngressMessageID
 		task.History = []*a2a.Message{message}
+	}
+	if d.Kind=="broadcast"{
+		task.Artifacts=[]*a2a.Artifact{{ID:a2a.ArtifactID("recipients-"+d.ID),Name:"broadcast-recipients",Parts:a2a.ContentParts{a2a.NewDataPart(d.Children)}}}
 	}
 	if len(d.Result) > 0 && json.Valid(d.Result) {
 		task.Artifacts = []*a2a.Artifact{{
