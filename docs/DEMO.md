@@ -2,7 +2,7 @@
 
 ## Run the provider-free team
 
-Requires Go 1.26+, Bash, curl and jq. No models, credentials, Docker, Node or IDE required for the default demo.
+Requires Go 1.26+, Bash, curl and jq, plus Node/npm for first-time AMIS asset packaging. No models, credentials, Docker or IDE required. Built daemon binaries need no Node, CDN or network for the UI.
 
 ```sh
 bash examples/engineering-team/demo.sh
@@ -26,7 +26,7 @@ All simulated responses and cards identify themselves as simulated. They are not
 
 A fictional requirement asks that a motor stop within 100 ms of communication loss and prohibit automatic restart. The seven top-level operations are a PM plan, architecture review (native A2A ingress), developer handoff including actual returned architecture text, broadcast, two pool dispatches, and a Quality delivery while Quality is offline. The driver validates catalog/discovery, fan-out cardinality and completed child states, two distinct pool recipients, and the same queued delivery surviving daemon restart and completing when Quality restarts. These are communication tests, not safety validation.
 
-The dashboard is a read-only live view: registered agents (not online claims), groups/pools, recent top-level states with aggregate child status, selected original stored detail, and SSE replay/live events. Counts are limited to the latest 50 top-level deliveries. Uncertain/partial outcomes are not success. It uses no external JS libraries. Disable it with `--dashboard=false` or observability.dashboard=false in YAML. The trusted-local API is not authenticated; do not expose publicly.
+The dashboard is a read-only live view: registered agents (not online claims), groups/pools, recent top-level states with aggregate child status, selected original stored detail, and recent retained events. Counts are limited to the latest 50 top-level deliveries. Uncertain/partial outcomes are not success. AMIS owns all visual components and automatic polling. The existing SSE API remains available for CLI and external consumers. Disable it with `--dashboard=false` or observability.dashboard=false in YAML. The trusted-local API is not authenticated; do not expose publicly.
 
 ## Optional real OpenCode Architect
 
@@ -53,3 +53,7 @@ The driver registers the real gateway as architect and leaves the other five age
 ## Validation
 
 Checks builds and tests the existing integration suite and executes the entire provider-free scenario with real processes and persistent JetStream. An optional `--browser-check` uses Node 22+ and installed Google Chrome (override CHROME_BIN) via the browser's DevTools protocol to verify the actual rendered counts, live event stream and detail view; CI uses this option. No model credentials are needed. The optional real OpenCode run is a separate manual acceptance gate and is not represented as verified by simulated CI.
+
+## Configure the dashboard
+
+See [DASHBOARD.md](DASHBOARD.md) for AMIS schema, build-time assets, themes and refresh configuration. The browser test asserts the real AMIS-rendered interface and automatic refresh after a group update.

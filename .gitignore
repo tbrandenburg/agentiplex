@@ -36,3 +36,6 @@ go.work.sum
 # Local Agentiplex state and binaries
 /data/
 /bin/
+
+# Generated, pinned AMIS browser distribution
+/internal/dashboard/static/vendor/

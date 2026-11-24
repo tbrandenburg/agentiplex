@@ -17,3 +17,6 @@ delivery:
 
 observability:
   dashboard: true # read-only UI; trusted local use only
+  dashboard_schema: "" # trusted AMIS JSON page; empty uses embedded default
+  dashboard_theme: cxd # cxd, antd, ang, dark
+  dashboard_refresh_interval: 2s # default schema, 1s–1m

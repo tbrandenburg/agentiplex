@@ -53,13 +53,13 @@ try{
   await cdp("Page.navigate",{url:origin+"/ui/"});
   await eventually(async()=>{
     const r=await cdp("Runtime.evaluate",{expression:
-      'document.getElementById("agent-count")?.textContent==="6" && document.getElementById("completed-count")?.textContent==="7" && document.querySelectorAll("#deliveries tr").length===7 && document.querySelectorAll("#events tr").length>0 && document.getElementById("connection")?.textContent==="Live events"',
+      'document.querySelector(".amis-scope") !== null && document.body.innerText.includes("Registered agents") && document.body.innerText.includes("tester-2") && document.body.innerText.includes("Simulated fixture") && document.body.innerText.includes("Recent deliveries") && document.body.innerText.includes("Recent events") && [...document.querySelectorAll("button,a")].filter(e=>e.textContent.trim()==="Inspect").length===7',
       returnByValue:true});
     return r.result.value===true;
   });
-  await cdp("Runtime.evaluate",{expression:'document.querySelector("#deliveries button")?.click()'});
+  await cdp("Runtime.evaluate",{expression:'[...document.querySelectorAll("button,a")].find(e=>e.textContent.trim()==="Inspect")?.click()'});
   await eventually(async()=>{
-    const r=await cdp("Runtime.evaluate",{expression:'!document.getElementById("detail-panel")?.hidden && document.getElementById("detail")?.textContent.includes("\\"state\\"")',returnByValue:true});
+    const r=await cdp("Runtime.evaluate",{expression:'document.body.innerText.includes("Delivery detail") && document.body.innerText.includes("SIMULATED") && document.body.innerText.includes("completed")',returnByValue:true});
     return r.result.value===true;
   });
   // Exercise a real post-connect mutation and confirm it arrives in the DOM.
@@ -68,10 +68,10 @@ try{
   });
   if(!update.ok)throw new Error("Live group update failed: "+update.status);
   await eventually(async()=>{
-    const r=await cdp("Runtime.evaluate",{expression:'document.getElementById("collection-count")?.textContent==="2 / 1" && document.getElementById("events")?.textContent.includes("browser-check")',returnByValue:true});
+    const r=await cdp("Runtime.evaluate",{expression:'document.body.innerText.includes("browser-check") && document.body.innerText.includes("2 / 1")',returnByValue:true});
     return r.result.value===true;
   });
-  console.log("PASS: real browser rendered six agents, seven completed deliveries, live event update and stored detail.");
+  console.log("PASS: AMIS rendered the team, seven delivery actions, stored detail and automatic group/event refresh.");
 }finally{
   ws?.close();
   if(chrome.pid)chrome.kill();

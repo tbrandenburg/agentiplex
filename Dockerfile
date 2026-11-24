@@ -1,8 +1,14 @@
+FROM node:22-bookworm-slim AS ui
+WORKDIR /src
+COPY scripts/dashboard-assets.sh scripts/
+RUN bash scripts/dashboard-assets.sh
+
 FROM golang:1.26 AS build
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
+COPY --from=ui /src/internal/dashboard/static/vendor/ internal/dashboard/static/vendor/
 RUN CGO_ENABLED=0 go build -mod=readonly -trimpath -o /out/agentiplexd ./cmd/agentiplexd && \
     CGO_ENABLED=0 go build -mod=readonly -trimpath -o /out/agentiplex ./cmd/agentiplex
 

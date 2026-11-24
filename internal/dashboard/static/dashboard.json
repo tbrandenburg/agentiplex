@@ -1,0 +1,278 @@
+{
+  "type": "page",
+  "title": "Agentiplex",
+  "subTitle": "Agent collaboration console",
+  "toolbar": [
+    {
+      "type": "button",
+      "label": "AI Catalog",
+      "actionType": "url",
+      "url": "/.well-known/ai-catalog.json"
+    },
+    {
+      "type": "button",
+      "label": "Agent Card",
+      "actionType": "url",
+      "url": "/.well-known/agent-card.json"
+    }
+  ],
+  "body": [
+    {
+      "type": "alert",
+      "level": "info",
+      "body": "Trusted-local read-only console. Registration is not reachability. Simulated responses are fixtures, not engineering evidence."
+    },
+    {
+      "type": "service",
+      "api": "/api/v1/dashboard",
+      "interval": 2000,
+      "silentPolling": true,
+      "body": [
+        {
+          "type": "grid",
+          "columns": [
+            {
+              "body": {
+                "type": "panel",
+                "title": "Registered agents",
+                "body": {
+                  "type": "plain",
+                  "name": "agentCount"
+                }
+              }
+            },
+            {
+              "body": {
+                "type": "panel",
+                "title": "Groups / pools",
+                "body": {
+                  "type": "plain",
+                  "name": "collectionCount"
+                }
+              }
+            },
+            {
+              "body": {
+                "type": "panel",
+                "title": "Pending / active",
+                "body": {
+                  "type": "plain",
+                  "name": "pendingCount"
+                }
+              }
+            },
+            {
+              "body": {
+                "type": "panel",
+                "title": "Completed",
+                "body": {
+                  "type": "plain",
+                  "name": "completedCount"
+                }
+              }
+            },
+            {
+              "body": {
+                "type": "panel",
+                "title": "Needs attention",
+                "body": {
+                  "type": "plain",
+                  "name": "attentionCount"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "type": "alert",
+          "level": "info",
+          "body": "Counts cover the latest 50 top-level deliveries. Data refreshes automatically. Events show the latest retained records."
+        },
+        {
+          "type": "panel",
+          "title": "Registered agents",
+          "body": {
+            "type": "table",
+            "source": "${agents}",
+            "columns": [
+              {
+                "name": "id",
+                "label": "Agent",
+                "type": "plain"
+              },
+              {
+                "name": "kind",
+                "label": "Type",
+                "type": "plain"
+              },
+              {
+                "name": "skills",
+                "label": "Skills",
+                "type": "plain"
+              },
+              {
+                "name": "endpoint",
+                "label": "Endpoint",
+                "type": "plain"
+              }
+            ],
+            "placeholder": "No records"
+          }
+        },
+        {
+          "type": "panel",
+          "title": "Groups and pools",
+          "body": {
+            "type": "table",
+            "source": "${collections}",
+            "columns": [
+              {
+                "name": "id",
+                "label": "ID",
+                "type": "plain"
+              },
+              {
+                "name": "kind",
+                "label": "Kind",
+                "type": "plain"
+              },
+              {
+                "name": "members",
+                "label": "Members",
+                "type": "plain"
+              }
+            ],
+            "placeholder": "No records"
+          }
+        },
+        {
+          "type": "panel",
+          "title": "Recent deliveries",
+          "body": {
+            "type": "table",
+            "source": "${deliveries}",
+            "columns": [
+              {
+                "name": "kind",
+                "label": "Operation",
+                "type": "plain"
+              },
+              {
+                "name": "target",
+                "label": "Target",
+                "type": "plain"
+              },
+              {
+                "name": "assignedAgent",
+                "label": "Assigned agent",
+                "type": "plain"
+              },
+              {
+                "name": "state",
+                "label": "State",
+                "type": "plain"
+              },
+              {
+                "name": "recipientStatus",
+                "label": "Recipients",
+                "type": "plain"
+              },
+              {
+                "name": "updatedAt",
+                "label": "Updated",
+                "type": "plain"
+              },
+              {
+                "type": "operation",
+                "label": "Detail",
+                "buttons": [
+                  {
+                    "type": "button",
+                    "label": "Inspect",
+                    "level": "link",
+                    "actionType": "dialog",
+                    "dialog": {
+                      "title": "Delivery detail",
+                      "size": "lg",
+                      "body": {
+                        "type": "service",
+                        "api": {
+                          "url": "/api/v1/dashboard/detail/${id}",
+                          "method": "get"
+                        },
+                        "body": [
+                          {
+                            "type": "property",
+                            "title": "Stored delivery",
+                            "items": [
+                              {
+                                "label": "ID",
+                                "content": "${id}"
+                              },
+                              {
+                                "label": "State",
+                                "content": "${state}"
+                              }
+                            ]
+                          },
+                          {
+                            "type": "plain",
+                            "name": "detailJSON"
+                          }
+                        ]
+                      },
+                      "actions": [
+                        {
+                          "type": "button",
+                          "actionType": "close",
+                          "label": "Close"
+                        }
+                      ]
+                    }
+                  }
+                ]
+              }
+            ],
+            "placeholder": "No records"
+          }
+        },
+        {
+          "type": "panel",
+          "title": "Recent events",
+          "body": {
+            "type": "table",
+            "source": "${events}",
+            "columns": [
+              {
+                "name": "sequence",
+                "label": "Sequence",
+                "type": "plain"
+              },
+              {
+                "name": "at",
+                "label": "Time",
+                "type": "plain"
+              },
+              {
+                "name": "kind",
+                "label": "Event",
+                "type": "plain"
+              },
+              {
+                "name": "id",
+                "label": "Reference",
+                "type": "plain"
+              },
+              {
+                "name": "state",
+                "label": "State",
+                "type": "plain"
+              }
+            ],
+            "placeholder": "No records"
+          }
+        }
+      ]
+    }
+  ]
+}

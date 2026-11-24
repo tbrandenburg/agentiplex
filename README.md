@@ -15,7 +15,7 @@ Agentiplex reuses the official A2A SDK, AI Catalog SDK and NATS JetStream. A hea
 
 ## Quick demo
 
-With Go 1.26+, Bash, curl and jq:
+With Go 1.26+, Bash, curl, jq and Node/npm for build-time asset packaging:
 
 ```sh
 bash examples/engineering-team/demo.sh
