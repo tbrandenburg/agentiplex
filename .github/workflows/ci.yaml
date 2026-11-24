@@ -1,0 +1,43 @@
+name: Foundation CI
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.x'
+          cache: false
+      - name: Resolve pinned dependencies
+        run: go mod tidy
+      - name: Build
+        run: go build ./cmd/... ./examples/...
+      - name: Unit and integration tests
+        run: go test -race -count=1 -v ./...
+      - name: Vet
+        run: go vet ./...
+      - name: Save resolved dependency manifest
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: go-module-lock
+          path: |
+            go.mod
+            go.sum
+      - name: Build image
+        run: docker build -t agentiplex:ci .
+      - name: Container smoke test
+        run: |
+          docker run -d --name agentiplex-ci -p 127.0.0.1:18080:8080 agentiplex:ci
+          trap 'docker logs agentiplex-ci; docker rm -f agentiplex-ci' EXIT
+          for i in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:18080/readyz; then exit 0; fi
+            sleep 1
+          done
+          exit 1

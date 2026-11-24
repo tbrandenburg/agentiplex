@@ -1,0 +1,15 @@
+server:
+  listen: "127.0.0.1:8080"
+  trusted_network: false
+broker:
+  mode: embedded
+  storage: "./data"
+  replicas: 1
+  # url: "nats://127.0.0.1:4222" # external mode
+registry:
+  namespace: engineering
+delivery:
+  timeout: 120s
+  retry_delay: 5s
+  max_attempts: 10
+  allowed_origins: [] # loopback allowed; explicit non-loopback HTTP(S) origins
