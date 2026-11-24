@@ -50,10 +50,13 @@ jobs:
         run: docker build -t agentiplex:ci .
       - name: Container smoke test
         run: |
-          docker run -d --name agentiplex-ci -p 127.0.0.1:18080:8080 agentiplex:ci
+          docker run -d --name agentiplex-ci -p 127.0.0.1:18080:8080 agentiplex:ci --listen 0.0.0.0:8080 --trusted-network --public-url http://127.0.0.1:18080 --storage /data
           trap 'docker logs agentiplex-ci; docker rm -f agentiplex-ci' EXIT
           for i in $(seq 1 30); do
-            if curl -fsS http://127.0.0.1:18080/readyz; then exit 0; fi
+            if curl -fsS http://127.0.0.1:18080/readyz; then
+              curl -fsS http://127.0.0.1:18080/.well-known/agent-card.json | jq -e '.name == "Agentiplex" and .supportedInterfaces[0].url == "http://127.0.0.1:18080/a2a"'
+              exit 0
+            fi
             sleep 1
           done
           exit 1

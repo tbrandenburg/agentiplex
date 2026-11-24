@@ -320,3 +320,7 @@ Trace acceptance to [PRD](PRD.md). CI should run unit/integration tests and a pr
 - [NATS Kubernetes packaging](https://github.com/nats-io/k8s)
 - [Go module layout](https://go.dev/doc/modules/layout)
 - [OpenCode gateway limitations](https://github.com/tbrandenburg/opencode-a2a-lite)
+
+### PR #2 implementation refinement
+
+For native A2A ingress, reuse the persisted delivery record as the bus task store rather than introducing a separate INGRESS KV bucket. The reserved `a2a-` task/delivery ID is derived from the incoming messageId; the original messageId is stored on the delivery record. GetTask projects the durable record into A2A status, correlation metadata and the original downstream response as a data artifact. This removes cross-store consistency problems. The SDK's transport-agnostic RequestHandler seam provides native JSON-RPC without a second executor. See [A2A.md](A2A.md) for the supported subset, retry rules and limitations.
