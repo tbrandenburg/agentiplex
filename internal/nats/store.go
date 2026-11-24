@@ -77,10 +77,10 @@ func Open(mode, url, storage, namespace string, replicas int, timeout time.Durat
 	// Dedicated bounded application-state bucket. Native KV provides CAS and watch.
 	bucket:=namespace+"_AGENT_STATE"
 	s.State,err=s.JS.KeyValue(bucket)
-	if errors.Is(err,nc.ErrBucketNotFound){s.State,err=s.JS.CreateKeyValue(&nc.KeyValueConfig{Bucket:bucket,Storage:nc.FileStorage,Replicas:replicas,History:1,MaxBytes:32<<20,MaxValueSize:16<<10})}
+	if errors.Is(err,nc.ErrBucketNotFound){s.State,err=s.JS.CreateKeyValue(&nc.KeyValueConfig{Bucket:bucket,Storage:nc.FileStorage,Replicas:replicas,History:1,MaxBytes:32<<20,MaxValueSize:17<<10})}
 	if err!=nil{return nil,err}
 	infoState,err:=s.JS.StreamInfo("KV_"+bucket);if err!=nil{return nil,err}
-	if infoState.Config.Storage!=nc.FileStorage||infoState.Config.Replicas!=replicas||infoState.Config.MaxBytes!=32<<20||infoState.Config.MaxMsgSize!=16<<10||infoState.Config.MaxAge!=0||infoState.Config.MaxMsgsPerSubject!=1||infoState.Config.Discard!=nc.DiscardNew{return nil,fmt.Errorf("incompatible application state bucket %s",bucket)}
+	if infoState.Config.Storage!=nc.FileStorage||infoState.Config.Replicas!=replicas||infoState.Config.MaxBytes!=32<<20||infoState.Config.MaxMsgSize!=17<<10||infoState.Config.MaxAge!=0||infoState.Config.MaxMsgsPerSubject!=1||infoState.Config.Discard!=nc.DiscardNew{return nil,fmt.Errorf("incompatible application state bucket %s",bucket)}
 	const durable = "delivery"
 	// Keep crash recovery bounded independently of downstream HTTP timeouts.
 	// The worker renews the broker lease while an attempt is active.
