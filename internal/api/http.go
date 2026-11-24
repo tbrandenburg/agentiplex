@@ -14,11 +14,22 @@ import (
 	"github.com/tbrandenburg/agentiplex"
 	adapter "github.com/tbrandenburg/agentiplex/internal/adapters/a2a"
 	cat "github.com/tbrandenburg/agentiplex/internal/catalog"
+	"github.com/tbrandenburg/agentiplex/internal/dashboard"
 )
 
 // Handler exposes the administration API and native A2A ingress when configured.
 func Handler(b *agentiplex.Bus, publicURL ...string) http.Handler {
+	return handler(b,true,publicURL...)
+}
+
+// HandlerWithDashboard allows operators to disable the static UI.
+func HandlerWithDashboard(b *agentiplex.Bus, enabled bool, publicURL string) http.Handler {
+	return handler(b,enabled,publicURL)
+}
+
+func handler(b *agentiplex.Bus, dashboardEnabled bool, publicURL ...string) http.Handler {
 	mux:=http.NewServeMux()
+	if dashboardEnabled{dashboard.Mount(mux)}
 	if len(publicURL)>0 && publicURL[0]!="" { adapter.Mount(mux,b,publicURL[0]) }
 	mux.HandleFunc("GET /healthz",func(w http.ResponseWriter,r *http.Request){write(w,200,map[string]bool{"alive":true})})
 	mux.HandleFunc("GET /readyz",func(w http.ResponseWriter,r *http.Request){
@@ -44,6 +55,11 @@ func Handler(b *agentiplex.Bus, publicURL ...string) http.Handler {
 		var in struct{Target string `json:"target"`;Text string `json:"text"`;Key string `json:"idempotencyKey"`}
 		if !decode(w,r,&in){return}
 		d,err:=b.Send(r.Context(),in.Target,in.Text,in.Key);respond(w,202,d,err)
+	})
+	mux.HandleFunc("GET /api/v1/deliveries",func(w http.ResponseWriter,r *http.Request){
+		limit:=50
+		if raw:=r.URL.Query().Get("limit");raw!=""{n,e:=strconv.Atoi(raw);if e!=nil{respond(w,200,nil,agentiplex.ErrInvalid);return};limit=n}
+		d,err:=b.RecentDeliveries(limit);respond(w,200,d,err)
 	})
 	mux.HandleFunc("GET /api/v1/deliveries/{id}",func(w http.ResponseWriter,r *http.Request){
 		d,err:=b.Delivery(r.PathValue("id"));respond(w,200,d,err)
