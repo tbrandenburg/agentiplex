@@ -30,3 +30,7 @@ Open http://127.0.0.1:18080/ui/. Six independent simulated A2A agents exercise t
 Go 1.26 or newer. Dependencies are locked in go.mod and go.sum; run `go generate ./internal/dashboard` before `go test -race ./...`. The provider-free demonstration uses an independently running A2A server. See the foundation guide for commands and current limitations.
 
 This development version is trusted-local only: it has no authentication. Do not expose it publicly.
+
+## MCP collaboration tools
+
+Enable the optional local MCP endpoint with `agentiplexd --mcp` and connect an MCP host to `http://127.0.0.1:8080/mcp`. See [docs/MCP.md](docs/MCP.md) for tool contracts, OpenCode configuration and the provider-free client demo.
