@@ -84,7 +84,7 @@ func PublicURL(configured, listen string) (string, error) {
 
 func Card(publicURL string) *proto.AgentCard {
 	return &proto.AgentCard{
-		Name: "Agentiplex", Description: "Durable agent-to-agent direct message delivery",
+		Name: "Agentiplex", Description: "Durable agent collaboration: direct send, group broadcast and pool dispatch",
 		Version: "0.1.0",
 		SupportedInterfaces: []*proto.AgentInterface{proto.NewAgentInterface(publicURL+IngressPath, proto.TransportProtocolJSONRPC)},
 		DefaultInputModes: []string{"application/json"},
@@ -94,6 +94,16 @@ func Card(publicURL string) *proto.AgentCard {
 			Description: "Submit one data part with operation=send, target=registered agent ID and text=prompt; inspect the returned task via GetTask.",
 			Tags: []string{"messaging", "collaboration", "durable-delivery"},
 			Examples: []string{`{"operation":"send","target":"architect","text":"Review requirement 42"}`},
+		},{
+			ID:"broadcast",Name:"Group broadcast",
+			Description:"Deliver one text request to every member of a configured group. Inspect child delivery status using GetTask.",
+			Tags:[]string{"messaging","broadcast","collaboration"},
+			Examples:[]string{`{"operation":"broadcast","target":"engineering","text":"Contract updated"}`},
+		},{
+			ID:"dispatch",Name:"Pool dispatch",
+			Description:"Deliver one text request to one eligible member of a configured pool; inspect assignment and result using GetTask.",
+			Tags:[]string{"messaging","pool","collaboration"},
+			Examples:[]string{`{"operation":"dispatch","target":"testers","text":"Verify requirement 42"}`},
 		}},
 	}
 }

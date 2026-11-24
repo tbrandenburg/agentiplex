@@ -32,11 +32,16 @@ func(b *Bus) Agent(id string)(Agent,error){
 	a,_,err:=read[Agent](b.store.Registry,id);return a,err
 }
 
-func(b *Bus) Agents(skill,tag string)([]Agent,error){
+func(b *Bus) Agents(skill,tag string)([]Agent,error){return b.Discover(skill,tag,"")}
+
+func(b *Bus) Discover(skill,tag,group string)([]Agent,error){
+	members:=map[string]bool{}
+	if group!=""{c,err:=b.Collection("group",group);if err!=nil{return nil,err};for _,id:=range c.Members{members[id]=true}}
 	ks,err:=keys(b.store.Registry);if err!=nil{return nil,err}
 	sort.Strings(ks)
 	out:=[]Agent{}
 	for _,id:=range ks{
+		if group!=""&&!members[id]{continue}
 		a,err:=b.Agent(id)
 		if errors.Is(err,ErrNotFound){continue}
 		if err!=nil{return nil,err}

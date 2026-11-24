@@ -2,11 +2,14 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
 	"strconv"
+	"fmt"
+	"time"
 
 	"github.com/tbrandenburg/agentiplex"
 	adapter "github.com/tbrandenburg/agentiplex/internal/adapters/a2a"
@@ -28,7 +31,7 @@ func Handler(b *agentiplex.Bus, publicURL ...string) http.Handler {
 		a,err:=b.Register(r.Context(),in.ID,in.URL);respond(w,201,a,err)
 	})
 	mux.HandleFunc("GET /api/v1/agents",func(w http.ResponseWriter,r *http.Request){
-		a,err:=b.Agents(r.URL.Query().Get("skill"),r.URL.Query().Get("tag"));respond(w,200,a,err)
+		a,err:=b.Discover(r.URL.Query().Get("skill"),r.URL.Query().Get("tag"),r.URL.Query().Get("group"));respond(w,200,a,err)
 	})
 	mux.HandleFunc("GET /api/v1/agents/{id}",func(w http.ResponseWriter,r *http.Request){
 		a,err:=b.Agent(r.PathValue("id"));respond(w,200,a,err)
@@ -50,7 +53,65 @@ func Handler(b *agentiplex.Bus, publicURL ...string) http.Handler {
 		if raw:=r.URL.Query().Get("after");raw!=""{v,err:=strconv.ParseUint(raw,10,64);if err!=nil{respond(w,200,nil,agentiplex.ErrInvalid);return};after=v}
 		e,err:=b.Events(after);respond(w,200,e,err)
 	})
+	for _,kind:=range []string{"group","pool"}{
+		path:="/api/v1/"+kind+"s"
+		mux.HandleFunc("GET "+path,func(w http.ResponseWriter,r *http.Request){
+			c,err:=b.Collections(kind);respond(w,200,c,err)
+		})
+		mux.HandleFunc("GET "+path+"/{id}",func(w http.ResponseWriter,r *http.Request){
+			c,err:=b.Collection(kind,r.PathValue("id"));respond(w,200,c,err)
+		})
+		mux.HandleFunc("PUT "+path+"/{id}",func(w http.ResponseWriter,r *http.Request){
+			var in struct{Members []string `json:"members"`}
+			if !decode(w,r,&in){return}
+			c,err:=b.SetCollection(r.Context(),kind,r.PathValue("id"),in.Members);respond(w,200,c,err)
+		})
+	}
+	for _,kind:=range []string{"broadcast","dispatch"}{
+		path:="/api/v1/"+kind
+		if kind=="dispatch"{path+="es"}else{path+="s"}
+		mux.HandleFunc("POST "+path,func(w http.ResponseWriter,r *http.Request){
+			var in struct{Target string `json:"target"`;Text string `json:"text"`;Key string `json:"idempotencyKey"`}
+			if !decode(w,r,&in){return}
+			var d agentiplex.Delivery;var err error
+			if kind=="broadcast"{d,err=b.Broadcast(r.Context(),in.Target,in.Text,in.Key)}else{d,err=b.Dispatch(r.Context(),in.Target,in.Text,in.Key)}
+			respond(w,202,d,err)
+		})
+	}
+	mux.HandleFunc("GET /api/v1/events/stream",func(w http.ResponseWriter,r *http.Request){
+		streamEvents(b,w,r)
+	})
 	return mux
+}
+
+func streamEvents(b *agentiplex.Bus,w http.ResponseWriter,r *http.Request){
+	raw:=r.URL.Query().Get("after")
+	if raw==""{raw=r.Header.Get("Last-Event-ID")}
+	var after uint64
+	if raw!=""{n,err:=strconv.ParseUint(raw,10,64);if err!=nil{respond(w,200,nil,agentiplex.ErrInvalid);return};after=n}
+	rc:=http.NewResponseController(w)
+	// SSE outlives the server's normal request write timeout. Individual
+	// writes still have a deadline, preventing a slow reader from hanging.
+	_ = rc.SetWriteDeadline(time.Time{})
+	w.Header().Set("Content-Type","text/event-stream")
+	w.Header().Set("Cache-Control","no-cache")
+	w.Header().Set("X-Accel-Buffering","no")
+	writeEvent:=func(data string)error{
+		_ = rc.SetWriteDeadline(time.Now().Add(10*time.Second))
+		if _,err:=fmt.Fprint(w,data);err!=nil{return err}
+		if err:=rc.Flush();err!=nil{return err}
+		_ = rc.SetWriteDeadline(time.Time{})
+		return nil
+	}
+	if err:=writeEvent(": connected\n\n");err!=nil{return}
+	// A bounded connection lifetime allows periodic reconnect even behind
+	// proxies which cannot keep an idle stream open. Replay by sequence.
+	ctx,cancel:=context.WithTimeout(r.Context(),5*time.Minute)
+	defer cancel()
+	_ = b.SubscribeEvents(ctx,after,r.URL.Query().Get("kind"),func(e agentiplex.Event)error{
+		data,err:=json.Marshal(e);if err!=nil{return err}
+		return writeEvent(fmt.Sprintf("id: %d\ndata: %s\n\n",e.Sequence,data))
+	})
 }
 
 func decode(w http.ResponseWriter,r *http.Request,dst any)bool{

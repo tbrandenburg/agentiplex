@@ -10,11 +10,18 @@ import (
 	nc "github.com/nats-io/nats.go"
 )
 
+// Bound outstanding broker deliveries while allowing delayed/accepted work
+// to coexist with work for other available recipients.
+const maxAckPending = 64
+
 type Store struct {
 	Conn *nc.Conn
 	JS nc.JetStreamContext
 	Registry nc.KeyValue
 	Deliveries nc.KeyValue
+	Collections nc.KeyValue
+	PoolStream string
+	PoolPrefix string
 	Work *nc.Subscription
 	WorkSubject string
 	EventSubject string
@@ -40,10 +47,13 @@ func Open(mode, url, storage, namespace string, replicas int, timeout time.Durat
 	if err != nil { return nil, err }
 	workStream := namespace + "_MAILBOXES"
 	s.EventStream = namespace + "_EVENTS"
+	s.PoolStream = namespace + "_POOLS"
+	s.PoolPrefix = namespace + ".pool."
 	s.WorkSubject = namespace + ".mailbox"
 	s.EventSubject = namespace + ".events"
 	for _, cfg := range []*nc.StreamConfig{
 		{Name: workStream, Subjects: []string{s.WorkSubject}, Retention: nc.WorkQueuePolicy, Storage: nc.FileStorage, Replicas: replicas, MaxBytes: 64<<20, MaxMsgs: 10000, MaxMsgSize: 1024, Discard: nc.DiscardNew, Duplicates: 2*time.Minute},
+		{Name: s.PoolStream, Subjects: []string{s.PoolPrefix+">"}, Retention: nc.WorkQueuePolicy, Storage: nc.FileStorage, Replicas: replicas, MaxBytes: 64<<20, MaxMsgs: 10000, MaxMsgSize: 1024, Discard: nc.DiscardNew, Duplicates: 2*time.Minute},
 		{Name: s.EventStream, Subjects: []string{s.EventSubject}, Retention: nc.LimitsPolicy, Storage: nc.FileStorage, Replicas: replicas, MaxMsgs: 10000, MaxBytes: 16<<20, MaxAge: 7*24*time.Hour, Discard: nc.DiscardOld},
 	} {
 		info, e := s.JS.StreamInfo(cfg.Name)
@@ -55,7 +65,7 @@ func Open(mode, url, storage, namespace string, replicas int, timeout time.Durat
 		if e != nil { return nil, e }
 	}
 	for _, b := range []struct{name string; dest *nc.KeyValue}{
-		{namespace+"_REGISTRY", &s.Registry}, {namespace+"_DELIVERIES", &s.Deliveries},
+		{namespace+"_REGISTRY", &s.Registry}, {namespace+"_DELIVERIES", &s.Deliveries}, {namespace+"_COLLECTIONS", &s.Collections},
 	} {
 		*b.dest, err = s.JS.KeyValue(b.name)
 		if errors.Is(err, nc.ErrBucketNotFound) {
@@ -66,7 +76,7 @@ func Open(mode, url, storage, namespace string, replicas int, timeout time.Durat
 	const durable = "delivery"
 	// Keep crash recovery bounded independently of downstream HTTP timeouts.
 	// The worker renews the broker lease while an attempt is active.
-	consumer := &nc.ConsumerConfig{Durable: durable, AckPolicy: nc.AckExplicitPolicy, AckWait: 10*time.Second, MaxAckPending: 1, FilterSubject: s.WorkSubject}
+	consumer := &nc.ConsumerConfig{Durable: durable, AckPolicy: nc.AckExplicitPolicy, AckWait: 10*time.Second, MaxAckPending: maxAckPending, FilterSubject: s.WorkSubject}
 	info, lookupErr := s.JS.ConsumerInfo(workStream, durable)
 	switch {
 	case errors.Is(lookupErr, nc.ErrConsumerNotFound):
@@ -74,8 +84,9 @@ func Open(mode, url, storage, namespace string, replicas int, timeout time.Durat
 	case lookupErr != nil:
 		err = lookupErr
 	default:
-		if info.Config.AckWait != consumer.AckWait {
+		if info.Config.AckWait != consumer.AckWait || info.Config.MaxAckPending != consumer.MaxAckPending {
 			info.Config.AckWait = consumer.AckWait
+			info.Config.MaxAckPending = consumer.MaxAckPending
 			_, err = s.JS.UpdateConsumer(workStream, &info.Config)
 		}
 	}
@@ -93,4 +104,20 @@ func (s *Store) Close() {
 		s.Conn.Close()
 	}
 	if s.embedded != nil { s.embedded.Shutdown(); s.embedded.WaitForShutdown() }
+}
+
+// PoolConsumer binds a single durable pull consumer to a pool subject.
+// Explicit acknowledgments and a renewable lease match the direct worker.
+func (s *Store) PoolConsumer(id string) (*nc.Subscription,error) {
+	subject:=s.PoolPrefix+id
+	durable:="pool_"+id
+	cfg:=&nc.ConsumerConfig{Durable:durable,AckPolicy:nc.AckExplicitPolicy,AckWait:10*time.Second,MaxAckPending:maxAckPending,FilterSubject:subject}
+	info,err:=s.JS.ConsumerInfo(s.PoolStream,durable)
+	if errors.Is(err,nc.ErrConsumerNotFound) {
+		_,err=s.JS.AddConsumer(s.PoolStream,cfg)
+	} else if err==nil && (info.Config.FilterSubject!=subject || info.Config.AckPolicy!=nc.AckExplicitPolicy || info.Config.MaxAckPending!=maxAckPending || info.Config.AckWait!=cfg.AckWait) {
+		return nil,fmt.Errorf("incompatible pool consumer %s",id)
+	}
+	if err!=nil{return nil,err}
+	return s.JS.PullSubscribe(subject,durable,nc.Bind(s.PoolStream,durable))
 }
