@@ -24,6 +24,7 @@ type Agent struct {
 
 type Delivery struct {
 	ID string `json:"id"`
+	IngressMessageID string `json:"ingressMessageId,omitempty"`
 	Target string `json:"target"`
 	Text string `json:"text"`
 	Endpoint string `json:"endpoint"`
