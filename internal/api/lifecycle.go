@@ -46,14 +46,12 @@ func mountLifecycle(mux *http.ServeMux,b *agentiplex.Bus){
 	// Watch is a distinct route so the literal "watch" remains a valid key.
 	mux.HandleFunc("GET /api/v1/state-watch/{namespace}",func(w http.ResponseWriter,r *http.Request){
 		ns:=r.PathValue("namespace")
-		if _,err:=b.ListState(ns);err!=nil{respond(w,200,nil,err);return}
 		rc:=http.NewResponseController(w)
 		_ = rc.SetWriteDeadline(time.Time{})
-		w.Header().Set("Content-Type","text/event-stream")
-		w.Header().Set("Cache-Control","no-store")
-		w.Header().Set("X-Accel-Buffering","no")
 		ctx,cancel:=context.WithTimeout(r.Context(),5*time.Minute);defer cancel()
-		_ = b.WatchState(ctx,ns,func(change agentiplex.StateChange)error{
+		started:=false
+		err:=b.WatchState(ctx,ns,func(change agentiplex.StateChange)error{
+			if !started{w.Header().Set("Content-Type","text/event-stream");w.Header().Set("Cache-Control","no-store");w.Header().Set("X-Accel-Buffering","no");started=true}
 			data,err:=json.Marshal(change);if err!=nil{return err}
 			_ = rc.SetWriteDeadline(time.Now().Add(10*time.Second))
 			if _,err=fmt.Fprintf(w,"data: %s\n\n",data);err!=nil{return err}
@@ -61,5 +59,6 @@ func mountLifecycle(mux *http.ServeMux,b *agentiplex.Bus){
 			_ = rc.SetWriteDeadline(time.Time{})
 			return nil
 		})
+		if err!=nil&&!started{respond(w,200,nil,err)}
 	})
 }

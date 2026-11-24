@@ -115,11 +115,14 @@ func (b *Bus) ListState(namespace string)([]StateEntry,error){
 // snapshot, not an exactly-once historical event replay.
 func (b *Bus) WatchState(ctx context.Context,namespace string,yield func(StateChange)error)error{
 	if !validID.MatchString(namespace)||yield==nil{return ErrInvalid}
-	watcher,err:=b.store.State.Watch(namespace+".*")
+	watcher,err:=b.store.State.Watch(namespace+".*",nats.Context(ctx))
 	if err!=nil{return err}
 	defer watcher.Stop()
+	watchErrors:=watcher.Error()
 	for{
 		select{
+		case err,ok:=<-watchErrors:
+			if !ok{watchErrors=nil}else if err!=nil{return err}
 		case<-ctx.Done():return ctx.Err()
 		case<-b.ctx.Done():return b.ctx.Err()
 		case e,ok:=<-watcher.Updates():
