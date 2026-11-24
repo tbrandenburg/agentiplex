@@ -9,11 +9,14 @@ import (
 	"strconv"
 
 	"github.com/tbrandenburg/agentiplex"
+	adapter "github.com/tbrandenburg/agentiplex/internal/adapters/a2a"
 	cat "github.com/tbrandenburg/agentiplex/internal/catalog"
 )
 
-func Handler(b *agentiplex.Bus) http.Handler {
+// Handler exposes the administration API and native A2A ingress when configured.
+func Handler(b *agentiplex.Bus, publicURL ...string) http.Handler {
 	mux:=http.NewServeMux()
+	if len(publicURL)>0 && publicURL[0]!="" { adapter.Mount(mux,b,publicURL[0]) }
 	mux.HandleFunc("GET /healthz",func(w http.ResponseWriter,r *http.Request){write(w,200,map[string]bool{"alive":true})})
 	mux.HandleFunc("GET /readyz",func(w http.ResponseWriter,r *http.Request){
 		if !b.Ready(){write(w,503,map[string]bool{"ready":false});return}
