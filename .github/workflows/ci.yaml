@@ -1,7 +1,11 @@
-name: Foundation CI
+name: Checks
 on:
   push:
+    branches: [main]
   pull_request:
+concurrency:
+  group: checks-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 permissions:
   contents: read
 jobs:
