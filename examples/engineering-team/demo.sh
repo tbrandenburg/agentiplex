@@ -3,16 +3,18 @@
 set -Eeuo pipefail
 cd "$(dirname "$0")/../.."
 check=false
+mcp=false
 browser=false
 opencode=""
 base_port=18080
 while (($#)); do
   case "$1" in
     --check) check=true; shift ;;
+    --mcp) mcp=true; shift ;;
     --browser-check) browser=true; shift ;;
     --opencode-url) opencode="$2"; shift 2 ;;
     --port) base_port="$2"; shift 2 ;;
-    -h|--help) echo "Usage: bash examples/engineering-team/demo.sh [--check] [--browser-check] [--port 18080] [--opencode-url http://127.0.0.1:41241]"; exit 0 ;;
+    -h|--help) echo "Usage: bash examples/engineering-team/demo.sh [--check] [--mcp] [--browser-check] [--port 18080] [--opencode-url http://127.0.0.1:41241]"; exit 0 ;;
     *) echo "Unknown argument: $1" >&2; exit 2 ;;
   esac
 done
@@ -79,7 +81,7 @@ await_http() {
 start_daemon() {
   assert_free "$base_port"
   AGENTIPLEX_DELIVERY_RETRY_DELAY=1s AGENTIPLEX_DELIVERY_MAX_ATTEMPTS=40 \
-    "$work/agentiplexd" --listen "127.0.0.1:$base_port" --public-url "$server" --broker-mode embedded --namespace demo --storage "$work/state" --dashboard >"$work/daemon.log" 2>&1 &
+    "$work/agentiplexd" --listen "127.0.0.1:$base_port" --public-url "$server" --broker-mode embedded --namespace demo --storage "$work/state" --dashboard --mcp="$mcp" >"$work/daemon.log" 2>&1 &
   daemon_pid=$!
   daemon_index=${#pids[@]}
   pids+=("$daemon_pid")
