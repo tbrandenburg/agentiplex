@@ -45,7 +45,11 @@ func Command()*cobra.Command{
 	root.AddCommand(&cobra.Command{Use:"register ID URL",Args:cobra.ExactArgs(2),RunE:func(c *cobra.Command,a []string)error{return print(c,"POST","/api/v1/agents",map[string]string{"id":a[0],"url":a[1]})}})
 	agents:=&cobra.Command{Use:"agents"}
 	agents.AddCommand(&cobra.Command{Use:"list",Args:cobra.NoArgs,RunE:func(c *cobra.Command,a []string)error{return print(c,"GET","/api/v1/agents",nil)}},&cobra.Command{Use:"get ID",Args:cobra.ExactArgs(1),RunE:func(c *cobra.Command,a []string)error{return print(c,"GET","/api/v1/agents/"+url.PathEscape(a[0]),nil)}})
+	agents.AddCommand(&cobra.Command{Use:"refresh ID",Args:cobra.ExactArgs(1),RunE:func(c *cobra.Command,a []string)error{return print(c,"POST","/api/v1/agents/"+url.PathEscape(a[0])+"/refresh",nil)}},
+	&cobra.Command{Use:"remove ID",Args:cobra.ExactArgs(1),RunE:func(c *cobra.Command,a []string)error{return print(c,"DELETE","/api/v1/agents/"+url.PathEscape(a[0]),nil)}},
+	&cobra.Command{Use:"health ID",Args:cobra.ExactArgs(1),RunE:func(c *cobra.Command,a []string)error{return print(c,"POST","/api/v1/agents/"+url.PathEscape(a[0])+"/health",nil)}})
 	root.AddCommand(agents)
+	root.AddCommand(stateCommand(r,print))
 	var skill,tag,group string
 	discover:=&cobra.Command{Use:"discover",Args:cobra.NoArgs,RunE:func(c *cobra.Command,a []string)error{
 		q:=url.Values{"skill":{skill},"tag":{tag},"group":{group}}

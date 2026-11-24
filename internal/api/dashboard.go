@@ -19,11 +19,13 @@ func mountDashboardData(mux *http.ServeMux,b *agentiplex.Bus){
 		pools,err:=b.Collections("pool");if err!=nil{respond(w,200,nil,err);return}
 		deliveries,err:=b.RecentDeliveries(50);if err!=nil{respond(w,200,nil,err);return}
 		events,err:=b.RecentEvents(80);if err!=nil{respond(w,200,nil,err);return}
+		healths,err:=b.AgentHealths();if err!=nil{respond(w,200,nil,err);return}
+		healthByID:=map[string]agentiplex.AgentHealth{};for _,h:=range healths{healthByID[h.ID]=h}
 		a:=[]map[string]any{}
 		for _,agent:=range agents{
 			kind:="External agent";skills:=[]string{}
 			for _,s:=range agent.Card.Skills{skills=append(skills,s.Name);for _,t:=range s.Tags{if t=="simulated"{kind="Simulated fixture"}}}
-			a=append(a,map[string]any{"id":agent.ID,"kind":kind,"skills":strings.Join(skills,", "),"endpoint":agent.Endpoint})
+			a=append(a,map[string]any{"id":agent.ID,"kind":kind,"skills":strings.Join(skills,", "),"endpoint":agent.Endpoint,"reachability":agent.Reachability,"observedAt":agent.ObservedAt,"busy":healthByID[agent.ID].Busy})
 		}
 		c:=[]map[string]any{}
 		for _,item:=range append(groups,pools...){c=append(c,map[string]any{"id":item.ID,"kind":item.Kind,"members":strings.Join(item.Members,", ")})}
