@@ -62,7 +62,16 @@ try{
     const r=await cdp("Runtime.evaluate",{expression:'!document.getElementById("detail-panel")?.hidden && document.getElementById("detail")?.textContent.includes("\\"state\\"")',returnByValue:true});
     return r.result.value===true;
   });
-  console.log("PASS: real browser rendered six agents, seven completed deliveries, live events and stored detail.");
+  // Exercise a real post-connect mutation and confirm it arrives in the DOM.
+  const update=await fetch(origin+"/api/v1/groups/browser-check",{
+    method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({members:["pm"]})
+  });
+  if(!update.ok)throw new Error("Live group update failed: "+update.status);
+  await eventually(async()=>{
+    const r=await cdp("Runtime.evaluate",{expression:'document.getElementById("collection-count")?.textContent==="2 / 1" && document.getElementById("events")?.textContent.includes("browser-check")',returnByValue:true});
+    return r.result.value===true;
+  });
+  console.log("PASS: real browser rendered six agents, seven completed deliveries, live event update and stored detail.");
 }finally{
   ws?.close();
   if(chrome.pid)chrome.kill();
