@@ -4,14 +4,19 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"iter"
+	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/a2aproject/a2a-go/v2/a2a"
 	"github.com/a2aproject/a2a-go/v2/a2aclient"
 	"github.com/a2aproject/a2a-go/v2/a2aclient/agentcard"
+	"github.com/a2aproject/a2a-go/v2/a2asrv"
 	"github.com/tbrandenburg/agentiplex"
 	"github.com/tbrandenburg/agentiplex/internal/api"
 )
@@ -202,5 +207,84 @@ func TestA2AIngressAmbiguousOutcome(t *testing.T) {
 	}
 	if replay := nativeSend(t, c, req); replay.ID != task.ID || a.calls.Load() != 1 {
 		t.Fatal("ambiguous work replayed")
+	}
+}
+
+func TestA2AIngressAcceptedTaskSurvivesRestart(t *testing.T) {
+	cfg := config(t)
+	b := open(t, cfg)
+	ctx := context.Background()
+
+	// Independent SDK server creates a task and waits for an explicit release.
+	// Its lifetime is independent of the Agentiplex daemon.
+	var calls atomic.Int32
+	releaseCh := make(chan struct{})
+	var releaseOnce sync.Once
+	release := func() { releaseOnce.Do(func() { close(releaseCh) }) }
+	defer release()
+	target := httptest.NewUnstartedServer(nil)
+	base := "http://" + target.Listener.Addr().String()
+	card := &a2a.AgentCard{
+		Name: "Delayed tester", Description: "Independent task-producing test agent", Version: "0.1.0",
+		SupportedInterfaces: []*a2a.AgentInterface{a2a.NewAgentInterface(base+"/invoke", a2a.TransportProtocolJSONRPC)},
+		DefaultInputModes: []string{"text/plain"}, DefaultOutputModes: []string{"text/plain"},
+		Skills: []a2a.AgentSkill{{ID: "testing", Name: "Testing", Description: "Delayed verification", Tags: []string{"testing"}}},
+	}
+	executor := a2asrv.AgentExecutorFunc(func(ctx context.Context, ec *a2asrv.ExecutorContext) iter.Seq2[a2a.Event, error] {
+		return func(yield func(a2a.Event, error) bool) {
+			calls.Add(1)
+			if !yield(&a2a.Task{ID: ec.TaskID, ContextID: ec.ContextID, Status: a2a.TaskStatus{State: a2a.TaskStateWorking}}, nil) {
+				return
+			}
+			select {
+			case <-releaseCh:
+			case <-ctx.Done():
+				return
+			}
+			if !yield(a2a.NewArtifactEvent(ec, a2a.NewTextPart("verified")), nil) {
+				return
+			}
+			yield(a2a.NewStatusUpdateEvent(ec, a2a.TaskStateCompleted, nil), nil)
+		}
+	})
+	mux := http.NewServeMux()
+	mux.Handle("/invoke", a2asrv.NewJSONRPCHandler(a2asrv.NewHandler(executor)))
+	mux.Handle(a2asrv.WellKnownAgentCardPath, a2asrv.NewStaticAgentCardHandler(card))
+	target.Config.Handler = mux
+	target.Start()
+	t.Cleanup(func() { release(); target.Close() })
+
+	if _, err := b.Register(ctx, "tester", target.URL); err != nil {
+		t.Fatal(err)
+	}
+	s, c := ingressClient(t, b)
+	req := sendRequest("native-active", "tester", "verify requirement", true)
+	task := nativeSend(t, c, req)
+	accepted := wait(t, b, string(task.ID), "accepted")
+	if accepted.TaskID == "" || accepted.TaskID == task.ID || calls.Load() != 1 {
+		t.Fatalf("invalid downstream correlation: %+v, calls %d", accepted, calls.Load())
+	}
+	working := nativeTask(t, c, task.ID)
+	if working.Status.State != a2a.TaskStateWorking {
+		t.Fatalf("accepted task not working: %s", working.Status.State)
+	}
+	_ = c.Destroy()
+	s.Close()
+	b.Close()
+
+	b2 := open(t, cfg)
+	_, c2 := ingressClient(t, b2)
+	if working = nativeTask(t, c2, task.ID); working.Status.State != a2a.TaskStateWorking {
+		t.Fatalf("active task lost after restart: %s", working.Status.State)
+	}
+	release()
+	done := waitNative(t, c2, task.ID, a2a.TaskStateCompleted)
+	d, err := b2.Delivery(string(task.ID))
+	if err != nil || d.TaskID != accepted.TaskID || d.ContextID != accepted.ContextID || calls.Load() != 1 {
+		t.Fatalf("downstream task was not recovered: %+v %v; calls %d", d, err, calls.Load())
+	}
+	raw, err := json.Marshal(done.Artifacts)
+	if err != nil || !strings.Contains(string(raw), "verified") {
+		t.Fatalf("downstream artifact missing: %s %v", raw, err)
 	}
 }
