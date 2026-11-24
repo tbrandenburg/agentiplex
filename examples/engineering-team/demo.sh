@@ -156,7 +156,7 @@ requirement="REQ-42: on motor communication loss, stop within 100 ms and prohibi
 echo "2. PM planning (fixture), then native A2A architecture review"
 id=$(cli send pm "Plan review of $requirement" --idempotency-key demo-plan | receipt_id)
 plan=$(wait_state "$id" completed 60); show "$plan"
-arch_id=$(native_send demo-architecture architect "Read-only: review this requirement and propose verification considerations. Do not edit files or run commands. $requirement" | jq -er .result.id)
+arch_id=$(native_send demo-architecture architect "Read-only: review this requirement and propose verification considerations. Do not edit files or run commands. $requirement" | jq -er .result.task.id)
 architecture=$(wait_state "$arch_id" completed 240)
 native_get "$arch_id" | jq -e '.result.status.state == "TASK_STATE_COMPLETED" and (.result.artifacts|length > 0)' >/dev/null
 show "$architecture"
