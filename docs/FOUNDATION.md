@@ -18,7 +18,7 @@ Local-only demo: authentication is not implemented. Never expose publicly. Non-l
 
 ## Run (proposed; verify after CI)
 
-Requires Go 1.26 or newer. Run `go mod tidy` on a connected machine and commit the generated go.sum before merging. Direct module versions are pinned to upstream releases; dependency resolution has not yet been executed in the authoring environment.
+Requires Go 1.26 or newer. Direct and transitive dependency versions and go.sum are locked from the CI-generated module manifest.
 
 ```sh
 go run ./cmd/agentiplexd --config config.example.yaml
@@ -50,7 +50,7 @@ Container: build `docker build -t agentiplex:dev .`, run `docker run --rm -p 127
 ## Merge gates
 
 - CI build, vet and race/integration tests pass.
-- Generate and commit go.sum; format Go source with gofmt; ensure dependency versions are compatible.
+- Verify committed go.mod/go.sum remain unchanged after go mod tidy; format Go source with gofmt.
 - Confirm direct registration/discovery, independently parsed AI Catalog, A2A send/result, duplicate idempotency key, offline recovery, queued state on restart, and ambiguous failure tests.
 - Exercise external NATS and Docker persistence, inspect CI logs and record evidence.
 - Review conservative uncertainty behavior and limits. Do not claim production readiness.
