@@ -20,11 +20,11 @@ func mcpSession(t *testing.T,b *agentiplex.Bus,legacy bool)(*httptest.Server,*mc
 	t.Helper()
 	s:=httptest.NewServer(api.HandlerWithProtocols(b,nil,"",true))
 	t.Cleanup(s.Close)
-	opts:=&mcp.ClientOptions{}
-	if legacy{opts.SupportedProtocolVersions=[]string{"2025-11-25"}}
-	client:=mcp.NewClient(&mcp.Implementation{Name:"independent-test",Version:"1.0.0"},opts)
+	opts:=&mcp.ClientSessionOptions{}
+	if legacy{opts.ProtocolVersion="2025-11-25"}
+	client:=mcp.NewClient(&mcp.Implementation{Name:"independent-test",Version:"1.0.0"},nil)
 	ctx,cancel:=context.WithTimeout(context.Background(),10*time.Second);defer cancel()
-	session,err:=client.Connect(ctx,&mcp.StreamableClientTransport{Endpoint:s.URL+"/mcp",DisableStandaloneSSE:true},nil)
+	session,err:=client.Connect(ctx,&mcp.StreamableClientTransport{Endpoint:s.URL+"/mcp",DisableStandaloneSSE:true},opts)
 	if err!=nil{t.Fatal(err)}
 	t.Cleanup(func(){_ = session.Close()})
 	return s,session
