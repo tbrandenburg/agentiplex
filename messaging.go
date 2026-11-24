@@ -74,8 +74,31 @@ func(b *Bus) work(ctx context.Context){
 			if !errors.Is(err,nats.ErrTimeout){slog.Warn("delivery fetch failed");select{case<-ctx.Done():return;case<-time.After(time.Second):}}
 			continue
 		}
-		for _,m:=range msgs{b.process(ctx,m)}
+		for _,m:=range msgs{b.processWithLease(ctx,m)}
 	}
+}
+
+// processWithLease renews the broker lease during long A2A calls. The
+// persisted delivery state remains authoritative if the process dies.
+func(b *Bus) processWithLease(ctx context.Context,m *nats.Msg){
+	done:=make(chan struct{})
+	stopped:=make(chan struct{})
+	go func(){
+		defer close(stopped)
+		ticker:=time.NewTicker(2*time.Second)
+		defer ticker.Stop()
+		for {
+			select{
+			case <-done:return
+			case <-ticker.C:
+				if err:=m.InProgress();err!=nil&&!errors.Is(err,nats.ErrMsgAlreadyAckd){
+					slog.Warn("delivery lease renewal failed")
+				}
+			}
+		}
+	}()
+	defer func(){close(done);<-stopped}()
+	b.process(ctx,m)
 }
 
 func(b *Bus) settle(m *nats.Msg,d *Delivery,state,detail string){

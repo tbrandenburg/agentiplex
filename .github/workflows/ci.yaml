@@ -16,6 +16,10 @@ jobs:
           cache: false
       - name: Resolve pinned dependencies
         run: go mod tidy
+      - name: Format and resolve source manifest
+        run: |
+          gofmt -w $(git ls-files '*.go')
+          tar -czf /tmp/agentiplex-formatted.tar.gz $(git ls-files '*.go') go.mod go.sum
       - name: Build
         run: go build ./cmd/... ./examples/...
       - name: Unit and integration tests
@@ -30,6 +34,12 @@ jobs:
           path: |
             go.mod
             go.sum
+      - name: Save formatted source snapshot
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: formatted-source
+          path: /tmp/agentiplex-formatted.tar.gz
       - name: Build image
         run: docker build -t agentiplex:ci .
       - name: Container smoke test

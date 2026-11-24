@@ -127,7 +127,14 @@ func TestFoundationDirectOfflineAndRestart(t *testing.T){
 	a.stop()
 	pending,err:=b.Send(ctx,"architect","offline handoff","second")
 	if err!=nil{t.Fatal(err)}
-	wait(t,b,pending.ID,"queued")
+	// Wait for a real failed reachability probe, not merely the enqueue state.
+	deadline:=time.Now().Add(10*time.Second)
+	for {
+		d,e:=b.Delivery(pending.ID)
+		if e==nil&&d.State=="queued"&&d.Attempts>0&&d.Detail!=""{break}
+		if time.Now().After(deadline){t.Fatalf("offline probe not observed: %+v %v",d,e)}
+		time.Sleep(50*time.Millisecond)
+	}
 	b.Close()
 	// Registry, intent, queued message and durable consumer must survive
 	// stopping the daemon and its embedded broker before the agent returns.
@@ -170,4 +177,20 @@ func TestExternalBrokerAndHTTPSubmission(t *testing.T){
 	err=json.NewDecoder(resp.Body).Decode(&d);_ = resp.Body.Close()
 	if err!=nil||resp.StatusCode!=202||d.ID==""{t.Fatalf("HTTP submission: %d %v",resp.StatusCode,err)}
 	wait(t,b,d.ID,"completed")
+}
+
+func TestImmediateRestartAfterEnqueue(t *testing.T){
+	cfg:=config(t)
+	b:=open(t,cfg)
+	a:=&agentService{};a.start(t,false);defer a.stop()
+	ctx:=context.Background()
+	if _,err:=b.Register(ctx,"architect",a.URL());err!=nil{t.Fatal(err)}
+	a.stop()
+	d,err:=b.Send(ctx,"architect","immediate shutdown","restart-race");if err!=nil{t.Fatal(err)}
+	// Exercise the original failing timing: do not wait for an offline probe.
+	b.Close()
+	b2:=open(t,cfg)
+	a.start(t,false)
+	wait(t,b2,d.ID,"completed")
+	if a.calls.Load()!=1{t.Fatalf("wrong target invocation count: %d",a.calls.Load())}
 }

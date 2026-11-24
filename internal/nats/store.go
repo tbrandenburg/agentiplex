@@ -64,8 +64,20 @@ func Open(mode, url, storage, namespace string, replicas int, timeout time.Durat
 		if err != nil { return nil, err }
 	}
 	const durable = "delivery"
-	if _, err = s.JS.ConsumerInfo(workStream, durable); errors.Is(err, nc.ErrConsumerNotFound) {
-		_, err = s.JS.AddConsumer(workStream, &nc.ConsumerConfig{Durable: durable, AckPolicy: nc.AckExplicitPolicy, AckWait: 2*timeout+30*time.Second, MaxAckPending: 1, FilterSubject: s.WorkSubject})
+	// Keep crash recovery bounded independently of downstream HTTP timeouts.
+	// The worker renews the broker lease while an attempt is active.
+	consumer := &nc.ConsumerConfig{Durable: durable, AckPolicy: nc.AckExplicitPolicy, AckWait: 10*time.Second, MaxAckPending: 1, FilterSubject: s.WorkSubject}
+	info, lookupErr := s.JS.ConsumerInfo(workStream, durable)
+	switch {
+	case errors.Is(lookupErr, nc.ErrConsumerNotFound):
+		_, err = s.JS.AddConsumer(workStream, consumer)
+	case lookupErr != nil:
+		err = lookupErr
+	default:
+		if info.Config.AckWait != consumer.AckWait {
+			info.Config.AckWait = consumer.AckWait
+			_, err = s.JS.UpdateConsumer(workStream, &info.Config)
+		}
 	}
 	if err != nil { return nil, err }
 	s.Work, err = s.JS.PullSubscribe(s.WorkSubject, durable, nc.Bind(workStream, durable))
@@ -74,6 +86,11 @@ func Open(mode, url, storage, namespace string, replicas int, timeout time.Durat
 }
 
 func (s *Store) Close() {
-	if s.Conn != nil { s.Conn.Close() }
+	if s.Conn != nil {
+		// NAK and progress acknowledgments are asynchronous. Flush before
+		// closing the connection or stopping an embedded server.
+		_ = s.Conn.FlushTimeout(5*time.Second)
+		s.Conn.Close()
+	}
 	if s.embedded != nil { s.embedded.Shutdown(); s.embedded.WaitForShutdown() }
 }
