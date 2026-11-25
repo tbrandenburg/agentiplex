@@ -112,7 +112,6 @@ that is safe to share with the chosen model:
 ```sh
 make repository-team \
   REPO=https://github.com/owner/repo.git \
-  MODEL=opencode/big-pickle \
   OBJECTIVE="Improve the README and verify the changes" \
   REPOSITORY_ARGS="--accept-full-access --accept-provider-data --public-workspace"
 ```

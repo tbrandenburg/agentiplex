@@ -36,12 +36,12 @@ a public proxy. The selected workspace is not copied to temporary fixtures.
 
 ```sh
 make repository-team REPO=https://github.com/owner/repo.git \
-  REF=main MODEL=opencode/big-pickle \
+  REF=main \
   OBJECTIVE="Improve the README and check links" \
   REPOSITORY_ARGS="--accept-full-access --accept-provider-data --public-workspace"
 ```
 
-`REF` is optional (branch or tag; default remote HEAD), `MODEL` is required, and
+`REF` is optional (branch or tag; default remote HEAD), `MODEL` is optional (omitted: the OpenCode default is used; CI pins `opencode/big-pickle`), and
 `REPO` and `WORKSPACE` are mutually exclusive. HTTPS/SSH URLs without embedded
 credentials or an absolute local repository path are accepted. Git uses the
 operator's configured credentials for the clone (noninteractive terminal);

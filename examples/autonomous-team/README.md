@@ -24,7 +24,7 @@ This validates generated configuration, explicit per-role grants, registration a
 
 ## Real-model acceptance (free or credentialed)
 
-`make live-check` runs the same default credential-free full hybrid scenario as Live OpenCode CI. Install the pinned runtimes below first. Override `LIVE_ARGS` for a different approved local scenario; no paid provider credentials are forwarded by default.
+`make live-check` runs the credential-free full hybrid scenario of Live OpenCode CI, using the OpenCode default model unless `MODEL=provider/model` is set (CI sets `MODEL=opencode/big-pickle`). Install the pinned runtimes below first. Override `LIVE_ARGS` for a different approved local scenario; no paid provider credentials are forwarded by default.
 
 On a disposable trusted Linux host, install the exact reviewed versions: OpenCode **2.3.2 or newer**, Bun **1.4.4**, Node **22+**, and [opencode-a2a-lite **0.8.2**](https://github.com/tbrandenburg/opencode-a2a-lite/releases/tag/v0.8.2) on PATH. The gateway CLI must report 0.8.2 and OpenCode must report a stable opencode v2.3.2 or newer. Use a standalone workspace environment without managed /etc/opencode or inherited project configuration; see the upstream [operator policy](https://github.com/tbrandenburg/opencode-a2a-lite/blob/v0.8.2/docs/operator-policy-state.md). The launcher creates private standalone workspaces under /tmp, each containing only the fictional fixture and generated role/config. It does not copy your real repository or personal files.
 
@@ -33,7 +33,7 @@ OpenCode offers [rotating free models](https://opencode.ai/docs/console/models/)
 ```sh
 # Native OpenCode default selection, without any API key:
 python3 -B examples/autonomous-team/team.py --accept-free-model
-# Reproducible explicit request (also used by Live OpenCode CI):
+# Reproducible explicit request (Live OpenCode CI sets MODEL=opencode/big-pickle):
 python3 -B examples/autonomous-team/team.py --model opencode/big-pickle --accept-free-model --headless --summary-only --prompt-timeout 10m --seconds 900
 ```
 

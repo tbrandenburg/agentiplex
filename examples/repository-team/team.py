@@ -130,9 +130,11 @@ def prepare_clone_config(workspace, endpoint, model):
     exclude.parent.mkdir(parents=True, exist_ok=True)
     with exclude.open("a", encoding="utf-8") as f:
         f.write("\n/opencode.json\n")
-    config = {"$schema": "https://opencode.ai/config.json", "model": model,
+    config = {"$schema": "https://opencode.ai/config.json",
               "mcp": {"servers": {"agentiplex": {"type": "remote", "url": endpoint + "/mcp",
                                                   "protocol": "auto", "codemode": False}}}}
+    if model is not None:
+        config["model"] = model
     with (workspace / "opencode.json").open("x", encoding="utf-8") as f:
         f.write(json.dumps(config, indent=2) + "\n")
     if git_snapshot(workspace)["status"]:
@@ -176,10 +178,10 @@ def inspect_workspace(path, endpoint):
     if not isinstance(config, dict) or set(config) - {"$schema", "model", "mcp"}:
         raise ValueError("use the minimal reviewed opencode.json described in the example README")
     model = config.get("model")
-    if not isinstance(model, dict) or set(model) != {"providerID", "model"} or any(
+    if model is not None and (not isinstance(model, dict) or set(model) != {"providerID", "model"} or any(
         not isinstance(v, str) or not re.fullmatch(r"[A-Za-z0-9._:-]+", v) for v in model.values()
-    ):
-        raise ValueError("opencode.json must select an explicit providerID and model")
+    )):
+        raise ValueError("opencode.json model must be omitted (OpenCode default) or an explicit providerID and model")
     expected = {"servers": {"agentiplex": {
         "type": "remote", "url": endpoint + "/mcp", "protocol": "auto", "codemode": False,
     }}}
@@ -378,7 +380,7 @@ def main():
     source.add_argument("--workspace", help="existing clean Git checkout")
     source.add_argument("--repo", help="Git URL to clone into an independent scratch worktree")
     p.add_argument("--ref", help="branch or tag to clone (default: remote HEAD)")
-    p.add_argument("--model", help="provider/model for a cloned workspace")
+    p.add_argument("--model", help="provider/model for a cloned workspace; omit to use the OpenCode default")
     p.add_argument("--objective", default="")
     p.add_argument("--port", type=int, help="default 0 (automatic) for --repo, 19080 for --workspace")
     p.add_argument("--seconds", type=int, default=1200)
@@ -401,8 +403,6 @@ def main():
         p.error("requires Linux, an unprivileged port (or 0 for --repo), and a 60–1800 second deadline")
     if args.workspace and (args.ref or args.model):
         p.error("--ref and --model are for --repo; existing workspaces supply their own configuration")
-    if args.repo and not args.model:
-        p.error("--repo requires an explicit --model provider/model")
     if args.pass_env and (len(set(args.pass_env)) != len(args.pass_env) or any(
         not re.fullmatch(r"[A-Z][A-Z0-9_]*_API_KEY", k) or not os.environ.get(k) for k in args.pass_env
     )):
@@ -415,15 +415,15 @@ def main():
         pm_prompt(args.objective)
     if args.repo:
         source_url(args.repo)
-        model = model_selection(args.model)
+        model = model_selection(args.model) if args.model else None
     else:
         args.workspace = Path(args.workspace).expanduser().resolve(strict=True)
         _, _, model = inspect_workspace(args.workspace, "http://127.0.0.1:" + str(args.port))
-    if not args.check and not args.pass_env and not (
+    if not args.check and not args.pass_env and model is not None and not (
         model["providerID"] == "opencode" and
         (model["model"] == "big-pickle" or model["model"].endswith("-free"))
     ):
-        p.error("credential-free runs require an explicitly selected OpenCode free model")
+        p.error("credential-free runs require the OpenCode default or an explicitly selected OpenCode free model")
     args.gateway = shutil.which(args.gateway)
     if not args.gateway or subprocess.check_output([args.gateway, "--version"], env=base.clean_environment(), timeout=15, text=True).strip() != "0.8.2":
         p.error("install pinned opencode-a2a-lite 0.8.2")

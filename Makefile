@@ -7,7 +7,7 @@ GO_TEST_FLAGS ?= -race -count=1
 RUN_ARGS ?= --mcp
 DEMO_ARGS ?=
 AUTONOMOUS_ARGS ?= --seconds 90
-LIVE_ARGS ?= --model opencode/big-pickle --accept-free-model --headless --summary-only --prompt-timeout 10m --seconds 900
+LIVE_ARGS ?= --accept-free-model --headless --summary-only --prompt-timeout 10m --seconds 900
 REPOSITORY_ARGS ?=
 IMAGE ?= agentiplex:dev
 
@@ -27,8 +27,8 @@ help:
 		'  make demo-team        Run simulated engineering team' \
 		'  make demo-check       Noninteractive simulated demo' \
 		'  make autonomous-check Provider-free launcher check' \
-		'  make live-check       Real OpenCode hybrid review (free model; Linux)' \
-		'  make repository-team REPO=... MODEL=... OBJECTIVE=... (or WORKSPACE=...)  Shared repository team (requires --accept-full-access in REPOSITORY_ARGS)' \
+		'  make live-check       Real OpenCode hybrid review (MODEL optional, default: OpenCode default; Linux)' \
+		'  make repository-team REPO=... [MODEL=...] OBJECTIVE=... (or WORKSPACE=...)  Shared repository team (requires --accept-full-access in REPOSITORY_ARGS)' \
 		'  make repository-check Provider-free repository-team tests' \
 		'Deployment:' \
 		'  make docker           Build local image (IMAGE=agentiplex:dev)' \
@@ -80,16 +80,17 @@ autonomous-check:
 	python3 -B examples/autonomous-team/team.py --profile simulated --check --headless $(AUTONOMOUS_ARGS)
 
 live-check:
-	python3 -B examples/autonomous-team/team.py $(LIVE_ARGS)
+	python3 -B examples/autonomous-team/team.py $(if $(MODEL),--model $(MODEL)) $(LIVE_ARGS)
 
 repository-team:
 	@set -eu; \
 	if [ -n "$${REPO}" ] && [ -z "$${WORKSPACE}" ]; then \
-	  set -- --repo "$${REPO}" --model "$${MODEL}"; \
+	  set -- --repo "$${REPO}"; \
+	  if [ -n "$${MODEL}" ]; then set -- "$$@" --model "$${MODEL}"; fi; \
 	  if [ -n "$${REF}" ]; then set -- "$$@" --ref "$${REF}"; fi; \
 	elif [ -n "$${WORKSPACE}" ] && [ -z "$${REPO}" ] && [ -z "$${REF}" ] && [ -z "$${MODEL}" ]; then \
 	  set -- --workspace "$${WORKSPACE}"; \
-	else echo "Specify REPO+MODEL (optional REF) or WORKSPACE alone" >&2; exit 2; fi; \
+	else echo "Specify REPO (optional MODEL, REF) or WORKSPACE alone" >&2; exit 2; fi; \
 	python3 -B examples/repository-team/team.py "$$@" --objective "$${OBJECTIVE}" $(REPOSITORY_ARGS)
 
 repository-check:
