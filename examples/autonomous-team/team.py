@@ -232,7 +232,8 @@ class Team:
                 for key in self.args.pass_env:
                     env[key] = os.environ[key]
                 cmd = [self.args.gateway, "--workspace", str(project), "--port", "0",
-                       "--policy", "read-only", "--permissions", "reject", "--policy-file", str(policy)]
+                       "--policy", "read-only", "--permissions", "reject", "--policy-file", str(policy),
+                       "--prompt-timeout", self.args.prompt_timeout]
                 for key in self.args.pass_env:
                     cmd += ["--pass-env", key]
                 p = self.spawn(name, cmd, env, project)
@@ -287,6 +288,7 @@ class Team:
                 state = [self.cli("state", "get", "review", e["key"]) for e in self.cli("state", "list", "review")]
                 evidence = {"classification": "live-model", "requestedModel": self.args.model or "OpenCode default",
                             "credentialMode": "explicit-provider" if self.args.pass_env else "credential-free",
+                            "gatewayPromptTimeout": self.args.prompt_timeout,
                             "root": parent, "deliveries": details, "state": state,
                             "agents": self.team["agents"]}
                 (self.root / "evidence.json").write_text(json.dumps(evidence, indent=2) + "\n")
@@ -301,7 +303,7 @@ class Team:
                 else:
                     print("Quality advisory: exact worker receipt cited.", flush=True)
                 print("PASS: real PM, completed real worker and persisted review state; manual evidence review still required.", flush=True)
-                if not self.args.smoke:
+                if not self.args.summary_only and not self.args.smoke:
                     print(json.dumps(parent.get("result"), indent=2), flush=True)
                 return
             time.sleep(.5)
@@ -316,7 +318,14 @@ def terminal_diagnostic(delivery):
              "Gateway busy; retry after the active turn finishes"}
     reasons = [part.get("text") for part in parts if isinstance(part, dict)
                and isinstance(part.get("text"), str) and part["text"] in known]
+    metadata = result.get("metadata", {}) if isinstance(result, dict) else {}
+    if not isinstance(metadata, dict):
+        metadata = {}
+    stop = metadata.get("opencode.stopReason")
+    allowed_stops = {"end_turn", "max_tokens", "max_turn_requests", "refusal", "cancelled"}
     return {"state": delivery["state"], "gatewayReason": reasons[0] if reasons else "not exposed",
+            "stopReason": stop if isinstance(stop, str) and stop in allowed_stops else "not exposed",
+            "permissionDenied": metadata.get("opencode.permissionDenied") == "true",
             "hasResult": bool(result)}
 
 
@@ -347,16 +356,29 @@ def verify_evidence(e):
     }
 
 
+def valid_prompt_timeout(value):
+    if value == "unlimited":
+        return value
+    match = re.fullmatch(r"([0-9]{1,10})(ms|s|m|h)", value)
+    if match:
+        ms = int(match.group(1)) * {"ms": 1, "s": 1000, "m": 60000, "h": 3600000}[match.group(2)]
+        if 30 <= ms <= 2147483647:
+            return value
+    raise argparse.ArgumentTypeError("prompt timeout must be 30ms–2147483647ms, or unlimited")
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--team", default=str(HERE / "team.json"))
     p.add_argument("--profile", choices=["configured", "simulated", "real"], default="configured")
     p.add_argument("--gateway", default="opencode-a2a-lite")
+    p.add_argument("--prompt-timeout", type=valid_prompt_timeout, default="60m", help="gateway ACP turn deadline, independent of team wall-clock budget")
     p.add_argument("--model", help="optional OpenCode provider/model; omit for credential-free default")
     p.add_argument("--pass-env", action="append", default=[], help="explicit provider variable; repeat")
     p.add_argument("--port", type=int, default=19080)
     p.add_argument("--seconds", type=int, default=600, help="runtime deadline including startup (60–1800s)")
     p.add_argument("--headless", action="store_true")
+    p.add_argument("--summary-only", action="store_true", help="do not print raw model output; retain private evidence")
     p.add_argument("--smoke", action="store_true", help="minimal credential-free live architecture consultation")
     p.add_argument("--check", action="store_true", help="provision only; never submit a model task")
     p.add_argument("--objective", default="Review the fictional controller fixture for architectural, implementation and verification risks. Collaborate with the team and produce a consolidated evidence-based assessment.")
@@ -385,8 +407,8 @@ def main():
                                  re.fullmatch(r"opencode/[a-z0-9][a-z0-9.-]*-free", args.model)):
             p.error("credential-free mode requires OpenCode default, opencode/big-pickle or an opencode/*-free model")
         args.gateway = shutil.which(args.gateway)
-        if not args.gateway or subprocess.check_output([args.gateway, "--version"], env=clean_environment(), timeout=15, text=True).strip() != "0.8.1":
-            p.error("install pinned opencode-a2a-lite 0.8.1")
+        if not args.gateway or subprocess.check_output([args.gateway, "--version"], env=clean_environment(), timeout=15, text=True).strip() != "0.8.2":
+            p.error("install pinned opencode-a2a-lite 0.8.2")
         if subprocess.check_output(["opencode", "--version"], env=clean_environment(), timeout=15, text=True).strip() != "opencode v2.3.2":
             p.error("install tested OpenCode 2.3.2")
     if not args.check:
@@ -403,7 +425,8 @@ def main():
     print("Private run directory:", root, flush=True)
     if real:
         print("Requested model:", args.model or "OpenCode default",
-              "| credentials:", "explicit provider" if args.pass_env else "none", flush=True)
+              "| credentials:", "explicit provider" if args.pass_env else "none",
+              "| gateway prompt timeout:", args.prompt_timeout, "| team deadline seconds:", args.seconds, flush=True)
     build_env = {k: v for k, v in os.environ.items() if not k.endswith("_API_KEY") and not k.startswith("AGENTIPLEX_")}
     if not args.headless:
         subprocess.run(["go", "generate", "./internal/dashboard"], env=build_env, cwd=ROOT, check=True, timeout=300)
