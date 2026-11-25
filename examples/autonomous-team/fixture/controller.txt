@@ -1,0 +1,17 @@
+// Fictional Go-like review sample (not executable).
+type Controller struct {
+    running bool
+    lastHeartbeatMillis int64
+}
+func (c *Controller) Heartbeat(nowMillis int64) {
+    c.lastHeartbeatMillis = nowMillis
+    c.running = true
+}
+func (c *Controller) Tick(nowMillis int64) {
+    if nowMillis - c.lastHeartbeatMillis > 100 {
+        c.running = false
+    }
+}
+func (c *Controller) Reset() {
+    c.running = true
+}

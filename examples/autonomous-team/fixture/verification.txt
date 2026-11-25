@@ -1,0 +1,4 @@
+Existing proposed checks (not executed):
+- Heartbeat during normal operation leaves running true.
+- Tick at 101 ms after last heartbeat sets running false.
+No scheduler, physical motor, latency measurement, reset guard or concurrent-access evidence is supplied.

@@ -1,0 +1,55 @@
+{
+  "agents": [
+    {
+      "id": "pm",
+      "runtime": "opencode",
+      "skill": "planning",
+      "role": "pm"
+    },
+    {
+      "id": "architect",
+      "runtime": "opencode",
+      "skill": "architecture",
+      "role": "architect"
+    },
+    {
+      "id": "developer",
+      "runtime": "simulated",
+      "skill": "development",
+      "role": "developer"
+    },
+    {
+      "id": "tester-1",
+      "runtime": "simulated",
+      "skill": "testing",
+      "role": "tester"
+    },
+    {
+      "id": "tester-2",
+      "runtime": "simulated",
+      "skill": "testing",
+      "role": "tester"
+    },
+    {
+      "id": "quality",
+      "runtime": "simulated",
+      "skill": "quality",
+      "role": "quality"
+    }
+  ],
+  "groups": {
+    "engineering": [
+      "architect",
+      "developer",
+      "tester-1",
+      "tester-2",
+      "quality"
+    ]
+  },
+  "pools": {
+    "testers": [
+      "tester-1",
+      "tester-2"
+    ]
+  }
+}
