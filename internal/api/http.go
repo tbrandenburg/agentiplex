@@ -15,6 +15,7 @@ import (
 	adapter "github.com/tbrandenburg/agentiplex/internal/adapters/a2a"
 	cat "github.com/tbrandenburg/agentiplex/internal/catalog"
 	"github.com/tbrandenburg/agentiplex/internal/dashboard"
+	"github.com/tbrandenburg/agentiplex/internal/security"
 	mcpadapter "github.com/tbrandenburg/agentiplex/internal/adapters/mcp"
 )
 
@@ -35,16 +36,22 @@ func HandlerWithUI(b *agentiplex.Bus,u *dashboard.UI,publicURL string)http.Handl
 
 // HandlerWithProtocols enables optional protocol adapters explicitly.
 func HandlerWithProtocols(b *agentiplex.Bus,u *dashboard.UI,publicURL string,mcpEnabled bool)http.Handler{
-	mux:=http.NewServeMux()
-	if mcpEnabled{mux.Handle(mcpadapter.Path,mcpadapter.Handler(b))}
-	mux.Handle("/",handler(b,u,publicURL))
-	return mux
+	return HandlerSecure(b,u,publicURL,mcpEnabled,nil)
 }
 
-func handler(b *agentiplex.Bus, u *dashboard.UI, publicURL ...string) http.Handler {
+func HandlerSecure(b *agentiplex.Bus,u *dashboard.UI,publicURL string,mcpEnabled bool,auth *security.Auth)http.Handler{
+	mux:=http.NewServeMux()
+	if mcpEnabled{mux.Handle(mcpadapter.Path,mcpadapter.Handler(b,auth!=nil))}
+	mux.Handle("/",handlerMode(b,u,auth!=nil,publicURL))
+	return auth.Wrap(mux)
+}
+
+func handler(b *agentiplex.Bus, u *dashboard.UI, publicURL ...string) http.Handler {return handlerMode(b,u,false,publicURL...)}
+
+func handlerMode(b *agentiplex.Bus,u *dashboard.UI,secured bool,publicURL ...string)http.Handler{
 	mux:=http.NewServeMux()
 	if u!=nil{u.Mount(mux);mountDashboardData(mux,b)}
-	if len(publicURL)>0 && publicURL[0]!="" { adapter.Mount(mux,b,publicURL[0]) }
+	if len(publicURL)>0 && publicURL[0]!="" { adapter.Mount(mux,b,publicURL[0],secured) }
 	mux.HandleFunc("GET /healthz",func(w http.ResponseWriter,r *http.Request){write(w,200,map[string]bool{"alive":true})})
 	mux.HandleFunc("GET /readyz",func(w http.ResponseWriter,r *http.Request){
 		if !b.Ready(){write(w,503,map[string]bool{"ready":false});return}
