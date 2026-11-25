@@ -21,3 +21,7 @@ tasks:
   demo-check:
     cmds:
       - bash examples/engineering-team/demo.sh --check
+  autonomous-check:
+    cmds:
+      - python3 -B examples/autonomous-team/test_team.py
+      - python3 -B examples/autonomous-team/team.py --profile simulated --check --headless

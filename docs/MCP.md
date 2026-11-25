@@ -78,3 +78,5 @@ The caller lists tools and discovers agents; optional delegation is explicit and
 ## Authenticated network deployment (PR #7)
 
 When operator and collaborator credentials and native HTTPS are configured as described in [DEPLOYMENT.md](DEPLOYMENT.md), MCP may listen on non-loopback. Pass an Authorization: Bearer header using the collaborator credential, and configure trust for the server's certificate. The SDK's DNS rebinding checks and browser Origin rejection remain enabled. The legacy unauthenticated mode stays loopback-only. The independent example accepts --token-file and --ca-file. Shared role credentials are not individual identities or OAuth; do not assume arbitrary remote MCP hosts support static credentials.
+
+An MCP caller's local wait budget is independent of remote execution. Stop polling when the caller needs to return; retain the receipt and inspect later. Agentiplex keeps monitoring accepted A2A tasks even after transport lookup failures and never resubmits them to recover a result. An accepted receipt with pollFailures > 0 is not a confirmed terminal failure.

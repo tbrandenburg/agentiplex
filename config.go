@@ -20,7 +20,8 @@ type Config struct {
 	AllowedOrigins []string
 	Timeout time.Duration
 	RetryDelay time.Duration
-	MaxAttempts int
+	MaxAttempts int // pre-submission reachability attempts only
+	TaskPollInterval time.Duration // zero inherits RetryDelay; no accepted-task lifetime limit
 	HealthInterval time.Duration // zero disables periodic observation
 }
 
@@ -47,6 +48,7 @@ func (c Config) validate() error {
 	if c.Timeout < time.Second || c.Timeout > 5*time.Minute || c.RetryDelay < time.Second || c.RetryDelay > time.Minute || c.MaxAttempts < 1 || c.MaxAttempts > 100 {
 		return fmt.Errorf("invalid delivery limits")
 	}
+	if c.TaskPollInterval!=0&&(c.TaskPollInterval<time.Second||c.TaskPollInterval>time.Minute){return fmt.Errorf("invalid task poll interval")}
 	if c.HealthInterval!=0&&(c.HealthInterval<time.Second||c.HealthInterval>time.Hour){return fmt.Errorf("invalid health interval")}
 	return nil
 }
