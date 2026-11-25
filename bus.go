@@ -24,6 +24,7 @@ type Bus struct {
 	cancel context.CancelFunc
 	poolConsumers map[string]*nats.Subscription
 	poolCursor map[string]int
+	inflight map[string]bool // guarded by mu; includes status polls and probes
 	wg sync.WaitGroup
 	closeOnce sync.Once
 }
@@ -31,12 +32,13 @@ type Bus struct {
 // Open starts the worker. One active daemon per namespace is supported in v0.1.
 func Open(ctx context.Context,cfg Config)(*Bus,error){
 	if err:=cfg.validate();err!=nil{return nil,err}
+	if cfg.Workers==0{cfg.Workers=DefaultConfig().Workers}
 	a,err:=adapter.NewWithCredentials(cfg.AllowedOrigins,cfg.Timeout,cfg.OutboundTokenFiles,cfg.OutboundCAFile)
 	if err!=nil{return nil,err}
 	s,err:=store.Open(cfg.BrokerMode,cfg.BrokerURL,cfg.Storage,cfg.Namespace,cfg.Replicas,cfg.Timeout,store.AuthConfig{TokenFile:cfg.BrokerTokenFile,CredentialsFile:cfg.BrokerCredentialsFile,CAFile:cfg.BrokerCAFile})
 	if err!=nil{return nil,err}
 	ctx,cancel:=context.WithCancel(ctx)
-	b:=&Bus{cfg:cfg,store:s,adapter:a,ctx:ctx,cancel:cancel,poolConsumers:map[string]*nats.Subscription{},poolCursor:map[string]int{}}
+	b:=&Bus{cfg:cfg,store:s,adapter:a,ctx:ctx,cancel:cancel,poolConsumers:map[string]*nats.Subscription{},poolCursor:map[string]int{},inflight:map[string]bool{}}
 	if err=b.restorePools();err!=nil{b.Close();return nil,err}
 	if err=b.recoverPreparing(ctx);err!=nil{b.Close();return nil,err}
 	b.wg.Add(2)
