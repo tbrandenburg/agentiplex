@@ -20,7 +20,7 @@ concurrency:
 jobs:
   hybrid-free-model:
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
         with:
@@ -37,7 +37,7 @@ jobs:
           bun-version: '1.4.4'
       - name: Install pinned OpenCode and A2A gateway
         run: |
-          npm install --global @opencode/cli@2.3.2 @tbrandenburg/opencode-a2a-lite@0.8.1
+          npm install --global @opencode/cli@2.3.2 @tbrandenburg/opencode-a2a-lite@0.8.2
           opencode --version
           opencode-a2a-lite --version
           test "$(bun --version)" = "1.4.4"
@@ -51,4 +51,4 @@ jobs:
           env -i PATH="$PATH" HOME="$home" LANG=C.UTF-8 USER="$(id -un)" \
             GOMODCACHE="$(go env GOMODCACHE)" GOCACHE="$(go env GOCACHE)" \
             python3 -B examples/autonomous-team/team.py \
-              --model opencode/big-pickle --accept-free-model --smoke --headless --seconds 600
+              --model opencode/big-pickle --accept-free-model --headless --summary-only --prompt-timeout 10m --seconds 900

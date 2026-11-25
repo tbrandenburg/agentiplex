@@ -65,6 +65,14 @@ class TeamTests(unittest.TestCase):
         self.assertEqual("ACP prompt timed out", team.terminal_diagnostic(d)["gatewayReason"])
         self.assertNotIn("private", json.dumps(team.terminal_diagnostic(d)))
 
+    def test_prompt_timeout_validation(self):
+        import argparse
+        for value in ("30ms", "120s", "10m", "60m", "2h", "unlimited"):
+            self.assertEqual(value, team.valid_prompt_timeout(value))
+        for value in ("0s", "29ms", "-1m", "1.5h", "10", "9999999999h", "unlimited "):
+            with self.assertRaises(argparse.ArgumentTypeError):
+                team.valid_prompt_timeout(value)
+
     def test_default_model_omits_model_config(self):
         a = team.load_team(team.HERE / "team.json", "configured")["agents"][0]
         with tempfile.TemporaryDirectory() as directory:
