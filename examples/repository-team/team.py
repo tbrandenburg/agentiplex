@@ -425,8 +425,8 @@ def main():
     ):
         p.error("credential-free runs require the OpenCode default or an explicitly selected OpenCode free model")
     args.gateway = shutil.which(args.gateway)
-    if not args.gateway or subprocess.check_output([args.gateway, "--version"], env=base.clean_environment(), timeout=15, text=True).strip() != "0.8.2":
-        p.error("install pinned opencode-a2a-lite 0.8.2")
+    if not args.gateway or subprocess.check_output([args.gateway, "--version"], env=base.clean_environment(), timeout=15, text=True).strip() != "0.8.3":
+        p.error("install pinned opencode-a2a-lite 0.8.3")
     if not base.opencode_supported(subprocess.check_output(["opencode", "--version"], env=base.clean_environment(), timeout=15, text=True).strip()):
         p.error("install stable OpenCode 2.3.2 or newer")
     if args.port:
