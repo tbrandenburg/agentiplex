@@ -25,3 +25,10 @@ observability:
 protocols:
   mcp:
     enabled: false # opt-in; loopback only, no authentication yet
+
+# Secure deployment: all credentials are mounted files, never values in YAML.
+# server.tls_cert_file and server.tls_key_file plus HTTPS public_url required.
+security:
+  operator_token_file: ""
+  collaborator_token_file: ""
+  viewer_token_file: "" # required when authenticated dashboard enabled

@@ -108,8 +108,13 @@ func Card(publicURL string) *proto.AgentCard {
 	}
 }
 
-func Mount(mux *http.ServeMux, service Ingress, publicURL string) {
-	mux.Handle("GET "+AgentCardPath, a2asrv.NewStaticAgentCardHandler(Card(publicURL)))
+func Mount(mux *http.ServeMux, service Ingress, publicURL string, secured ...bool) {
+	card:=Card(publicURL)
+	if len(secured)>0&&secured[0]{
+		card.SecuritySchemes=proto.NamedSecuritySchemes{"bearer":proto.HTTPAuthSecurityScheme{Scheme:"Bearer",Description:"Operator-provisioned collaborator or operator credential"}}
+		card.SecurityRequirements=proto.SecurityRequirementsOptions{{"bearer":{}}}
+	}
+	mux.Handle("GET "+AgentCardPath, a2asrv.NewStaticAgentCardHandler(card))
 	handler := a2asrv.NewJSONRPCHandler(&requestHandler{Ingress: service})
 	mux.Handle(IngressPath, http.MaxBytesHandler(handler, 128<<10))
 }

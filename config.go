@@ -9,6 +9,11 @@ import (
 type Config struct {
 	BrokerMode string
 	BrokerURL string
+	BrokerTokenFile string
+	BrokerCredentialsFile string
+	BrokerCAFile string
+	OutboundTokenFiles map[string]string
+	OutboundCAFile string
 	Storage string
 	Namespace string
 	Replicas int

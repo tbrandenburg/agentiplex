@@ -2,6 +2,8 @@ package daemon
 
 import (
 	"context"
+	"crypto/tls"
+	"github.com/tbrandenburg/agentiplex/internal/security"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -27,6 +29,7 @@ func Command() *cobra.Command {
 	d:=agentiplex.DefaultConfig()
 	defaults:=map[string]any{
 		"server.listen":"127.0.0.1:8080","server.public_url":"","server.trusted_network":false,"protocols.mcp.enabled":false,"observability.dashboard":true,"observability.dashboard_schema":"","observability.dashboard_theme":"cxd","observability.dashboard_refresh_interval":2*time.Second,
+		"security.operator_token_file":"","security.collaborator_token_file":"","security.viewer_token_file":"","server.tls_cert_file":"","server.tls_key_file":"","broker.token_file":"","broker.credentials_file":"","broker.ca_file":"","delivery.token_files":map[string]string{},"delivery.ca_file":"",
 		"broker.mode":d.BrokerMode,"broker.url":"","broker.storage":d.Storage,"broker.replicas":d.Replicas,
 		"registry.namespace":d.Namespace,"registry.health_interval":d.HealthInterval,"delivery.allowed_origins":[]string{},"delivery.timeout":d.Timeout,
 		"delivery.retry_delay":d.RetryDelay,"delivery.max_attempts":d.MaxAttempts,
@@ -35,8 +38,9 @@ func Command() *cobra.Command {
 	var config string
 	cmd:=&cobra.Command{Use:"agentiplexd",Short:"Agentiplex collaboration daemon",SilenceUsage:true,Args:cobra.NoArgs,RunE:func(cmd *cobra.Command,args []string)error{
 		if config!=""{v.SetConfigFile(config);if err:=v.ReadInConfig();err!=nil{return err}}
-		cfg:=agentiplex.Config{BrokerMode:v.GetString("broker.mode"),BrokerURL:v.GetString("broker.url"),Storage:v.GetString("broker.storage"),Replicas:v.GetInt("broker.replicas"),Namespace:v.GetString("registry.namespace"),AllowedOrigins:v.GetStringSlice("delivery.allowed_origins"),Timeout:v.GetDuration("delivery.timeout"),RetryDelay:v.GetDuration("delivery.retry_delay"),MaxAttempts:v.GetInt("delivery.max_attempts"),HealthInterval:v.GetDuration("registry.health_interval")}
-		return run(cmd.Context(),cfg,v.GetString("server.listen"),v.GetString("server.public_url"),v.GetBool("server.trusted_network"),v.GetBool("observability.dashboard"),v.GetBool("protocols.mcp.enabled"),dashboard.Config{Schema:v.GetString("observability.dashboard_schema"),Theme:v.GetString("observability.dashboard_theme"),Refresh:v.GetDuration("observability.dashboard_refresh_interval")})
+		cfg:=agentiplex.Config{BrokerMode:v.GetString("broker.mode"),BrokerURL:v.GetString("broker.url"),BrokerTokenFile:v.GetString("broker.token_file"),BrokerCredentialsFile:v.GetString("broker.credentials_file"),BrokerCAFile:v.GetString("broker.ca_file"),OutboundTokenFiles:v.GetStringMapString("delivery.token_files"),OutboundCAFile:v.GetString("delivery.ca_file"),Storage:v.GetString("broker.storage"),Replicas:v.GetInt("broker.replicas"),Namespace:v.GetString("registry.namespace"),AllowedOrigins:v.GetStringSlice("delivery.allowed_origins"),Timeout:v.GetDuration("delivery.timeout"),RetryDelay:v.GetDuration("delivery.retry_delay"),MaxAttempts:v.GetInt("delivery.max_attempts"),HealthInterval:v.GetDuration("registry.health_interval")}
+		auth,err:=security.New(security.Config{OperatorFile:v.GetString("security.operator_token_file"),CollaboratorFile:v.GetString("security.collaborator_token_file"),ViewerFile:v.GetString("security.viewer_token_file")});if err!=nil{return err}
+		return run(cmd.Context(),cfg,v.GetString("server.listen"),v.GetString("server.public_url"),v.GetBool("server.trusted_network"),v.GetBool("observability.dashboard"),v.GetBool("protocols.mcp.enabled"),dashboard.Config{Schema:v.GetString("observability.dashboard_schema"),Theme:v.GetString("observability.dashboard_theme"),Refresh:v.GetDuration("observability.dashboard_refresh_interval")},auth,v.GetString("server.tls_cert_file"),v.GetString("server.tls_key_file"))
 	}}
 	f:=cmd.Flags()
 	f.StringVar(&config,"config","","configuration YAML file")
@@ -59,20 +63,26 @@ func Command() *cobra.Command {
 	return cmd
 }
 
-func run(ctx context.Context,cfg agentiplex.Config,listen,publicURL string,trusted,dashboardEnabled,mcpEnabled bool,dashboardConfig dashboard.Config)error{
+func run(ctx context.Context,cfg agentiplex.Config,listen,publicURL string,trusted,dashboardEnabled,mcpEnabled bool,dashboardConfig dashboard.Config,auth *security.Auth,certFile,keyFile string)error{
 	var ui *dashboard.UI
 	if dashboardEnabled{var err error;ui,err=dashboard.New(dashboardConfig);if err!=nil{return err}}
 	host,_,err:=net.SplitHostPort(listen)
 	if err!=nil{return err}
 	ip,parseErr:=netip.ParseAddr(host)
-	if mcpEnabled&&(parseErr!=nil||!ip.Unmap().IsLoopback()){return errors.New("MCP requires a literal loopback listener; remote access is not supported") }
-	if !trusted&&(parseErr!=nil||!ip.Unmap().IsLoopback()){return errors.New("non-loopback bind requires --trusted-network; no authentication in foundation")}
+	if (certFile=="")!=(keyFile==""){return errors.New("both TLS certificate and key are required")}
+	if auth!=nil&&(certFile==""||!strings.HasPrefix(publicURL,"https://")){return errors.New("authenticated service requires TLS certificate, key and explicit HTTPS public URL")}
+	if auth!=nil&&dashboardEnabled&&!auth.HasViewer(){return errors.New("authenticated dashboard requires a viewer credential or --dashboard=false")}
+	if mcpEnabled&&auth==nil&&(parseErr!=nil||!ip.Unmap().IsLoopback()){return errors.New("MCP requires a literal loopback listener; remote access is not supported") }
+	if auth==nil&&!trusted&&(parseErr!=nil||!ip.Unmap().IsLoopback()){return errors.New("non-loopback bind requires --trusted-network; no authentication in foundation")}
 	ln,err:=net.Listen("tcp",listen);if err!=nil{return err};defer ln.Close()
 	publicURL,err=adapter.PublicURL(publicURL,ln.Addr().String());if err!=nil{return err}
+	if (certFile!="")!=strings.HasPrefix(publicURL,"https://"){return errors.New("public URL scheme must match listener TLS configuration")}
+	var tlsConfig *tls.Config
+	if certFile!=""{pair,e:=tls.LoadX509KeyPair(certFile,keyFile);if e!=nil{return errors.New("cannot load TLS certificate/key")};tlsConfig=&tls.Config{MinVersion:tls.VersionTLS12,Certificates:[]tls.Certificate{pair}}}
 	b,err:=agentiplex.Open(ctx,cfg);if err!=nil{return err};defer b.Close()
-	srv:=&http.Server{Handler:api.HandlerWithProtocols(b,ui,publicURL,mcpEnabled),ReadHeaderTimeout:5*time.Second,ReadTimeout:15*time.Second,WriteTimeout:cfg.Timeout+15*time.Second,IdleTimeout:30*time.Second}
+	srv:=&http.Server{Handler:api.HandlerSecure(b,ui,publicURL,mcpEnabled,auth),TLSConfig:tlsConfig,ReadHeaderTimeout:5*time.Second,ReadTimeout:15*time.Second,WriteTimeout:cfg.Timeout+15*time.Second,IdleTimeout:30*time.Second}
 	result:=make(chan error,1)
-	go func(){result<-srv.Serve(ln)}()
+	go func(){if tlsConfig!=nil{result<-srv.ServeTLS(ln,"","")}else{result<-srv.Serve(ln)}}()
 	slog.Info("agentiplexd ready","listen",ln.Addr().String(),"broker_mode",cfg.BrokerMode,"namespace",cfg.Namespace)
 	select{
 	case err:=<-result:

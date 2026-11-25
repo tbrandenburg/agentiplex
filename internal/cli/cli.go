@@ -16,15 +16,19 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+	"github.com/tbrandenburg/agentiplex/internal/security"
 )
 
-type remote struct{base string;http *http.Client}
+type remote struct{base string;http *http.Client;token string}
+
+func(c *remote) authorize(req *http.Request){if c.token!=""{req.Header.Set("Authorization","Bearer "+c.token)}}
 
 func(c *remote) call(ctx context.Context,method,path string,in any)([]byte,error){
 	var body io.Reader
 	if in!=nil{data,err:=json.Marshal(in);if err!=nil{return nil,err};body=bytes.NewReader(data)}
 	req,err:=http.NewRequestWithContext(ctx,method,strings.TrimRight(c.base,"/")+path,body)
 	if err!=nil{return nil,err}
+	c.authorize(req)
 	if in!=nil{req.Header.Set("Content-Type","application/json")}
 	resp,err:=c.http.Do(req);if err!=nil{return nil,err};defer resp.Body.Close()
 	data,err:=io.ReadAll(http.MaxBytesReader(nil,resp.Body,32<<20));if err!=nil{return nil,err}
@@ -38,6 +42,16 @@ func Command()*cobra.Command{
 	r:=&remote{base:base,http:&http.Client{Timeout:150*time.Second}}
 	root:=&cobra.Command{Use:"agentiplex",Short:"Remote Agentiplex administration",SilenceUsage:true}
 	root.PersistentFlags().StringVar(&r.base,"server",base,"daemon HTTP URL")
+	var tokenFile,caFile string
+	root.PersistentFlags().StringVar(&tokenFile,"token-file",os.Getenv("AGENTIPLEX_TOKEN_FILE"),"bearer credential file")
+	root.PersistentFlags().StringVar(&caFile,"ca-file",os.Getenv("AGENTIPLEX_CA_FILE"),"additional trusted CA certificate")
+	root.PersistentPreRunE=func(*cobra.Command,[]string)error{
+		u,err:=url.Parse(r.base);if err!=nil||u.Hostname()==""||u.User!=nil||u.RawQuery!=""||u.Fragment!=""||(u.Scheme!="http"&&u.Scheme!="https"){return fmt.Errorf("invalid daemon origin")}
+		if tokenFile!=""{if u.Scheme!="https"{return fmt.Errorf("credential requires HTTPS")};r.token,err=security.ReadToken(tokenFile);if err!=nil{return err}}
+		tlsConfig,err:=security.TLSConfig(caFile);if err!=nil{return err}
+		transport:=http.DefaultTransport.(*http.Transport).Clone();transport.TLSClientConfig=tlsConfig
+		r.http.Transport=transport;r.http.CheckRedirect=func(*http.Request,[]*http.Request)error{return http.ErrUseLastResponse};return nil
+	}
 	print:=func(cmd *cobra.Command,method,path string,in any)error{
 		data,err:=r.call(cmd.Context(),method,path,in);if err!=nil{return err}
 		_,err=fmt.Fprintln(cmd.OutOrStdout(),strings.TrimSpace(string(data)));return err
@@ -117,12 +131,13 @@ func Command()*cobra.Command{
 
 // follow reconnects the SSE stream from the last successfully printed event.
 func (c *remote) follow(ctx context.Context,out io.Writer,after uint64,kind string)error{
-	h:=&http.Client{Transport:c.http.Transport}
+	h:=&http.Client{Transport:c.http.Transport,CheckRedirect:c.http.CheckRedirect}
 	for{
 		if ctx.Err()!=nil{return nil}
 		q:=url.Values{"after":{strconv.FormatUint(after,10)},"kind":{kind}}
 		req,err:=http.NewRequestWithContext(ctx,"GET",strings.TrimRight(c.base,"/")+"/api/v1/events/stream?"+q.Encode(),nil)
 		if err!=nil{return err}
+		c.authorize(req)
 		req.Header.Set("Accept","text/event-stream")
 		resp,err:=h.Do(req)
 		if err!=nil{if ctx.Err()!=nil{return nil};return err}
