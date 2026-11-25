@@ -49,10 +49,10 @@ class RepositoryTests(unittest.TestCase):
         agents = team.base.load_team(team.base.HERE / "team.json", "real")["agents"]
         self.assertEqual(6, len(agents))
         self.assertTrue(all(a["runtime"] == "opencode" for a in agents))
-        args = SimpleNamespace(gateway="opencode-a2a-lite", prompt_timeout="10m", pass_env=["EXAMPLE_API_KEY"])
+        args = SimpleNamespace(gateway="opencode-a2a-lite", prompt_timeout="10m", pass_env=["EXAMPLE_API_KEY"], accept_full_access=True)
         for a in agents:
             profile, policy = team.policy_for(a)
-            self.assertEqual("edit" if a["id"] == "developer" else "read-only", profile)
+            self.assertEqual("full-access" if a["role"] in {"developer", "tester"} else "read-only", profile)
             self.assertEqual(profile, policy["base"])
             resources = {p["resource"] for p in policy["policies"]}
             self.assertIn("agentiplex_get_state:*", resources)
@@ -62,13 +62,24 @@ class RepositoryTests(unittest.TestCase):
             cmd = team.gateway_command(args, self.workspace, self.root / "policy.json", profile)
             self.assertEqual(str(self.workspace), cmd[cmd.index("--workspace") + 1])
             self.assertEqual("reject", cmd[cmd.index("--permissions") + 1])
-            self.assertNotIn("full-access", cmd)
-            self.assertNotIn("--dangerously-skip-permissions", cmd)
+            self.assertEqual(profile == "full-access", "--dangerously-skip-permissions" in cmd)
+            self.assertEqual(profile, cmd[cmd.index("--policy") + 1])
             self.assertEqual(["--pass-env", "EXAMPLE_API_KEY"], cmd[-2:])
+
+    def test_full_access_requires_acknowledgement(self):
+        args = SimpleNamespace(gateway="gateway", prompt_timeout="10m", pass_env=[], accept_full_access=False)
+        with self.assertRaisesRegex(ValueError, "--accept-full-access"):
+            team.gateway_command(args, self.workspace, self.root / "policy.json", "full-access")
+        # Entry point also fails before accessing a checkout or starting anything.
+        result = subprocess.run([sys.executable, "-B", str(Path(team.__file__)), "--workspace",
+                                 "/nonexistent", "--check"], capture_output=True, text=True)
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn("--accept-full-access", result.stderr)
+        self.assertIn("NO OS sandbox", result.stderr)
 
     def test_start_registers_only_endpoints_with_same_workspace(self):
         args = SimpleNamespace(port=19080, headless=True, gateway="gateway", prompt_timeout="10m",
-                               pass_env=[], workspace=self.workspace)
+                               pass_env=[], workspace=self.workspace, accept_full_access=True)
         roster = team.base.load_team(team.base.HERE / "team.json", "real")
         runner = team.RepositoryTeam(args, roster, self.root, float("inf"))
         commands, calls = [], []
@@ -106,7 +117,7 @@ class RepositoryTests(unittest.TestCase):
         return {"root": root, "deliveries": [root, *[
             {"id": role, "target": role, "state": "completed", "result": {"text": "finding"}}
             for role in ("architect", "developer", "tester-1", "quality")
-        ]], "state": [{"key": k, "revision": 1, "value": "note"} for k in ("pm", "developer")]}
+        ]], "state": [{"key": k, "revision": 1, "value": "note"} for k in ("pm", "developer", "tester-1")]}
 
     def test_acceptance_requires_real_receipts_and_state(self):
         e = self.evidence()
@@ -122,7 +133,13 @@ class RepositoryTests(unittest.TestCase):
         e["state"].pop()
         with self.assertRaisesRegex(RuntimeError, "shared-state"):
             team.verify_collaboration(e)
+        e = self.evidence()
+        e["state"] = [x for x in e["state"] if x["key"] != "tester-1"]
+        with self.assertRaisesRegex(RuntimeError, "tester shared-state"):
+            team.verify_collaboration(e)
         self.assertIn("NOT RUN", team.pm_prompt("Improve README"))
+        self.assertIn("exit codes", team.pm_prompt("Improve README"))
+        self.assertIn("retest", team.pm_prompt("Improve README"))
         with self.assertRaises(ValueError):
             team.pm_prompt("x" * 4096)
 

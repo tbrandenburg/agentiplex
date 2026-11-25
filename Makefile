@@ -28,7 +28,7 @@ help:
 		'  make demo-check       Noninteractive simulated demo' \
 		'  make autonomous-check Provider-free launcher check' \
 		'  make live-check       Real OpenCode hybrid review (free model; Linux)' \
-		'  make repository-team WORKSPACE=... OBJECTIVE=...  Shared repository team (opt-in)' \
+		'  make repository-team WORKSPACE=... OBJECTIVE=...  Shared repository team (requires --accept-full-access in REPOSITORY_ARGS)' \
 		'  make repository-check Provider-free repository-team tests' \
 		'Deployment:' \
 		'  make docker           Build local image (IMAGE=agentiplex:dev)' \

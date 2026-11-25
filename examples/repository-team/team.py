@@ -25,11 +25,19 @@ spec.loader.exec_module(base)
 ROLES = {
     "pm": "Coordinate the implementation. Delegate concrete tasks to the advertised roles.",
     "architect": "Analyze the current repository and recommend a bounded implementation.",
-    "developer": "Implement the agreed change in the shared workspace; only this role may edit.",
-    "tester": "Read the actual changes and tests, assess verification gaps, and recommend test commands. Do not claim to have run tests.",
+    "developer": "Implement the agreed change in the shared workspace, run relevant builds/tests and fix failures.",
+    "tester": "Independently run repository build/test/lint commands, report commands, actual outcomes and exit codes; avoid editing project source.",
     "quality": "Independently review the actual changes and identify risks or blockers.",
 }
 NAMESPACE = "repository"
+FULL_ACCESS_ROLES = {"developer", "tester"}
+FULL_ACCESS_WARNING = (
+    "WARNING: Developer and both Testers have FULL ACCESS: shell commands run without "
+    "approval as your OS user, can read or change files outside the workspace, use the "
+    "network, access forwarded API keys, modify Git and bypass MCP role grants. "
+    "There is NO OS sandbox or rollback. Any local client reaching their ports can invoke them. "
+    "Use only a disposable, isolated VM/container/user with minimal credentials and a trusted checkout."
+)
 
 
 def git(workspace, *args):
@@ -77,7 +85,7 @@ def inspect_workspace(path, endpoint):
 
 
 def policy_for(agent):
-    profile = "edit" if agent["role"] == "developer" else "read-only"
+    profile = "full-access" if agent["role"] in FULL_ACCESS_ROLES else "read-only"
     tools = base.READ_TOOLS + (base.DELEGATE_TOOLS if agent["id"] == "pm" else ())
     return profile, {"version": 1, "base": profile, "policies": [
         {"action": "mcp.use", "resource": "agentiplex", "effect": "allow"},
@@ -89,6 +97,10 @@ def gateway_command(args, workspace, policy_path, profile):
     command = [args.gateway, "--workspace", str(workspace), "--port", "0",
                "--policy", profile, "--permissions", "reject",
                "--policy-file", str(policy_path), "--prompt-timeout", args.prompt_timeout]
+    if profile == "full-access":
+        if not args.accept_full_access:
+            raise ValueError("full access requires --accept-full-access")
+        command.append("--dangerously-skip-permissions")
     for key in args.pass_env:
         command += ["--pass-env", key]
     return command
@@ -98,17 +110,22 @@ def pm_prompt(objective):
     roles = "\n".join(role + ": " + instruction for role, instruction in ROLES.items())
     prompt = (
         "You are the PM of a real repository team. All six registered agents have independent "
-        "sessions in the SAME operator-selected Git workspace. Only developer can edit; nobody "
-        "can execute shell commands. Discover actual agents, then consult architect, delegate "
-        "implementation to developer, wait for completion, dispatch a read-only verification "
-        "review to one tester, and ask quality for independent review. Choose the detailed tasks "
-        "yourself; tell each recipient its role and the objective, and include relevant evidence. "
+        "sessions in the SAME operator-selected Git workspace. Developer and testers have full shell "
+        "and edit capability; only developer should intentionally edit source. Discover actual agents, "
+        "consult architect, delegate implementation and local tests to developer, wait for completion, "
+        "dispatch independent executable verification to one tester, and ask quality for review. "
+        "If verification fails, delegate a fix and retest before quality review within the budget. "
+        "Do not run concurrent edits or tests against changing code. Choose detailed tasks yourself; "
+        "tell each recipient its role and objective, with relevant evidence. "
         "Use distinct idempotency keys, poll actual receipts with bounded backoff, and do not "
         "resubmit ambiguous work. No more than six delegations; no delegation back to PM. "
-        "Use shared state namespace repository; ask developer to save a finding under key developer "
-        "and save your own summary under key pm. Read existing revisions before updating. "
-        "Do not invent files, changes, test executions or receipts. Report test recommendations "
-        "as NOT RUN, leave commits/pushes/merges and actual test execution to the operator. "
+        "Use shared state namespace repository; ask developer to save a finding under key developer, "
+        "ask tester to save its verification report under its actual agent ID (tester-1 or tester-2), "
+        "and save your summary under key pm. Read existing revisions before updating. "
+        "Require tester to report actual commands, exit codes, relevant output, and any failure or NOT RUN. "
+        "Do not invent files, changes, tests or receipts. Instruct workers not to commit, stage, push, "
+        "merge, change branches, access credentials or files outside the project. These are role instructions, "
+        "not enforced restrictions on full-access agents. Leave Git publication to the operator. "
         "Return only after all delegated work is completed or report a blocker honestly.\n"
         + roles + "\nOperator objective:\n" + objective
     )
@@ -134,11 +151,15 @@ def verify_collaboration(evidence):
     keys = {s["key"] for s in evidence["state"] if s.get("revision", 0) > 0 and s.get("value")}
     if not {"pm", "developer"} <= keys:
         raise RuntimeError("missing PM/developer shared-state evidence")
+    if not ({"tester-1", "tester-2"} & workers.keys() & keys):
+        raise RuntimeError("missing completed tester shared-state verification report")
     return workers
 
 
 class RepositoryTeam(base.Team):
     def start(self):
+        if not self.args.accept_full_access:
+            raise ValueError("full access requires --accept-full-access")
         self.spawn("daemon", [str(self.root / "agentiplexd"), "--listen", "127.0.0.1:" + str(self.args.port),
                    "--public-url", self.endpoint, "--broker-mode", "embedded", "--namespace", "repository-demo",
                    "--storage", str(self.root / "jetstream"), "--mcp",
@@ -203,7 +224,7 @@ class RepositoryTeam(base.Team):
                 state = [self.cli("state", "get", NAMESPACE, s["key"])
                          for s in self.cli("state", "list", NAMESPACE)]
                 evidence = {"root": parent, "deliveries": list(details.values()), "state": state,
-                            "agents": self.team["agents"], "testExecution": "not run by agents"}
+                            "agents": self.team["agents"], "testExecution": "agent-reported; not independently attested"}
                 (self.root / "evidence.json").write_text(json.dumps(evidence, indent=2) + "\n")
                 # Drain outstanding work within the existing deadline, not just until PM returns.
                 if parent["state"] != "completed" or all(d["state"] in base.TERMINAL for d in details.values()):
@@ -236,11 +257,16 @@ def main():
     p.add_argument("--prompt-timeout", type=base.valid_prompt_timeout, default="10m")
     p.add_argument("--gateway", default="opencode-a2a-lite")
     p.add_argument("--pass-env", action="append", default=[])
+    p.add_argument("--accept-full-access", action="store_true",
+                   help="acknowledge unrestricted shell and host-user access for Developer and Testers")
     p.add_argument("--accept-provider-data", action="store_true", help="approve sending workspace data to the selected provider")
     p.add_argument("--public-workspace", action="store_true", help="attest that credential-free input is safe to disclose")
     p.add_argument("--check", action="store_true", help="provision only, never submit a model task")
     p.add_argument("--headless", action="store_true")
     args = p.parse_args()
+    if not args.accept_full_access:
+        p.error(FULL_ACCESS_WARNING + " Explicit --accept-full-access is required, including for --check.")
+    print(FULL_ACCESS_WARNING, file=sys.stderr, flush=True)
     if sys.platform != "linux" or not 1024 <= args.port <= 65535 or not 60 <= args.seconds <= 1800:
         p.error("requires Linux, an unprivileged port and a 60–1800 second deadline")
     if args.pass_env and (len(set(args.pass_env)) != len(args.pass_env) or any(
@@ -291,7 +317,7 @@ def main():
     elif not metadata["statusChanged"]:
         raise RuntimeError("collaboration completed but no Git-visible changes were produced")
     else:
-        print("PASS: completed collaboration and Git-visible changes; review diff and run actual tests before claiming correctness.")
+        print("PASS: completed collaboration and Git-visible changes; agent-reported test results require human review or independent verification.")
 
 
 if __name__ == "__main__":
