@@ -32,8 +32,8 @@ help:
 		'  make compose-up       Start TLS demo; generate missing demo secrets' \
 		'  make compose-down     Stop demo; retain data and credentials' \
 		'Release:' \
-		'  make release-plan bump=MINOR  Preview version' \
-		'  make release bump=MINOR       Push release tag (PATCH/MINOR/MAJOR)'
+		'  make release-plan bump=MINOR  Preview version and Helm metadata' \
+		'  make release bump=MINOR       Commit Helm metadata and atomically push main/tag (PATCH/MINOR/MAJOR)'
 
 fmt:
 	gofmt -w $$(git ls-files '*.go')

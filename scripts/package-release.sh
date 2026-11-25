@@ -5,6 +5,10 @@ cd "$(dirname "$0")/.."
 tag=${1:?release tag (vMAJOR.MINOR.PATCH[-prerelease]) required}
 [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.-]+)?$ ]] || { echo "Invalid release tag" >&2; exit 1; }
 version=${tag#v}
+# Prereleases retain the existing packaging override; stable tags must match source metadata.
+if [[ "$version" != *-* ]]; then
+  python3 scripts/chart-version.py check "$version"
+fi
 mkdir -p dist
 go generate ./internal/dashboard
 for platform in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64; do
