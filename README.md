@@ -34,3 +34,7 @@ This development version is trusted-local only: it has no authentication. Do not
 ## MCP collaboration tools
 
 Enable the optional local MCP endpoint with `agentiplexd --mcp` and connect an MCP host to `http://127.0.0.1:8080/mcp`. See [docs/MCP.md](docs/MCP.md) for tool contracts, OpenCode configuration and the provider-free client demo.
+
+## Secure deployment
+
+See [deployment instructions](docs/DEPLOYMENT.md) for authenticated native TLS, the six-agent Compose stack, external NATS and Helm. The legacy local demonstration remains available. No public unauthenticated deployment is supported.

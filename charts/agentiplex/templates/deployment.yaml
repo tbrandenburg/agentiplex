@@ -1,0 +1,92 @@
+{{- if not (hasPrefix "https://" .Values.publicURL) }}{{ fail "publicURL must use https://" }}{{ end }}
+{{- if not (has .Values.broker.credentialMode (list "token" "credentials")) }}{{ fail "broker.credentialMode must be token or credentials" }}{{ end }}
+{{- if and .Values.broker.tls (not (hasPrefix "tls://" .Values.broker.url)) }}{{ fail "broker.tls requires tls:// URL" }}{{ end }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}
+  labels:
+    app.kubernetes.io/name: agentiplex
+    app.kubernetes.io/instance: {{ .Release.Name }}
+spec:
+  replicas: 1
+  strategy: {type: Recreate}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: agentiplex
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: agentiplex
+        app.kubernetes.io/instance: {{ .Release.Name }}
+    spec:
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 45
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: agentiplex
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default (printf "v%s" .Chart.AppVersion) }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args:
+            - --listen=0.0.0.0:8080
+            - --public-url={{ .Values.publicURL }}
+            - --broker-mode=external
+            - --broker-url={{ .Values.broker.url }}
+            - --namespace={{ .Values.namespace }}
+            - --mcp={{ .Values.mcp }}
+            - --dashboard={{ .Values.dashboard }}
+          env:
+            - {name: AGENTIPLEX_SERVER_TLS_CERT_FILE, value: /tls/tls.crt}
+            - {name: AGENTIPLEX_SERVER_TLS_KEY_FILE, value: /tls/tls.key}
+            - {name: AGENTIPLEX_SECURITY_OPERATOR_TOKEN_FILE, value: /auth/operator}
+            - {name: AGENTIPLEX_SECURITY_COLLABORATOR_TOKEN_FILE, value: /auth/collaborator}
+            {{- if .Values.dashboard }}
+            - {name: AGENTIPLEX_SECURITY_VIEWER_TOKEN_FILE, value: /auth/viewer}
+            {{- end }}
+            {{- if eq .Values.broker.credentialMode "token" }}
+            - {name: AGENTIPLEX_BROKER_TOKEN_FILE, value: /broker/token}
+            {{- else }}
+            - {name: AGENTIPLEX_BROKER_CREDENTIALS_FILE, value: /broker/credentials}
+            {{- end }}
+            {{- if .Values.broker.tls }}
+            - {name: AGENTIPLEX_BROKER_CA_FILE, value: /broker/ca.crt}
+            {{- end }}
+            - name: AGENTIPLEX_BROKER_REPLICAS
+              value: {{ .Values.broker.replicas | quote }}
+            - name: AGENTIPLEX_DELIVERY_ALLOWED_ORIGINS
+              value: {{ join " " .Values.allowedOrigins | quote }}
+          ports:
+            - {name: https, containerPort: 8080}
+          readinessProbe:
+            httpGet: {path: /readyz, port: https, scheme: HTTPS}
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: {path: /healthz, port: https, scheme: HTTPS}
+            periodSeconds: 10
+          startupProbe:
+            httpGet: {path: /readyz, port: https, scheme: HTTPS}
+            failureThreshold: 30
+            periodSeconds: 2
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: ["ALL"]}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            - {name: tls, mountPath: /tls, readOnly: true}
+            - {name: auth, mountPath: /auth, readOnly: true}
+            - {name: broker, mountPath: /broker, readOnly: true}
+      volumes:
+        - name: tls
+          secret: {secretName: {{ required "tlsSecret required" .Values.tlsSecret }}, defaultMode: 0440}
+        - name: auth
+          secret: {secretName: {{ required "authSecret required" .Values.authSecret }}, defaultMode: 0440}
+        - name: broker
+          secret: {secretName: {{ required "broker.secret required" .Values.broker.secret }}, defaultMode: 0440}

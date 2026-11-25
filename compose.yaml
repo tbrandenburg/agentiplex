@@ -1,0 +1,98 @@
+name: agentiplex-demo
+x-simulator: &simulator
+  image: agentiplex-simulator:demo
+  build:
+    context: .
+    target: simulator
+  restart: "no"
+  security_opt: [no-new-privileges:true]
+  cap_drop: [ALL]
+  read_only: true
+  networks: [team]
+services:
+  nats:
+    image: nats:2.15.3-alpine
+    command: ["-c", "/run/secrets/nats.conf"]
+    volumes:
+      - jetstream:/data
+    secrets:
+      - nats.conf
+      - nats.crt
+      - nats.key
+    networks: [team]
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8222/healthz?js-enabled-only=true"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+  agentiplex:
+    image: agentiplex:demo
+    build:
+      context: .
+      target: release
+    depends_on:
+      nats:
+        condition: service_healthy
+    command: ["--listen","0.0.0.0:8080","--public-url","https://localhost:18443","--broker-mode","external","--broker-url","tls://nats:4222","--namespace","compose-demo","--mcp"]
+    environment:
+      AGENTIPLEX_SERVER_TLS_CERT_FILE: /run/secrets/server.crt
+      AGENTIPLEX_SERVER_TLS_KEY_FILE: /run/secrets/server.key
+      AGENTIPLEX_SECURITY_OPERATOR_TOKEN_FILE: /run/secrets/operator
+      AGENTIPLEX_SECURITY_COLLABORATOR_TOKEN_FILE: /run/secrets/collaborator
+      AGENTIPLEX_SECURITY_VIEWER_TOKEN_FILE: /run/secrets/viewer
+      AGENTIPLEX_BROKER_TOKEN_FILE: /run/secrets/nats-token
+      AGENTIPLEX_BROKER_CA_FILE: /run/secrets/ca.crt
+      AGENTIPLEX_DELIVERY_ALLOWED_ORIGINS: "http://pm:8001 http://architect:8001 http://developer:8001 http://tester-1:8001 http://tester-2:8001 http://quality:8001"
+      AGENTIPLEX_DELIVERY_RETRY_DELAY: 1s
+      AGENTIPLEX_DELIVERY_MAX_ATTEMPTS: "40"
+    secrets:
+      - server.crt
+      - server.key
+      - ca.crt
+      - operator
+      - collaborator
+      - viewer
+      - nats-token
+    ports: ["127.0.0.1:18443:8080"]
+    networks: [team]
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+    read_only: true
+    healthcheck:
+      test: ["CMD","agentiplex","--server","https://localhost:8080","--ca-file","/run/secrets/ca.crt","status"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+  pm:
+    <<: *simulator
+    command: ["--name","pm","--skill","planning","--host","0.0.0.0","--port","8001","--trusted-network","--public-url","http://pm:8001"]
+  architect:
+    <<: *simulator
+    command: ["--name","architect","--skill","architecture","--host","0.0.0.0","--port","8001","--trusted-network","--public-url","http://architect:8001"]
+  developer:
+    <<: *simulator
+    command: ["--name","developer","--skill","development","--host","0.0.0.0","--port","8001","--trusted-network","--public-url","http://developer:8001"]
+  tester-1:
+    <<: *simulator
+    command: ["--name","tester-1","--skill","testing","--host","0.0.0.0","--port","8001","--trusted-network","--public-url","http://tester-1:8001"]
+  tester-2:
+    <<: *simulator
+    command: ["--name","tester-2","--skill","testing","--host","0.0.0.0","--port","8001","--trusted-network","--public-url","http://tester-2:8001"]
+  quality:
+    <<: *simulator
+    command: ["--name","quality","--skill","quality","--host","0.0.0.0","--port","8001","--trusted-network","--public-url","http://quality:8001"]
+networks:
+  team: {}
+volumes:
+  jetstream: {}
+secrets:
+  server.crt: {file: .demo-secrets/server.crt}
+  server.key: {file: .demo-secrets/server.key}
+  ca.crt: {file: .demo-secrets/ca.crt}
+  operator: {file: .demo-secrets/operator}
+  collaborator: {file: .demo-secrets/collaborator}
+  viewer: {file: .demo-secrets/viewer}
+  nats-token: {file: .demo-secrets/nats-token}
+  nats.conf: {file: .demo-secrets/nats.conf}
+  nats.crt: {file: .demo-secrets/nats.crt}
+  nats.key: {file: .demo-secrets/nats.key}

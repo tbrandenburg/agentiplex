@@ -39,3 +39,6 @@ go.work.sum
 
 # Generated, pinned AMIS browser distribution
 /internal/dashboard/static/vendor/
+
+/.demo-secrets/
+/dist/

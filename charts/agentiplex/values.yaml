@@ -1,0 +1,21 @@
+image:
+  repository: ghcr.io/tbrandenburg/agentiplex
+  tag: "" # defaults to v<appVersion>
+  pullPolicy: IfNotPresent
+publicURL: https://localhost:18443
+namespace: engineering
+mcp: true
+dashboard: true
+# Pre-existing secrets; never pass secret values as Helm values.
+authSecret: agentiplex-auth # operator, collaborator, viewer
+tlsSecret: agentiplex-tls # tls.crt, tls.key
+broker:
+  url: tls://nats:4222
+  secret: agentiplex-broker # token (or credentials), ca.crt if TLS
+  credentialMode: token # token or credentials
+  tls: true
+  replicas: 1
+allowedOrigins: []
+resources:
+  requests: {cpu: 100m, memory: 128Mi}
+  limits: {memory: 512Mi}
