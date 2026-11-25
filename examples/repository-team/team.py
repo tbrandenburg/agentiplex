@@ -192,6 +192,9 @@ class RepositoryTeam(base.Team):
                 previous = summary
             parent = self.cli("messages", "status", root_id)
             if parent["state"] in base.TERMINAL:
+                # Refresh after observing PM completion so a final delegation
+                # admitted between the earlier snapshot and completion is included.
+                records = self.snapshot(root_id)
                 details = {d["id"]: self.cli("messages", "status", d["id"]) for d in records}
                 details[root_id] = parent
                 for d in list(details.values()):
