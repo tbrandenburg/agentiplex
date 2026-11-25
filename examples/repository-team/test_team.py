@@ -1,4 +1,5 @@
 import json
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 import subprocess
 import sys
@@ -44,6 +45,57 @@ class RepositoryTests(unittest.TestCase):
         (self.workspace / "README.md").write_text("dirty\n")
         with self.assertRaisesRegex(ValueError, "clean"):
             team.inspect_workspace(str(self.workspace), self.endpoint)
+
+    def test_concurrent_independent_clones_and_clean_worktrees(self):
+        # Separate source with no OpenCode config, branch/tag and an uncommitted edit.
+        source = self.workspace
+        subprocess.run(["git", "-C", str(source), "rm", "opencode.json"], check=True)
+        subprocess.run(["git", "-C", str(source), "commit", "-qm", "remove config"], check=True)
+        subprocess.run(["git", "-C", str(source), "tag", "demo-tag"], check=True)
+        (source / "README.md").write_text("operator dirty change\n")
+        original = team.git_snapshot(source)
+        roots = [self.root / f"run-{i}" for i in range(2)]
+        for root in roots:
+            root.mkdir()
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            workspaces = list(executor.map(lambda root: team.clone_workspace(root, str(source), "demo-tag"), roots))
+        self.assertNotEqual(workspaces[0], workspaces[1])
+        for workspace, root in zip(workspaces, roots):
+            self.assertEqual(root / "workspace", workspace)
+            self.assertTrue((workspace / ".git").is_file())
+            self.assertEqual("HEAD", team.git_snapshot(workspace)["branch"])
+            self.assertEqual(original["head"], team.git_snapshot(workspace)["head"])
+            self.assertFalse((root / "repository.git" / "objects" / "info" / "alternates").exists())
+            team.prepare_clone_config(workspace, self.endpoint, self.config["model"])
+            self.assertFalse(team.inspect_workspace(workspace, self.endpoint)[1]["status"])
+            with self.assertRaisesRegex(ValueError, "already has"):
+                team.prepare_clone_config(workspace, self.endpoint, self.config["model"])
+        (workspaces[0] / "README.md").write_text("first run only\n")
+        self.assertEqual("before\n", (workspaces[1] / "README.md").read_text())
+        self.assertEqual(original, team.git_snapshot(source))
+        with team.directory_lock(workspaces[0]):
+            with self.assertRaisesRegex(ValueError, "already in use"):
+                with team.directory_lock(workspaces[0]):
+                    pass
+            with team.directory_lock(workspaces[1]):
+                pass
+        with team.directory_lock(workspaces[0]):
+            pass
+
+    def test_clone_rejects_unsafe_inputs_and_existing_config(self):
+        for url in ("ext::sh -c bad", "https://user:secret@example.com/repo", "-option",
+                    "https://example.com/repo?token=secret"):
+            with self.assertRaises(ValueError):
+                team.source_url(url)
+        root = self.root / "clone"
+        root.mkdir()
+        with self.assertRaises(ValueError):
+            team.clone_workspace(root, str(self.workspace), "-bad")
+        workspace = team.clone_workspace(root, str(self.workspace))
+        with self.assertRaisesRegex(ValueError, "already has"):
+            team.prepare_clone_config(workspace, self.endpoint, self.config["model"])
+        self.assertEqual(self.config, json.loads((workspace / "opencode.json").read_text()))
+        self.assertFalse(team.git_snapshot(workspace)["status"])
 
     def test_same_workspace_and_role_specific_grants(self):
         agents = team.base.load_team(team.base.HERE / "team.json", "real")["agents"]

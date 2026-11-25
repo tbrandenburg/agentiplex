@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Operator-owned shared repository example; no workspace handling in Agentiplex."""
 import argparse
+from contextlib import contextmanager
+import fcntl
 import importlib.util
 import json
 import os
@@ -13,6 +15,7 @@ import subprocess
 import sys
 import tempfile
 import time
+from urllib.parse import urlsplit
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
@@ -45,6 +48,107 @@ def git(workspace, *args):
         ["git", "-C", str(workspace), "-c", "core.fsmonitor=false", *args],
         timeout=30, env=base.clean_environment(),
     )
+
+
+@contextmanager
+def directory_lock(path, blocking=False):
+    """Cooperating launcher lock; no lock files in the checkout and no unlink race."""
+    fd = os.open(path, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | (0 if blocking else fcntl.LOCK_NB))
+        except BlockingIOError as exc:
+            raise ValueError("workspace already in use by another repository-team run") from exc
+        yield
+    finally:
+        os.close(fd)
+
+
+def model_selection(value):
+    if not re.fullmatch(r"[A-Za-z0-9._:-]+/[A-Za-z0-9._:-]+", value or ""):
+        raise ValueError("--model must be provider/model")
+    provider, model = value.split("/", 1)
+    return {"providerID": provider, "model": model}
+
+
+def source_url(value):
+    """Require a literal Git URL (no embedded HTTP credentials or remote helpers)."""
+    if value.startswith(("https://", "ssh://")):
+        parsed = urlsplit(value)
+        if not parsed.hostname or parsed.password or parsed.query or parsed.fragment or (
+            parsed.scheme == "https" and parsed.username
+        ):
+            raise ValueError("use a Git URL without embedded credentials, query or fragment")
+        return value
+    if re.fullmatch(r"[A-Za-z0-9_.-]+@[A-Za-z0-9.-]+:[A-Za-z0-9_./-]+", value):
+        return value
+    if Path(value).is_absolute() and Path(value).is_dir():
+        return str(Path(value).resolve())
+    raise ValueError("REPO must be an HTTPS/SSH Git URL or an absolute local Git repository path")
+
+
+def clone_workspace(root, repo, ref=None):
+    """One private object database + worktree per run. No cache, shared refs or hardlinks."""
+    url = source_url(repo)
+    if ref and (ref.startswith("-") or subprocess.run(
+        ["git", "check-ref-format", "refs/heads/" + ref], stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL, env=base.clean_environment(), timeout=10
+    ).returncode):
+        raise ValueError("REF must be a branch or tag name (not an option or revision expression)")
+    store = root / "repository.git"
+    workspace = root / "workspace"
+    # Git auth is operator-side only; never forward provider secrets to clone.
+    env = base.clean_environment()
+    for key in ("SSH_AUTH_SOCK", "GIT_ASKPASS", "SSH_ASKPASS", "GIT_SSH", "GIT_SSH_COMMAND"):
+        if key in os.environ:
+            env[key] = os.environ[key]
+    env["GIT_TERMINAL_PROMPT"] = "0"
+    cmd = ["git", "-c", "core.hooksPath=/dev/null", "-c", "protocol.allow=never",
+           "-c", "protocol.https.allow=always", "-c", "protocol.ssh.allow=always",
+           "-c", "protocol.file.allow=always", "clone", "--bare", "--no-local",
+           "--no-recurse-submodules"]
+    if ref:
+        cmd += ["--branch", ref]
+    subprocess.run(cmd + ["--", url, str(store)], env=env, timeout=300, check=True)
+    commit = git(store, "rev-parse", "--verify", "HEAD^{commit}").decode().strip()
+    git(store, "-c", "core.hooksPath=/dev/null", "worktree", "add", "--detach", str(workspace), commit)
+    if git_snapshot(workspace)["status"]:
+        raise RuntimeError("new worktree is not clean")
+    # A bare clone retains the source URL for provenance. Disable its push URL
+    # as an accident guard, not as a security control against full-access agents.
+    git(store, "config", "remote.origin.pushurl", "/dev/null")
+    return workspace
+
+
+def prepare_clone_config(workspace, endpoint, model):
+    """Only create an absent config, exclude locally; never overwrite tracked or existing config."""
+    for name in ("opencode.json", "opencode.jsonc"):
+        path = workspace / name
+        if path.exists() or path.is_symlink() or git(workspace, "ls-files", "--", name):
+            raise ValueError("cloned project already has OpenCode config; use WORKSPACE with a reviewed configuration")
+    exclude = Path(git(workspace, "rev-parse", "--path-format=absolute", "--git-path", "info/exclude").decode().strip())
+    exclude.parent.mkdir(parents=True, exist_ok=True)
+    with exclude.open("a", encoding="utf-8") as f:
+        f.write("\n/opencode.json\n")
+    config = {"$schema": "https://opencode.ai/config.json", "model": model,
+              "mcp": {"servers": {"agentiplex": {"type": "remote", "url": endpoint + "/mcp",
+                                                  "protocol": "auto", "codemode": False}}}}
+    with (workspace / "opencode.json").open("x", encoding="utf-8") as f:
+        f.write(json.dumps(config, indent=2) + "\n")
+    if git_snapshot(workspace)["status"]:
+        raise RuntimeError("generated configuration made worktree dirty")
+
+
+def build_binaries(root):
+    # Shared source build outputs are serialized among repository-team launchers;
+    # each copies the binaries before releasing the lock.
+    env = {k: v for k, v in os.environ.items()
+           if not k.endswith("_API_KEY") and not k.startswith("AGENTIPLEX_")
+           and k not in {"MAKEFLAGS", "MFLAGS", "MAKEOVERRIDES"}}
+    with directory_lock(ROOT, blocking=True):
+        subprocess.run(["make", "build"], cwd=ROOT, env=env, timeout=600, check=True)
+        for name in ("agentiplexd", "agentiplex"):
+            shutil.copy2(ROOT / "bin" / name, root / name)
 
 
 def git_snapshot(workspace):
@@ -158,14 +262,30 @@ def verify_collaboration(evidence):
 
 class RepositoryTeam(base.Team):
     def start(self):
+        self.start_daemon()
+        self.start_agents()
+
+    def start_daemon(self):
         if not self.args.accept_full_access:
             raise ValueError("full access requires --accept-full-access")
+        # Omit public URL so the daemon advertises the actual kernel-assigned port.
         self.spawn("daemon", [str(self.root / "agentiplexd"), "--listen", "127.0.0.1:" + str(self.args.port),
-                   "--public-url", self.endpoint, "--broker-mode", "embedded", "--namespace", "repository-demo",
+                   "--broker-mode", "embedded", "--namespace", "repository-demo",
                    "--storage", str(self.root / "jetstream"), "--mcp",
                    "--dashboard=" + str(not self.args.headless).lower()],
                    dict(self.env, AGENTIPLEX_DELIVERY_TIMEOUT="30s",
                         AGENTIPLEX_DELIVERY_RETRY_DELAY="2s", AGENTIPLEX_DELIVERY_MAX_ATTEMPTS="80"))
+        if self.args.port == 0:
+            # Read the ready address only from our own daemon's log; never
+            # probe a guessed port that might belong to a concurrent run.
+            while True:
+                self.alive()
+                match = re.search(r'agentiplexd ready"?\s+listen=127\.0\.0\.1:(\d+)\b',
+                                  (self.root / "daemon.log").read_text(errors="replace"))
+                if match:
+                    self.endpoint = "http://127.0.0.1:" + match.group(1)
+                    break
+                time.sleep(.2)
         while True:
             self.alive()
             try:
@@ -174,6 +294,8 @@ class RepositoryTeam(base.Team):
             except (OSError, ValueError):
                 pass
             time.sleep(.2)
+
+    def start_agents(self):
         for agent in self.team["agents"]:
             name, skill = agent["id"], agent["skill"]
             profile, policy = policy_for(agent)
@@ -250,9 +372,13 @@ def save_workspace_evidence(workspace, before, root, model):
 
 def main():
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument("--workspace", required=True)
+    source = p.add_mutually_exclusive_group(required=True)
+    source.add_argument("--workspace", help="existing clean Git checkout")
+    source.add_argument("--repo", help="Git URL to clone into an independent scratch worktree")
+    p.add_argument("--ref", help="branch or tag to clone (default: remote HEAD)")
+    p.add_argument("--model", help="provider/model for a cloned workspace")
     p.add_argument("--objective", default="")
-    p.add_argument("--port", type=int, default=19080)
+    p.add_argument("--port", type=int, help="default 0 (automatic) for --repo, 19080 for --workspace")
     p.add_argument("--seconds", type=int, default=1200)
     p.add_argument("--prompt-timeout", type=base.valid_prompt_timeout, default="10m")
     p.add_argument("--gateway", default="opencode-a2a-lite")
@@ -267,8 +393,14 @@ def main():
     if not args.accept_full_access:
         p.error(FULL_ACCESS_WARNING + " Explicit --accept-full-access is required, including for --check.")
     print(FULL_ACCESS_WARNING, file=sys.stderr, flush=True)
-    if sys.platform != "linux" or not 1024 <= args.port <= 65535 or not 60 <= args.seconds <= 1800:
-        p.error("requires Linux, an unprivileged port and a 60–1800 second deadline")
+    if args.port is None:
+        args.port = 0 if args.repo else 19080
+    if sys.platform != "linux" or not (1024 <= args.port <= 65535 or args.repo and args.port == 0) or not 60 <= args.seconds <= 1800:
+        p.error("requires Linux, an unprivileged port (or 0 for --repo), and a 60–1800 second deadline")
+    if args.workspace and (args.ref or args.model):
+        p.error("--ref and --model are for --repo; existing workspaces supply their own configuration")
+    if args.repo and not args.model:
+        p.error("--repo requires an explicit --model provider/model")
     if args.pass_env and (len(set(args.pass_env)) != len(args.pass_env) or any(
         not re.fullmatch(r"[A-Z][A-Z0-9_]*_API_KEY", k) or not os.environ.get(k) for k in args.pass_env
     )):
@@ -279,7 +411,12 @@ def main():
         if not args.pass_env and not args.public_workspace:
             p.error("credential-free runs require --public-workspace; never send private source to free models")
         pm_prompt(args.objective)
-    args.workspace, before, model = inspect_workspace(args.workspace, "http://127.0.0.1:" + str(args.port))
+    if args.repo:
+        source_url(args.repo)
+        model = model_selection(args.model)
+    else:
+        args.workspace = Path(args.workspace).expanduser().resolve(strict=True)
+        _, _, model = inspect_workspace(args.workspace, "http://127.0.0.1:" + str(args.port))
     if not args.check and not args.pass_env and not (
         model["providerID"] == "opencode" and
         (model["model"] == "big-pickle" or model["model"].endswith("-free"))
@@ -290,34 +427,47 @@ def main():
         p.error("install pinned opencode-a2a-lite 0.8.2")
     if subprocess.check_output(["opencode", "--version"], env=base.clean_environment(), timeout=15, text=True).strip() != "opencode v2.3.2":
         p.error("install tested OpenCode 2.3.2")
-    with socket.socket() as sock:
-        sock.bind(("127.0.0.1", args.port))
+    if args.port:
+        with socket.socket() as sock:
+            sock.bind(("127.0.0.1", args.port))
     os.umask(0o077)
     root = Path(tempfile.mkdtemp(prefix="agentiplex-repository-", dir="/tmp")).resolve()
-    if root == args.workspace or args.workspace in root.parents:
+    if args.workspace and (root == args.workspace or args.workspace in root.parents):
         root.rmdir()
         p.error("private run directory must be outside the selected workspace")
     print("Private run directory:", root, flush=True)
-    for name in ("agentiplexd", "agentiplex"):
-        shutil.copy2(ROOT / "bin" / name, root / name)
-    team = base.load_team(base.HERE / "team.json", "real")
-    runner = RepositoryTeam(args, team, root, time.monotonic() + args.seconds)
-    try:
-        runner.start()
-        if not args.check:
-            runner.observe_repository(args.objective)
-    finally:
-        runner.stop()
-        metadata = save_workspace_evidence(args.workspace, before, root, model)
-        print("Owned processes stopped. Inspect private evidence at:", root, flush=True)
-    if args.check:
-        if metadata["statusChanged"]:
-            raise RuntimeError("provisioning unexpectedly changed the workspace")
-        print("PASS: six real gateways provisioned; no model task submitted.")
-    elif not metadata["statusChanged"]:
-        raise RuntimeError("collaboration completed but no Git-visible changes were produced")
-    else:
-        print("PASS: completed collaboration and Git-visible changes; agent-reported test results require human review or independent verification.")
+    build_binaries(root)
+    if args.repo:
+        args.workspace = clone_workspace(root, args.repo, args.ref)
+    print("Selected workspace:", args.workspace, flush=True)
+    with directory_lock(args.workspace):
+        # Lock held across final inspection, startup, execution and evidence.
+        if args.repo:
+            before = git_snapshot(args.workspace)
+        else:
+            args.workspace, before, model = inspect_workspace(args.workspace, "http://127.0.0.1:" + str(args.port))
+        team = base.load_team(base.HERE / "team.json", "real")
+        runner = RepositoryTeam(args, team, root, time.monotonic() + args.seconds)
+        try:
+            runner.start_daemon()
+            if args.repo:
+                prepare_clone_config(args.workspace, runner.endpoint, model)
+                args.workspace, before, model = inspect_workspace(args.workspace, runner.endpoint)
+            runner.start_agents()
+            if not args.check:
+                runner.observe_repository(args.objective)
+        finally:
+            runner.stop()
+            metadata = save_workspace_evidence(args.workspace, before, root, model)
+            print("Owned processes stopped. Inspect private evidence at:", root, flush=True)
+        if args.check:
+            if metadata["statusChanged"]:
+                raise RuntimeError("provisioning unexpectedly changed the workspace")
+            print("PASS: six real gateways provisioned; no model task submitted.")
+        elif not metadata["statusChanged"]:
+            raise RuntimeError("collaboration completed but no Git-visible changes were produced")
+        else:
+            print("PASS: completed collaboration and Git-visible changes; agent-reported test results require human review or independent verification.")
 
 
 if __name__ == "__main__":
