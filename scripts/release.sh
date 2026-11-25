@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
-# Tags are the only source of version truth; existing tag workflow publishes.
+# Tags determine versions; synchronize tracked Helm metadata before publishing.
 set -euo pipefail
 die(){ echo "$*" >&2; exit 1; }
 case "${bump:-}" in PATCH|patch|MINOR|minor|MAJOR|major) ;; *) die 'Usage: make release bump=PATCH|MINOR|MAJOR';; esac
 case "${1:-}" in ""|--dry-run) ;; *) die 'Unknown release argument';; esac
 [[ $# -le 1 ]] || die 'Too many arguments'
+script_dir="$(cd "$(dirname "$0")" && pwd)"
 cd "$(git rev-parse --show-toplevel)"
 [[ "$(git symbolic-ref --quiet --short HEAD)" == main ]] || die 'Release requires main'
 [[ -z "$(git status --porcelain)" ]] || die 'Release requires a clean working tree'
@@ -30,9 +31,20 @@ esac
 next=v$major.$minor.$patch
 git show-ref --verify --quiet "refs/tags/$next" && die "Tag already exists: $next"
 echo "Release $latest -> $next at $(git rev-parse --short HEAD)"
+chart=charts/agentiplex/Chart.yaml
+version=${next#v}
+git ls-files --error-unmatch "$chart" >/dev/null
+python3 "$script_dir/chart-version.py" preview "$version"
 if [[ "${1:-}" == --dry-run ]]; then exit 0; fi
-git tag -a "$next" -m "Release $next"
-if ! git push origin "refs/tags/$next:refs/tags/$next"; then
-  die "Tag push failed; local tag $next retained. Inspect remote before retrying or removing it."
+python3 "$script_dir/chart-version.py" update "$version"
+if ! git diff --quiet -- "$chart"; then
+  git add -- "$chart"
+  git commit -m "chore(release): $next" -- "$chart"
 fi
-echo "Pushed $next; the existing GitHub Release workflow builds and publishes artifacts."
+python3 "$script_dir/chart-version.py" check "$version"
+[[ -z "$(git status --porcelain)" ]] || die 'Release requires a clean tree after metadata commit'
+git tag -a "$next" -m "Release $next"
+if ! git push --atomic origin HEAD:refs/heads/main "refs/tags/$next:refs/tags/$next"; then
+  die "Atomic release push failed; local commit (if created) and tag $next retained. Inspect remote main and tag before recovery. Do not force push."
+fi
+echo "Pushed main and $next atomically; the existing GitHub Release workflow builds and publishes artifacts."
