@@ -39,13 +39,13 @@ grep -qx 'appVersion: "0.1.0"' "$chart"
 grep -qx 'description: Keep this metadata unchanged' "$chart"
 python3 "$script_dir/chart-version.py" check 0.1.0
 if python3 "$script_dir/chart-version.py" check 0.1.1; then exit 1; fi
-bump=PATCH bash "$script" --dry-run | grep -q 'v0.1.0 -> v0.1.1'
-bump=MAJOR bash "$script" --dry-run | grep -q 'v0.1.0 -> v1.0.0'
+bump=PATCH bash "$script" --dry-run | grep 'v0.1.0 -> v0.1.1' >/dev/null
+bump=MAJOR bash "$script" --dry-run | grep 'v0.1.0 -> v1.0.0' >/dev/null
 git tag v0.1.1
 if bump=PATCH bash "$script" --dry-run; then exit 1; fi
 git tag -d v0.1.1 >/dev/null
 git tag v0.2.0-rc.1
-bump=MINOR bash "$script" --dry-run | grep -q 'v0.1.0 -> v0.2.0'
+bump=MINOR bash "$script" --dry-run | grep 'v0.1.0 -> v0.2.0' >/dev/null
 if bump=INVALID bash "$script"; then exit 1; fi
 touch dirty
 if bump=PATCH bash "$script"; then exit 1; fi
