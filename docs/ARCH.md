@@ -346,3 +346,7 @@ Registration card snapshots are refreshed only for the same endpoint, using nati
 ### PR #6 implementation refinement
 
 The official MCP Go SDK supplies an optional stateless Streamable HTTP adapter at /mcp. Typed tools reuse Bus methods directly, including durable admission, delivery lookup and native KV CAS; no agent runtime, protocol translation service, second broker or task store. Tool metadata is distinct from A2A Agent Cards; no unsupported MCP resources/subscriptions or sampling advertised. MCP is disabled by default, loopback-only with browser Origin rejection and SDK DNS rebinding protection, not an authenticated boundary. See [MCP.md](MCP.md).
+
+### PR #7 implementation refinement
+
+An optional static role-credential boundary (operator, collaborator, dashboard viewer) requires native TLS, explicit HTTPS advertised origin and mounted credentials. The public probes and bus Agent Card contain no credentials; all other routes are authenticated in secure mode. Outbound A2A uses approved HTTPS origin-scoped bearer credentials and verified CA roots; external NATS uses native token/credentials and TLS options. No individual identities, tenant isolation or distributed ownership. Compose uses official NATS and isolated simulator endpoints; Helm deploys one daemon with Recreate strategy and external official NATS. See [DEPLOYMENT.md](DEPLOYMENT.md).

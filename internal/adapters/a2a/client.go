@@ -3,6 +3,8 @@ package a2a
 
 import (
 	"context"
+	"crypto/tls"
+	"github.com/tbrandenburg/agentiplex/internal/security"
 	"errors"
 	"fmt"
 	"net"
@@ -20,14 +22,26 @@ import (
 type Client struct {
 	allowed map[string]bool
 	timeout time.Duration
+	tokens map[string]string
+	tls *tls.Config
 }
 
 func New(allowed []string, timeout time.Duration) (*Client, error) {
-	c := &Client{allowed: map[string]bool{}, timeout: timeout}
+	return NewWithCredentials(allowed,timeout,nil,"")
+}
+
+func NewWithCredentials(allowed []string,timeout time.Duration,tokenFiles map[string]string,caFile string)(*Client,error){
+	tlsConfig,err:=security.TLSConfig(caFile);if err!=nil{return nil,err}
+	c := &Client{allowed: map[string]bool{}, timeout: timeout,tokens:map[string]string{},tls:tlsConfig}
 	for _, raw := range allowed {
 		u, err := parse(raw)
 		if err != nil || (u.Path != "" && u.Path != "/") { return nil, errors.New("allowed origins must be HTTP(S) origins") }
 		c.allowed[origin(u)] = true
+	}
+	for raw,path:=range tokenFiles{
+		u,err:=c.check(raw);if err!=nil||u.Scheme!="https"||(u.Path!=""&&u.Path!="/"){return nil,errors.New("outbound credentials require an allowed HTTPS origin")}
+		key:=origin(u);if c.tokens[key]!=""{return nil,errors.New("duplicate outbound credential origin")}
+		token,err:=security.ReadToken(path);if err!=nil{return nil,err};c.tokens[key]=token
 	}
 	return c, nil
 }
@@ -59,9 +73,10 @@ func (c *Client) check(raw string) (*url.URL,error) {
 	return u,nil
 }
 
-type limitedTransport struct { base *http.Transport; origin string }
+type limitedTransport struct { base *http.Transport; origin string; token string }
 func (t limitedTransport) RoundTrip(r *http.Request) (*http.Response,error) {
 	if origin(r.URL) != t.origin { return nil,errors.New("unexpected request origin") }
+	if t.token!=""{r=r.Clone(r.Context());r.Header.Set("Authorization","Bearer "+t.token)}
 	resp,err := t.base.RoundTrip(r)
 	if err == nil { resp.Body = http.MaxBytesReader(nil, resp.Body, 256<<10) }
 	return resp,err
@@ -77,14 +92,14 @@ func (c *Client) httpClient(u *url.URL) (*http.Client, func()) {
 		var last error = errors.New("no allowed address")
 		for _, ip := range ips {
 			ip=ip.Unmap()
-			if !ip.IsValid() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsUnspecified() || ip.IsMulticast() || (loopback(host)&&!ip.IsLoopback()) { continue }
+			if !ip.IsValid() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsUnspecified() || ip.IsMulticast() || (loopback(host)!=ip.IsLoopback()) { continue }
 			conn,e:=d.DialContext(ctx,network,net.JoinHostPort(ip.String(),port))
 			if e==nil { return conn,nil }
 			last=e
 		}
 		return nil,last
-	}, TLSHandshakeTimeout:5*time.Second, ResponseHeaderTimeout:c.timeout, DisableKeepAlives:true}
-	return &http.Client{Transport:limitedTransport{base:t,origin:origin(u)},Timeout:c.timeout,CheckRedirect:func(*http.Request,[]*http.Request)error{return http.ErrUseLastResponse}},t.CloseIdleConnections
+	}, TLSClientConfig:c.tls.Clone(), TLSHandshakeTimeout:5*time.Second, ResponseHeaderTimeout:c.timeout, DisableKeepAlives:true}
+	return &http.Client{Transport:limitedTransport{base:t,origin:origin(u),token:c.tokens[origin(u)]},Timeout:c.timeout,CheckRedirect:func(*http.Request,[]*http.Request)error{return http.ErrUseLastResponse}},t.CloseIdleConnections
 }
 
 func (c *Client) Resolve(ctx context.Context, raw string) (*proto.AgentCard,string,string,error) {

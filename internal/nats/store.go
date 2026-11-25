@@ -4,6 +4,9 @@ package nats
 import (
 	"errors"
 	"fmt"
+	"net/url"
+	"strings"
+	"github.com/tbrandenburg/agentiplex/internal/security"
 	"time"
 
 	"github.com/nats-io/nats-server/v2/server"
@@ -30,8 +33,14 @@ type Store struct {
 	embedded *server.Server
 }
 
-func Open(mode, url, storage, namespace string, replicas int, timeout time.Duration) (_ *Store, err error) {
+type AuthConfig struct{TokenFile,CredentialsFile,CAFile string}
+
+func Open(mode, brokerURL, storage, namespace string, replicas int, timeout time.Duration, auth ...AuthConfig) (_ *Store, err error) {
 	s := &Store{}
+	var a AuthConfig
+	if len(auth)>0{a=auth[0]}
+	if a.TokenFile!=""&&a.CredentialsFile!=""{return nil,errors.New("choose either NATS token or credentials file")}
+	if mode=="embedded"&&(a!=(AuthConfig{})){return nil,errors.New("external broker authentication settings require external mode")}
 	defer func() { if err != nil { s.Close() } }()
 	if mode == "embedded" {
 		s.embedded, err = server.NewServer(&server.Options{
@@ -40,10 +49,19 @@ func Open(mode, url, storage, namespace string, replicas int, timeout time.Durat
 		if err != nil { return nil, err }
 		go s.embedded.Start()
 		if !s.embedded.ReadyForConnections(10*time.Second) { return nil, errors.New("embedded NATS did not become ready") }
-		url = s.embedded.ClientURL()
+		brokerURL = s.embedded.ClientURL()
 	}
-	s.Conn, err = nc.Connect(url, nc.Timeout(5*time.Second), nc.MaxReconnects(-1))
-	if err != nil { return nil, err }
+	for _,raw:=range strings.Split(brokerURL,","){
+		u,e:=url.Parse(strings.TrimSpace(raw))
+		if e!=nil||u.User!=nil||u.RawQuery!=""||u.Fragment!=""||u.Hostname()==""||(u.Scheme!="nats"&&u.Scheme!="tls"){return nil,errors.New("NATS URL must be nats:// or tls:// without embedded credentials")}
+		if (a.CAFile!=""||a.TokenFile!=""||a.CredentialsFile!="")&&u.Scheme!="tls"{return nil,errors.New("NATS credentials and custom CA require tls://")}
+	}
+	opts:=[]nc.Option{nc.Timeout(5*time.Second),nc.MaxReconnects(-1)}
+	if a.TokenFile!=""{token,e:=security.ReadToken(a.TokenFile);if e!=nil{return nil,e};opts=append(opts,nc.Token(token))}
+	if a.CredentialsFile!=""{opts=append(opts,nc.UserCredentials(a.CredentialsFile))}
+	if a.CAFile!=""{opts=append(opts,nc.RootCAs(a.CAFile))}
+	s.Conn, err = nc.Connect(brokerURL,opts...)
+	if err != nil { return nil, errors.New("cannot connect to configured NATS broker") }
 	s.JS, err = s.Conn.JetStream(nc.MaxWait(5*time.Second))
 	if err != nil { return nil, err }
 	workStream := namespace + "_MAILBOXES"

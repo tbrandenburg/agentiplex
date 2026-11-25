@@ -52,7 +52,7 @@ The official independent A2A Go client is exercised in the integration tests. Us
 
 ## Deployment and trust
 
-`server.public_url` / `--public-url` / `AGENTIPLEX_SERVER_PUBLIC_URL` sets the advertised origin; loopback listeners default to the actual bound address. Non-loopback listeners require an explicit advertised origin and the existing trusted-network opt-in. Docker defaults to http://127.0.0.1:8080; override the entire daemon argument list for a different port mapping. No Host header inference.
+`server.public_url` / `--public-url` / `AGENTIPLEX_SERVER_PUBLIC_URL` sets the advertised origin; loopback listeners default to the actual bound address. Non-loopback listeners require an explicit advertised origin and the existing trusted-network opt-in. Docker defaults to an internal loopback listener; use the secure deployment or explicitly configure an isolated demo listener and matching advertised origin. No Host header inference.
 
 The service is **trusted-local only**, including task lookups. No authentication, permission isolation or production network exposure. Do not put sensitive work into an unauthenticated network-accessible instance.
 
@@ -67,3 +67,7 @@ The service is **trusted-local only**, including task lookups. No authentication
 ## Collaboration skills (PR #3)
 
 The same structured data contract accepts operation=broadcast (target is a group ID) and operation=dispatch (target is a pool ID). Broadcast tasks return a broadcast-recipients artifact with child IDs and statuses; a partial result maps to A2A FAILED with deliveryState=partial. Dispatch metadata includes assignedAgent. See [COLLABORATION.md](COLLABORATION.md). Streaming A2A task events remain unsupported; the separate admin event SSE API is not an A2A transport.
+
+## Authenticated deployment (PR #7)
+
+With secure server configuration, the public Agent Card advertises bearer authentication and A2A requests require the operator or collaborator token over verified HTTPS. Outbound A2A bearer credentials are configured by explicitly allowed HTTPS origin and mounted file; they are not accepted from registered cards or stored in JetStream. See [DEPLOYMENT.md](DEPLOYMENT.md).

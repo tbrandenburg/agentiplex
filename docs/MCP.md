@@ -18,7 +18,7 @@ protocols:
     enabled: true
 ```
 
-Environment: AGENTIPLEX_PROTOCOLS_MCP_ENABLED=true. Endpoint: http://127.0.0.1:8080/mcp (Streamable HTTP, JSON response, sessionless). Disabled by default. Enabling requires a literal loopback daemon listener. The handler rejects non-loopback peers, non-loopback Host and any browser Origin, retains SDK DNS-rebinding protection, and bounds request bodies. No authentication yet. Do not proxy this endpoint or expose it to untrusted local processes; all tools share the same trusted-local state and delivery namespace. No identity is inferred from the MCP client name.
+Environment: AGENTIPLEX_PROTOCOLS_MCP_ENABLED=true. Endpoint: http://127.0.0.1:8080/mcp (Streamable HTTP, JSON response, sessionless). Disabled by default. Enabling without authentication requires a literal loopback daemon listener (see secured deployment below). The handler rejects non-loopback peers, non-loopback Host and any browser Origin, retains SDK DNS-rebinding protection, and bounds request bodies. No authentication yet. Do not proxy this endpoint or expose it to untrusted local processes; all tools share the same trusted-local state and delivery namespace. No identity is inferred from the MCP client name.
 
 ## Tools
 
@@ -74,3 +74,7 @@ go run ./examples/mcp-client --url http://127.0.0.1:18080/mcp --target architect
 ```
 
 The caller lists tools and discovers agents; optional delegation is explicit and uses a stable key. It reads the delivery until completion/intervention, or a bounded timeout without canceling durable work. Run after the scripted team's assertions have finished to avoid changing its expected counts. No model or new agent runtime is involved.
+
+## Authenticated network deployment (PR #7)
+
+When operator and collaborator credentials and native HTTPS are configured as described in [DEPLOYMENT.md](DEPLOYMENT.md), MCP may listen on non-loopback. Pass an Authorization: Bearer header using the collaborator credential, and configure trust for the server's certificate. The SDK's DNS rebinding checks and browser Origin rejection remain enabled. The legacy unauthenticated mode stays loopback-only. The independent example accepts --token-file and --ca-file. Shared role credentials are not individual identities or OAuth; do not assume arbitrary remote MCP hosts support static credentials.

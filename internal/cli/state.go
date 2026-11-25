@@ -32,7 +32,8 @@ func stateCommand(r *remote,print func(*cobra.Command,string,string,any)error)*c
 		&cobra.Command{Use:"watch NAMESPACE",Short:"Watch current state and changes; reconnect starts a new snapshot",Args:cobra.ExactArgs(1),RunE:func(c *cobra.Command,a []string)error{
 			req,err:=http.NewRequestWithContext(c.Context(),"GET",strings.TrimRight(r.base,"/")+"/api/v1/state-watch/"+url.PathEscape(a[0]),nil)
 			if err!=nil{return err}
-			h:=&http.Client{Transport:r.http.Transport}
+			r.authorize(req)
+			h:=&http.Client{Transport:r.http.Transport,CheckRedirect:r.http.CheckRedirect}
 			resp,err:=h.Do(req);if err!=nil{return err};defer resp.Body.Close()
 			if resp.StatusCode!=200{return fmt.Errorf("state watch HTTP %d",resp.StatusCode)}
 			scanner:=bufio.NewScanner(resp.Body);scanner.Buffer(make([]byte,4096),1<<20)
