@@ -54,4 +54,5 @@ cli state get engineering requirement | jq -e '.value=="REQ-42"'
 cli messages status "$id" | jq -e '.state=="queued"'
 docker compose start quality
 wait_state "$id" completed | jq -e '.result|tostring|contains("SIMULATED quality")'
+go run ./examples/mcp-client --url https://localhost:18443/mcp --ca-file .demo-secrets/ca.crt --token-file .demo-secrets/collaborator --target architect --text "Authenticated Compose MCP" --key compose-mcp >/dev/null
 echo "PASS: authenticated TLS Compose, six-recipient broadcast, external NATS and daemon recreation, persistent state and offline delivery."
