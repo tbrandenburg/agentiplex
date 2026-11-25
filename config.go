@@ -20,6 +20,7 @@ type Config struct {
 	AllowedOrigins []string
 	Timeout time.Duration
 	RetryDelay time.Duration
+	Workers int // zero selects default; one restores serial operation
 	MaxAttempts int // pre-submission reachability attempts only
 	TaskPollInterval time.Duration // zero inherits RetryDelay; no accepted-task lifetime limit
 	HealthInterval time.Duration // zero disables periodic observation
@@ -29,7 +30,7 @@ var validID = regexp.MustCompile("^[a-z0-9][a-z0-9_-]{0,63}$")
 
 func DefaultConfig() Config {
 	return Config{BrokerMode: "embedded", Storage: "./data", Namespace: "engineering", Replicas: 1,
-		Timeout: 120*time.Second, RetryDelay: 5*time.Second, MaxAttempts: 10, HealthInterval:30*time.Second}
+		Timeout: 120*time.Second, RetryDelay: 5*time.Second, Workers: 4, MaxAttempts: 10, HealthInterval:30*time.Second}
 }
 
 func (c Config) validate() error {
@@ -48,6 +49,7 @@ func (c Config) validate() error {
 	if c.Timeout < time.Second || c.Timeout > 5*time.Minute || c.RetryDelay < time.Second || c.RetryDelay > time.Minute || c.MaxAttempts < 1 || c.MaxAttempts > 100 {
 		return fmt.Errorf("invalid delivery limits")
 	}
+	if c.Workers<0||c.Workers>16{return fmt.Errorf("invalid delivery worker count (0–16)")}
 	if c.TaskPollInterval!=0&&(c.TaskPollInterval<time.Second||c.TaskPollInterval>time.Minute){return fmt.Errorf("invalid task poll interval")}
 	if c.HealthInterval!=0&&(c.HealthInterval<time.Second||c.HealthInterval>time.Hour){return fmt.Errorf("invalid health interval")}
 	return nil

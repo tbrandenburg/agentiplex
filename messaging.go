@@ -8,6 +8,7 @@ import (
 	"errors"
 	"log/slog"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/a2aproject/a2a-go/v2/a2a"
@@ -85,20 +86,40 @@ func(b *Bus) recoverPreparing(ctx context.Context)error{
 }
 
 func(b *Bus) work(ctx context.Context){
+	// One fair-ish fetch loop, bounded concurrent HTTP operations. Reserve a
+	// slot before fetching so no unleased work waits in a local queue.
+	slots:=make(chan struct{},b.cfg.Workers)
+	var running sync.WaitGroup
+	defer running.Wait()
 	for ctx.Err()==nil{
-		// One execution loop across direct and pool consumers. Each pool has
-		// one durable queue; no independent copies per member.
 		subs:=b.workSubscriptions()
 		wait:=time.Second
 		if len(subs)>1{wait=100*time.Millisecond}
 		for _,sub:=range subs{
-			if ctx.Err()!=nil{return}
+			select{case<-ctx.Done():return;case slots<-struct{}{}:}
+			if ctx.Err()!=nil{<-slots;return}
 			msgs,err:=sub.Fetch(1,nats.MaxWait(wait))
-			if err!=nil{
-				if !errors.Is(err,nats.ErrTimeout){slog.Warn("delivery fetch failed");select{case<-ctx.Done():return;case<-time.After(time.Second):}}
+			if err!=nil||len(msgs)==0{
+				<-slots
+				if err!=nil&&!errors.Is(err,nats.ErrTimeout){slog.Warn("delivery fetch failed");select{case<-ctx.Done():return;case<-time.After(time.Second):}}
 				continue
 			}
-			for _,m:=range msgs{b.processWithLease(ctx,m)}
+			m:=msgs[0]
+			id:=string(m.Data)
+			b.mu.Lock()
+			if b.inflight[id]{
+				// A redelivery can arrive during a long call or broker reconnect.
+				// Leave settlement to its current local owner.
+				b.mu.Unlock();<-slots;continue
+			}
+			b.inflight[id]=true
+			b.mu.Unlock()
+			running.Add(1)
+			go func(){
+				defer running.Done()
+				defer func(){b.mu.Lock();delete(b.inflight,id);b.mu.Unlock();<-slots}()
+				b.processWithLease(ctx,m)
+			}()
 		}
 	}
 }
@@ -182,8 +203,8 @@ func(b *Bus) process(ctx context.Context,m *nats.Msg){
 		if d.Attempts>=b.cfg.MaxAttempts{b.settle(m,&d,"failed","no reachable eligible target before send; retry limit reached")}else{b.later(m,&d,"queued","no reachable eligible target before send")}
 		return
 	}
-	d.Attempts++
-	if err=b.save(&d,"attempting","");err!=nil{_ = m.NakWithDelay(b.cfg.RetryDelay);return}
+	// prepareRecipient has already atomically checked capacity and persisted
+	// attempting under mu. Never send before durable attempt intent.
 	call,cancel:=context.WithTimeout(ctx,b.cfg.Timeout)
 	result,err:=b.adapter.Send(call,d.Endpoint,d.ID,d.Text);cancel()
 	if err!=nil{b.settle(m,&d,"uncertain","A2A send outcome unknown; no automatic replay");return}

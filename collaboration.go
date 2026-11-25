@@ -134,8 +134,8 @@ func (b *Bus) broadcastView(d Delivery)(Delivery,error){
 }
 
 // activeEndpoints protects capacity across the independent direct/pool queues.
-// Only the single execution loop sends work. Persisted accepted records also
-// reserve capacity across daemon restart.
+// Persisted attempting and accepted records reserve capacity across restart.
+// New reservations are checked and persisted atomically under b.mu.
 func (b *Bus) activeEndpoints(exclude string)(map[string]bool,error){
 	active:=map[string]bool{}
 	ks,err:=keys(b.store.Deliveries);if err!=nil{return nil,err}
@@ -154,17 +154,34 @@ func (b *Bus) probe(ctx context.Context,cardURL,endpoint string)bool{
 	return err==nil&&resolved==endpoint
 }
 
-// prepareRecipient is called exclusively by the execution loop.
-func (b *Bus) prepareRecipient(ctx context.Context,d *Delivery)(ready,busy bool,err error){
+// claimRecipient serializes capacity check and durable attempt intent only.
+// The network probe runs outside mu, so an unavailable endpoint cannot block
+// admission or unrelated workers. A second worker must recheck after its probe.
+func (b *Bus) claimRecipient(ctx context.Context,d *Delivery,index int)(ready,busy bool,err error){
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if ctx.Err()!=nil{return false,false,ctx.Err()}
 	active,err:=b.activeEndpoints(d.ID);if err!=nil{return false,false,err}
+	if active[d.Endpoint]{return false,true,nil}
+	d.Attempts++
+	if err=b.save(d,"attempting","");err!=nil{return false,false,err}
+	if d.Kind=="dispatch"{b.poolCursor[d.Target]=(index+1)%len(d.Members)}
+	return true,false,nil
+}
+
+func (b *Bus) prepareRecipient(ctx context.Context,d *Delivery)(ready,busy bool,err error){
+	b.mu.Lock()
+	active,err:=b.activeEndpoints(d.ID)
+	start:=0
+	if len(d.Members)>0{start=b.poolCursor[d.Target]%len(d.Members)}
+	b.mu.Unlock()
+	if err!=nil{return false,false,err}
 	if d.Kind!="dispatch"{
 		if active[d.Endpoint]{return false,true,nil}
-		return b.probe(ctx,d.CardURL,d.Endpoint),false,nil
+		if !b.probe(ctx,d.CardURL,d.Endpoint){return false,false,nil}
+		return b.claimRecipient(ctx,d,0)
 	}
-	// Round-robin selection among snapshot members, skipping unavailable or
-	// already occupied endpoints. Assignment becomes durable with attempting.
 	if len(d.Members)==0{return false,false,nil}
-	start:=b.poolCursor[d.Target]%len(d.Members)
 	for i:=0;i<len(d.Members);i++{
 		if ctx.Err()!=nil{return false,false,ctx.Err()}
 		index:=(start+i)%len(d.Members)
@@ -173,11 +190,14 @@ func (b *Bus) prepareRecipient(ctx context.Context,d *Delivery)(ready,busy bool,
 		if errors.Is(e,ErrNotFound){continue};if e!=nil{return false,false,e}
 		if active[a.Endpoint]{busy=true;continue}
 		if !b.probe(ctx,a.CardURL,a.Endpoint){continue}
-		d.AssignedAgent=member
-		d.Endpoint=a.Endpoint
-		d.CardURL=a.CardURL
-		b.poolCursor[d.Target]=(index+1)%len(d.Members)
-		return true,false,nil
+		candidate:=*d
+		candidate.AssignedAgent=member
+		candidate.Endpoint=a.Endpoint
+		candidate.CardURL=a.CardURL
+		ok,occupied,e:=b.claimRecipient(ctx,&candidate,index)
+		if e!=nil{return false,false,e}
+		if ok{*d=candidate;return true,false,nil}
+		busy=busy||occupied
 	}
 	return false,busy,nil
 }

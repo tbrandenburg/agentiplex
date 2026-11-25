@@ -16,6 +16,7 @@ registry:
   namespace: engineering
   health_interval: 30s # zero disables periodic observations
 delivery:
+  workers: 4 # bounded outbound HTTP concurrency; one restores serial mode
   timeout: 120s # per HTTP operation, not task execution lifetime
   retry_delay: 5s
   max_attempts: 10 # pre-submission reachability attempts only
