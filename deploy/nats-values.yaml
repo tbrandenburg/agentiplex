@@ -1,0 +1,23 @@
+# Official NATS Helm chart, version 2.15.2. Supply existing Secrets.
+config:
+  jetstream:
+    enabled: true
+    fileStore:
+      pvc:
+        size: 2Gi
+  nats:
+    tls:
+      enabled: true
+      secretName: nats-tls
+  merge:
+    authorization:
+      token: "<< $NATS_TOKEN >>"
+container:
+  env:
+    NATS_TOKEN:
+      valueFrom:
+        secretKeyRef:
+          name: agentiplex-broker
+          key: token
+natsBox:
+  enabled: false

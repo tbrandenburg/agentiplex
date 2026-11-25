@@ -1,0 +1,6 @@
+apiVersion: v2
+name: agentiplex
+description: Single-daemon Agentiplex collaboration service with external JetStream
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

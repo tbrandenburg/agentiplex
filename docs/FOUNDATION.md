@@ -45,7 +45,7 @@ Stop the simulated agent, submit another message with a different key, restart t
 
 External broker: start NATS with JetStream enabled and persistent storage; pass `--broker-mode external --broker-url nats://127.0.0.1:4222`. Do not run two Agentiplex daemon instances against the same namespace.
 
-Container: build `docker build -t agentiplex:dev .`, run `docker run --rm -p 127.0.0.1:8080:8080 -v agentiplex-data:/data agentiplex:dev`. It is a trusted demo service with no auth; do not publish externally. The container cannot access a host's loopback OpenCode service through its own loopback. Prefer native local processes for that integration.
+Container: build `docker build -t agentiplex:dev .`, run `docker run --rm -p 127.0.0.1:8080:8080 -v agentiplex-data:/data agentiplex:dev --listen 0.0.0.0:8080 --trusted-network --public-url http://127.0.0.1:8080 --storage /data`. It is a trusted demo service with no auth; do not publish externally. The container cannot access a host's loopback OpenCode service through its own loopback. Prefer native local processes for that integration.
 
 ## Merge gates
 
