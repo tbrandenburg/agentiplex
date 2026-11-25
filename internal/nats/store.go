@@ -54,7 +54,7 @@ func Open(mode, brokerURL, storage, namespace string, replicas int, timeout time
 	for _,raw:=range strings.Split(brokerURL,","){
 		u,e:=url.Parse(strings.TrimSpace(raw))
 		if e!=nil||u.User!=nil||u.RawQuery!=""||u.Fragment!=""||u.Hostname()==""||(u.Scheme!="nats"&&u.Scheme!="tls"){return nil,errors.New("NATS URL must be nats:// or tls:// without embedded credentials")}
-		if a.CAFile!=""&&u.Scheme!="tls"{return nil,errors.New("NATS CA requires tls://")}
+		if (a.CAFile!=""||a.TokenFile!=""||a.CredentialsFile!="")&&u.Scheme!="tls"{return nil,errors.New("NATS credentials and custom CA require tls://")}
 	}
 	opts:=[]nc.Option{nc.Timeout(5*time.Second),nc.MaxReconnects(-1)}
 	if a.TokenFile!=""{token,e:=security.ReadToken(a.TokenFile);if e!=nil{return nil,e};opts=append(opts,nc.Token(token))}

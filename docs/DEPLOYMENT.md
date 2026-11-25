@@ -28,7 +28,7 @@ protocols:
     enabled: true
 ```
 
-Both operator and collaborator files are required in secure mode; viewer is required if the dashboard is enabled. Roles must use distinct secrets. TLS and explicit HTTPS origin are mandatory when authentication is enabled; no forwarded-header trust or plaintext authenticated proxy hop. Use native TLS, a TLS-passthrough gateway or a gateway that re-encrypts/verifies the backend connection. The legacy trusted-network flag remains for isolated unauthenticated demonstrations only; never expose it publicly.
+Both operator and collaborator files are required in secure mode; viewer is required if the dashboard is enabled. Roles must use distinct secrets. TLS and explicit HTTPS origin are mandatory when authentication is enabled; no forwarded-header trust or plaintext authenticated proxy hop. Use native TLS, a TLS-passthrough gateway or a gateway that re-encrypts/verifies the backend connection. The legacy trusted-network flag remains for isolated unauthenticated demonstrations only; never expose it publicly. The OCI image now defaults to loopback inside the container, so simply publishing its port does not expose an unauthenticated listener. Use the secure Compose/Helm deployment or explicitly configure an isolated demo listener.
 
 | Role | Access |
 |---|---|
@@ -68,7 +68,7 @@ broker:
   replicas: 1
 ```
 
-The native NATS client performs TLS verification and credential authentication. Credentials in broker URLs are rejected. A nats:// URL without TLS is only suitable for isolated trusted local networking; use TLS in network deployments. Provide a dedicated broker account with necessary JetStream provisioning and subject permissions, not a shared administrator credential. No secrets in Agent Cards, persistent state, source control or default logs. Credential paths and cert files are operator-controlled. Agent-produced content itself can contain sensitive data; dashboard detail and collaborators can read it.
+The native NATS client performs TLS verification and credential authentication. Credentials in broker URLs are rejected. Credentialed NATS connections require tls://; unauthenticated nats:// is only suitable for isolated trusted local testing. Provide a dedicated broker account with necessary JetStream provisioning and subject permissions, not a shared administrator credential. No secrets in Agent Cards, persistent state, source control or default logs. Credential paths and cert files are operator-controlled. Agent-produced content itself can contain sensitive data; dashboard detail and collaborators can read it.
 
 ## Compose
 
@@ -113,7 +113,7 @@ Use an actually published image tag or a locally loaded image. Set publicURL to 
 
 ## Release
 
-The Release workflow runs only on vMAJOR.MINOR.PATCH[-prerelease] tags whose commit is an ancestor of main. It verifies Go tests and dependency consistency, packages Linux and macOS AMD64/ARM64 daemon+CLI archives and a versioned Helm package, emits SHA256SUMS, then publishes a tag-versioned multiarch OCI image to GHCR with SBOM/provenance and a GitHub release. PR Checks dry-runs archive and chart packaging without pushing anything. Registry permissions and the actual tag publication are separate operator acceptance steps. No tag or release is created by this PR.
+The Release workflow runs only on vMAJOR.MINOR.PATCH[-prerelease] tags whose commit is an ancestor of main. It verifies Go tests and dependency consistency, packages Linux and macOS AMD64/ARM64 daemon+CLI archives and a versioned Helm package, emits SHA256SUMS, then publishes a tag-versioned multiarch OCI image to GHCR with SBOM/provenance and a GitHub release. PR Checks dry-runs archive and chart packaging and the two-architecture OCI build without pushing anything. Registry permissions and the actual tag publication are separate operator acceptance steps. No tag or release is created by this PR.
 
 ## Security limits
 

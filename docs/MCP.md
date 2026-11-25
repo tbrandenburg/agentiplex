@@ -18,7 +18,7 @@ protocols:
     enabled: true
 ```
 
-Environment: AGENTIPLEX_PROTOCOLS_MCP_ENABLED=true. Endpoint: http://127.0.0.1:8080/mcp (Streamable HTTP, JSON response, sessionless). Disabled by default. Enabling requires a literal loopback daemon listener. The handler rejects non-loopback peers, non-loopback Host and any browser Origin, retains SDK DNS-rebinding protection, and bounds request bodies. No authentication yet. Do not proxy this endpoint or expose it to untrusted local processes; all tools share the same trusted-local state and delivery namespace. No identity is inferred from the MCP client name.
+Environment: AGENTIPLEX_PROTOCOLS_MCP_ENABLED=true. Endpoint: http://127.0.0.1:8080/mcp (Streamable HTTP, JSON response, sessionless). Disabled by default. Enabling without authentication requires a literal loopback daemon listener (see secured deployment below). The handler rejects non-loopback peers, non-loopback Host and any browser Origin, retains SDK DNS-rebinding protection, and bounds request bodies. No authentication yet. Do not proxy this endpoint or expose it to untrusted local processes; all tools share the same trusted-local state and delivery namespace. No identity is inferred from the MCP client name.
 
 ## Tools
 
