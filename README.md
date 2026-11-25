@@ -48,3 +48,7 @@ See [deployment instructions](docs/DEPLOYMENT.md) for authenticated native TLS, 
 ## Autonomous engineering team (optional live model)
 
 See [examples/autonomous-team](examples/autonomous-team/README.md) for a configurable hybrid or all-real OpenCode team. The example provisions independent A2A gateways, submits one objective to the PM and observes model-issued collaboration through MCP. Real-model execution is explicitly opt-in locally; separate Live OpenCode CI uses the free model catalog without provider credentials. Deterministic Checks exercises startup and nested A2A/MCP interoperability.
+
+## Shared repository engineering team (optional live model)
+
+See [examples/repository-team](examples/repository-team/README.md) for six real OpenCode agents working in a single existing Git workspace chosen by the operator. `make repository-team` provisions the gateways, delegates one objective to the PM, and records actual receipts and Git changes. Only the Developer is edit-capable; executable verification is an explicit operator step after review. Agentiplex does not own the workspace. `make repository-check` runs provider-free regression tests.
