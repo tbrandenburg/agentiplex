@@ -33,12 +33,12 @@ flowchart TB
     end
     Cat --> JS[(NATS JetStream and KV)]
     Bus <--> JS
-    OUT -->|A2A HTTP| OC[OpenCode A2A gateway]
+    OUT -->|A2A HTTP| OC[External A2A agent gateway]
     OUT -->|A2A HTTP| Mock[Independent A2A agent services]
-    OC -->|ACP stdio| Runtime[OpenCode]
+    OC -->|ACP stdio| Runtime[Agent runtime]
 ```
 
-Agentiplex is both an A2A server (ingress) and client (egress). Each A2A interaction has client/server roles; a server-only agent does not automatically initiate outbound requests. Existing OpenCode gateway remains unchanged. Mock agents or external A2A clients can initiate work with the daemon. A later MCP adapter can expose collaboration tools to agent runtimes.
+Agentiplex is both an A2A server (ingress) and client (egress). Each A2A interaction has client/server roles; a server-only agent does not automatically initiate outbound requests. Existing third-party A2A gateways remain unchanged. Mock agents or external A2A clients can initiate work with the daemon. A later MCP adapter can expose collaboration tools to agent runtimes.
 
 ## 3. Component boundaries
 
@@ -130,7 +130,7 @@ Persist attempt intent before invoking external agents. On definitive transient 
 
 An HTTP timeout or crash after transmission but before receipt may conceal a successful remote execution. A2A message IDs do not universally guarantee target-side idempotency. In the demo, mark such attempts uncertain unless the target demonstrably supports safe retries or correlation-based reconciliation. Do not automatically duplicate potentially side-effecting work. Broker at-least-once delivery is not end-to-end exactly-once execution. No claim of atomicity between application Git commits and message publication.
 
-For OpenCode, serialize prompts per endpoint/session (one active prompt); retain task/context identifiers where supported. Never interpret canceled, failed, input-required or unknown tasks as completed.
+For agent runtimes that allow one active prompt (e.g. the example gateway), serialize prompts per endpoint/session (one active prompt); retain task/context identifiers where supported. Never interpret canceled, failed, input-required or unknown tasks as completed.
 
 ### 5.4 Broadcast and pooling (P1)
 
@@ -224,13 +224,13 @@ Set explicit retention, payload limits and storage quotas before admitting work.
 | Kubernetes | Single daemon replica initially; external NATS with official Helm chart and persistent volumes; service/port-forward or controlled ingress |
 | Future HA | Multiple daemon replicas only after safe delivery ownership, reconciliation, auth and failover are demonstrated |
 
-Use the same runtime code in all modes. No Docker/Kubernetes imports in the core. A container cannot reach a host's loopback address by using its own loopback; keep the first OpenCode demo native or use an explicitly isolated shared network namespace. Do not expose its unauthenticated gateway via a public proxy.
+Use the same runtime code in all modes. No Docker/Kubernetes imports in the core. A container cannot reach a host's loopback address by using its own loopback; keep the first real-agent demo native or use an explicitly isolated shared network namespace. Do not expose its unauthenticated gateway via a public proxy.
 
 ## 8. Security and operational limits
 
 The first demonstrator is trusted local infrastructure, not a production network service. Bind loopback by default; if using a private container network, restrict access and do not publish unauthenticated ports publicly. Allow only explicitly operator-approved outbound hosts/ports (including card-resolved interfaces); bound HTTP requests, redirects, response sizes and deadlines. Reject unapproved redirects, link-local/metadata services and endpoint changes; production SSRF/DNS-rebinding protections remain required. Treat cards/messages as untrusted data. Do not execute commands from cards.
 
-Do not treat declared sender names as authenticated principals. Production deployment needs authenticated agent/operator identity, authorization, TLS, broker ACLs and credential isolation. Do not store or log provider credentials; protect persistent state and avoid raw prompt/response bodies in default logs or metrics. Document that OpenCode read-only policy is not an OS sandbox; use trusted disposable workspace, minimal credentials and no unrestricted shell for the demo.
+Do not treat declared sender names as authenticated principals. Production deployment needs authenticated agent/operator identity, authorization, TLS, broker ACLs and credential isolation. Do not store or log provider credentials; protect persistent state and avoid raw prompt/response bodies in default logs or metrics. Document that agent read-only policies (e.g. the example gateway's) are not an OS sandbox; use trusted disposable workspace, minimal credentials and no unrestricted shell for the demo.
 
 ## 9. Repository layout
 
@@ -264,7 +264,6 @@ agentiplex/
 │   └── systemd/
 ├── examples/
 │   ├── simulated-agents/
-│   ├── opencode/
 │   └── engineering-team/
 ├── tests/
 │   ├── integration/
@@ -297,7 +296,7 @@ The root exposes a small embeddable API and can construct built-in integrations.
 | [Cobra](https://github.com/spf13/cobra) / [Viper](https://github.com/spf13/viper) | CLI/configuration |
 | Go standard library | HTTP, logging, cancellation, testing, embedded web UI |
 | [a2a-cli](https://github.com/a2aproject/a2a-cli) | Independent interoperability smoke test |
-| [opencode-a2a-lite](https://github.com/tbrandenburg/opencode-a2a-lite) | Optional real agent via A2A/ACP |
+| [opencode-a2a-lite](https://github.com/tbrandenburg/opencode-a2a-lite) | Example real-agent driver via A2A/ACP |
 
 Pin actual compatible versions in go.mod/go.sum and the demo setup after smoke tests. Verify SDK interfaces before writing adapters.
 
@@ -306,19 +305,19 @@ Implementation sequence:
 2. Registration, card resolution, validated AI Catalog publication and discovery.
 3. Durable direct-send path, CLI, delivery status and failure classification; offline/restart tests.
 4. Native A2A ingress with durable bus task status; independent client test.
-5. P1 broadcast and pools, state, dashboard, real OpenCode smoke test, container packaging.
+5. P1 broadcast and pools, state, dashboard, real-agent smoke test, container packaging.
 6. Future production security, multi-replica coordination and additional adapters after evidence.
 
 ## 11. Validation and reference material
 
-Trace acceptance to [PRD](PRD.md). CI should run unit/integration tests and a provider-free end-to-end test with independent mock services, plus restart and ambiguous-failure injection. Add catalog validation and official A2A CLI interoperability tests; record tested protocol/SDK versions. Verify real OpenCode separately on its documented supported runtime and report failures. The current design is not yet implemented or tested.
+Trace acceptance to [PRD](PRD.md). CI should run unit/integration tests and a provider-free end-to-end test with independent mock services, plus restart and ambiguous-failure injection. Add catalog validation and official A2A CLI interoperability tests; record tested protocol/SDK versions. Verify real agents separately on its documented supported runtime and report failures. The current design is not yet implemented or tested.
 
 - [A2A protocol](https://a2a-protocol.org/) and [official Go SDK](https://github.com/a2aproject/a2a-go)
 - [AI Catalog specification](https://github.com/Agent-Card/ai-catalog/blob/main/specification/ai-catalog.md) and [Go SDK](https://github.com/Agent-Card/ai-catalog-go)
 - [JetStream](https://docs.nats.io/concepts/jetstream), [consumers](https://docs.nats.io/nats-concepts/jetstream/consumers), [streams](https://docs.nats.io/nats-concepts/jetstream/streams) and [KV](https://docs.nats.io/nats-concepts/jetstream/key-value-store)
 - [NATS Kubernetes packaging](https://github.com/nats-io/k8s)
 - [Go module layout](https://go.dev/doc/modules/layout)
-- [OpenCode gateway limitations](https://github.com/tbrandenburg/opencode-a2a-lite)
+- [Example gateway limitations](https://github.com/tbrandenburg/opencode-a2a-lite)
 
 ### PR #2 implementation refinement
 
@@ -332,7 +331,7 @@ The direct and pool consumers permit a bounded window of 64 outstanding broker m
 
 ### PR #4 implementation refinement
 
-A read-only, embedded dashboard at /ui/ renders actual registry, collections, recent delivery summaries and retained/live SSE events. GET /api/v1/deliveries returns up to 100 top-level metadata-only summaries; detail lookup explicitly retrieves stored payloads. It uses a KV scan suitable for the small demonstrator, not a production index. The separate example driver starts six independent native A2A simulator processes and the daemon, executes a scripted requirement-review scenario, tests offline recovery across daemon restart and can substitute an operator-started OpenCode Architect. The script is not a workflow engine. See [DEMO.md](DEMO.md).
+A read-only, embedded dashboard at /ui/ renders actual registry, collections, recent delivery summaries and retained/live SSE events. GET /api/v1/deliveries returns up to 100 top-level metadata-only summaries; detail lookup explicitly retrieves stored payloads. It uses a KV scan suitable for the small demonstrator, not a production index. The separate example driver starts six independent native A2A simulator processes and the daemon, executes a scripted requirement-review scenario, tests offline recovery across daemon restart and can substitute an operator-started real A2A Architect. The script is not a workflow engine. See [DEMO.md](DEMO.md).
 
 ### PR #4 dashboard refinement
 

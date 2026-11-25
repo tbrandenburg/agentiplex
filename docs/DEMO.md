@@ -28,9 +28,9 @@ A fictional requirement asks that a motor stop within 100 ms of communication lo
 
 The dashboard is a read-only live view: registered agents (not online claims), groups/pools, recent top-level states with aggregate child status, selected original stored detail, and recent retained events. Counts are limited to the latest 50 top-level deliveries. Uncertain/partial outcomes are not success. AMIS owns all visual components and automatic polling. The existing SSE API remains available for CLI and external consumers. Disable it with `--dashboard=false` or observability.dashboard=false in YAML. The trusted-local API is not authenticated; do not expose publicly.
 
-## Optional real OpenCode Architect
+## Optional real A2A Architect
 
-The gateway can run unchanged as an independently hosted A2A endpoint. The example targets [opencode-a2a-lite v0.8.2](https://github.com/tbrandenburg/opencode-a2a-lite/releases/tag/v0.8.2) (verified upstream release and documented interface; the separate autonomous-team example tests live model interoperability in CI; this individual driver path is not separately live-verified).
+Any independently hosted A2A endpoint can replace the simulated Architect. The example uses OpenCode behind the [opencode-a2a-lite v0.8.2](https://github.com/tbrandenburg/opencode-a2a-lite/releases/tag/v0.8.2) gateway purely as a driver (verified upstream release and documented interface; the separate autonomous-team example tests live model interoperability in CI; this individual driver path is not separately live-verified).
 
 On a supported Linux host, with Node 22+, Bun 1.4.4, OpenCode >=2.2.7 on PATH, and a reviewed standalone disposable workspace with configured provider/model:
 
@@ -52,7 +52,7 @@ The driver registers the real gateway as architect and leaves the other five age
 
 ## Validation
 
-Checks builds and tests the existing integration suite and executes the entire provider-free scenario with real processes and persistent JetStream. An optional `--browser-check` uses Node 22+ and installed Google Chrome (override CHROME_BIN) via the browser's DevTools protocol to verify the actual rendered counts, live event stream and detail view; CI uses this option. No model credentials are needed. The optional real OpenCode run is a separate manual acceptance gate and is not represented as verified by simulated CI.
+Checks builds and tests the existing integration suite and executes the entire provider-free scenario with real processes and persistent JetStream. An optional `--browser-check` uses Node 22+ and installed Google Chrome (override CHROME_BIN) via the browser's DevTools protocol to verify the actual rendered counts, live event stream and detail view; CI uses this option. No model credentials are needed. The optional real-agent run is a separate manual acceptance gate and is not represented as verified by simulated CI.
 
 ## Configure the dashboard
 

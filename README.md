@@ -3,7 +3,7 @@
 **Bring your own agents. Build your own organization.**
 
 [![Checks](https://github.com/tbrandenburg/agentiplex/actions/workflows/ci.yaml/badge.svg?branch=main)](https://github.com/tbrandenburg/agentiplex/actions/workflows/ci.yaml)
-[![Live OpenCode](https://github.com/tbrandenburg/agentiplex/actions/workflows/live-opencode.yaml/badge.svg?branch=main)](https://github.com/tbrandenburg/agentiplex/actions/workflows/live-opencode.yaml)
+[![Live example](https://github.com/tbrandenburg/agentiplex/actions/workflows/live-opencode.yaml/badge.svg?branch=main)](https://github.com/tbrandenburg/agentiplex/actions/workflows/live-opencode.yaml)
 [![Release](https://img.shields.io/github/v/release/tbrandenburg/agentiplex)](https://github.com/tbrandenburg/agentiplex/releases)
 [![Go](https://img.shields.io/badge/Go-1.26%2B-00ADD8?logo=go&logoColor=white)](https://go.dev/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
@@ -99,9 +99,11 @@ Choose the level of collaboration you want to explore.
 | [Autonomous team](examples/autonomous-team/README.md) | `make live-check` | Real model-driven delegation through A2A and MCP using synthetic fixtures. |
 | [Repository team](examples/repository-team/README.md) | `make repository-team` with options | Six real agents working on the same Git worktree, with implementation and executable verification. |
 
-The real-agent examples require the pinned OpenCode and
-[opencode-a2a-lite](https://github.com/tbrandenburg/opencode-a2a-lite) runtimes.
-Follow their setup guides before running them. Live inference may transmit
+The core is agent-runtime independent. The real-agent examples use
+[OpenCode](https://opencode.ai) with
+[opencode-a2a-lite](https://github.com/tbrandenburg/opencode-a2a-lite) purely as a
+convenient A2A agent driver; any A2A agent can be registered instead.
+Follow the example setup guides before running them. Live inference may transmit
 project content to the selected provider.
 
 ### Collaborate on a real repository

@@ -27,7 +27,7 @@ help:
 		'  make demo-team        Run simulated engineering team' \
 		'  make demo-check       Noninteractive simulated demo' \
 		'  make autonomous-check Provider-free launcher check' \
-		'  make live-check       Real OpenCode hybrid review (MODEL optional, default: OpenCode default; Linux)' \
+		'  make live-check       Real-agent hybrid review example (MODEL optional; Linux)' \
 		'  make repository-team REPO=... [MODEL=...] OBJECTIVE=... (or WORKSPACE=...)  Shared repository team (requires --accept-full-access in REPOSITORY_ARGS)' \
 		'  make repository-check Provider-free repository-team tests' \
 		'Deployment:' \

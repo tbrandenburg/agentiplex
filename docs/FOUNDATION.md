@@ -10,7 +10,7 @@ This draft implements the first outbound vertical slice of [PRD](PRD.md) and [AR
 - Direct text delivery with durable enqueue receipts, optional caller idempotency key, pre-send offline retries and downstream task tracking.
 - Deterministic real A2A SDK server, provider-free tests, image packaging and CI.
 
-Deliberately deferred: inbound A2A server, registry refresh/delete, group filters, non-text payloads, health history, dashboard, persistent application memory, broadcasting, pooling, SSE, OpenCode live acceptance, Helm, multi-replica daemon and production security.
+Deliberately deferred: inbound A2A server, registry refresh/delete, group filters, non-text payloads, health history, dashboard, persistent application memory, broadcasting, pooling, SSE, live real-agent acceptance, Helm, multi-replica daemon and production security.
 
 The initial work stream uses a **single serial durable consumer** for direct messages rather than separate per-agent consumers. This establishes crash semantics first; parallel per-agent workers are a follow-up. An unavailable/long-running agent may reduce throughput. Events are a bounded best-effort audit view; delivery KV is authoritative. Idempotency keys are global to this trusted single-daemon namespace, not authenticated principal-scoped. Use caller keys for retry of an enqueue whose response was lost. Once a send might have executed, it becomes uncertain rather than automatically replaying it. Input-required/auth-required results are exposed but not resumed by the bus.
 
@@ -45,7 +45,7 @@ Stop the simulated agent, submit another message with a different key, restart t
 
 External broker: start NATS with JetStream enabled and persistent storage; pass `--broker-mode external --broker-url nats://127.0.0.1:4222`. Do not run two Agentiplex daemon instances against the same namespace.
 
-Container: build `docker build -t agentiplex:dev .`, run `docker run --rm -p 127.0.0.1:8080:8080 -v agentiplex-data:/data agentiplex:dev --listen 0.0.0.0:8080 --trusted-network --public-url http://127.0.0.1:8080 --storage /data`. It is a trusted demo service with no auth; do not publish externally. The container cannot access a host's loopback OpenCode service through its own loopback. Prefer native local processes for that integration.
+Container: build `docker build -t agentiplex:dev .`, run `docker run --rm -p 127.0.0.1:8080:8080 -v agentiplex-data:/data agentiplex:dev --listen 0.0.0.0:8080 --trusted-network --public-url http://127.0.0.1:8080 --storage /data`. It is a trusted demo service with no auth; do not publish externally. The container cannot access a host's loopback agent service through its own loopback. Prefer native local processes for that integration.
 
 ## Merge gates
 
