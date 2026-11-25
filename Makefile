@@ -1,6 +1,6 @@
-.PHONY: help fmt lint dashboard-assets build test check clean run demo-agent demo-team demo-check autonomous-check live-check docker compose-up compose-down release release-plan
+.PHONY: help fmt lint dashboard-assets build test check clean run demo-agent demo-team demo-check autonomous-check live-check repository-team repository-check docker compose-up compose-down release release-plan
 .DEFAULT_GOAL := help
-export bump
+export bump WORKSPACE OBJECTIVE
 
 # Optional overrides; no secrets or environment files are created by make.
 GO_TEST_FLAGS ?= -race -count=1
@@ -8,6 +8,7 @@ RUN_ARGS ?= --mcp
 DEMO_ARGS ?=
 AUTONOMOUS_ARGS ?= --seconds 90
 LIVE_ARGS ?= --model opencode/big-pickle --accept-free-model --headless --summary-only --prompt-timeout 10m --seconds 900
+REPOSITORY_ARGS ?=
 IMAGE ?= agentiplex:dev
 
 help:
@@ -27,6 +28,8 @@ help:
 		'  make demo-check       Noninteractive simulated demo' \
 		'  make autonomous-check Provider-free launcher check' \
 		'  make live-check       Real OpenCode hybrid review (free model; Linux)' \
+		'  make repository-team WORKSPACE=... OBJECTIVE=...  Shared repository team (opt-in)' \
+		'  make repository-check Provider-free repository-team tests' \
 		'Deployment:' \
 		'  make docker           Build local image (IMAGE=agentiplex:dev)' \
 		'  make compose-up       Start TLS demo; generate missing demo secrets' \
@@ -53,7 +56,7 @@ test: dashboard-assets
 lint: dashboard-assets
 	go vet ./...
 
-check: test lint
+check: test lint repository-check
 	python3 -B examples/autonomous-team/test_team.py
 	bash scripts/test-release.sh
 
@@ -72,12 +75,18 @@ demo-team:
 demo-check:
 	bash examples/engineering-team/demo.sh --check $(DEMO_ARGS)
 
-autonomous-check:
+autonomous-check: repository-check
 	python3 -B examples/autonomous-team/test_team.py
 	python3 -B examples/autonomous-team/team.py --profile simulated --check --headless $(AUTONOMOUS_ARGS)
 
 live-check:
 	python3 -B examples/autonomous-team/team.py $(LIVE_ARGS)
+
+repository-team: build
+	python3 -B examples/repository-team/team.py --workspace "${WORKSPACE}" --objective "${OBJECTIVE}" $(REPOSITORY_ARGS)
+
+repository-check:
+	python3 -B examples/repository-team/test_team.py
 
 docker:
 	docker build -t $(IMAGE) .
