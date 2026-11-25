@@ -51,4 +51,4 @@ jobs:
           env -i PATH="$PATH" HOME="$home" LANG=C.UTF-8 USER="$(id -un)" \
             GOMODCACHE="$(go env GOMODCACHE)" GOCACHE="$(go env GOCACHE)" \
             python3 -B examples/autonomous-team/team.py \
-              --model opencode/big-pickle --accept-free-model --headless --seconds 600
+              --model opencode/big-pickle --accept-free-model --smoke --headless --seconds 600
