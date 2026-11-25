@@ -275,17 +275,19 @@ class RepositoryTeam(base.Team):
                    "--dashboard=" + str(not self.args.headless).lower()],
                    dict(self.env, AGENTIPLEX_DELIVERY_TIMEOUT="30s",
                         AGENTIPLEX_DELIVERY_RETRY_DELAY="2s", AGENTIPLEX_DELIVERY_MAX_ATTEMPTS="80"))
-        if self.args.port == 0:
-            # Read the ready address only from our own daemon's log; never
-            # probe a guessed port that might belong to a concurrent run.
-            while True:
-                self.alive()
-                match = re.search(r'agentiplexd ready"?\s+listen=127\.0\.0\.1:(\d+)\b',
-                                  (self.root / "daemon.log").read_text(errors="replace"))
-                if match:
-                    self.endpoint = "http://127.0.0.1:" + match.group(1)
-                    break
-                time.sleep(.2)
+        # Require our own daemon's readiness record even for a fixed port.
+        # A preflight bind is only advisory: another process could bind first.
+        while True:
+            self.alive()
+            match = re.search(r'agentiplexd ready"?\s+listen=127\.0\.0\.1:(\d+)\b',
+                              (self.root / "daemon.log").read_text(errors="replace"))
+            if match:
+                port = int(match.group(1))
+                if not 1024 <= port <= 65535 or self.args.port not in (0, port):
+                    raise RuntimeError("unexpected daemon readiness address")
+                self.endpoint = "http://127.0.0.1:" + str(port)
+                break
+            time.sleep(.2)
         while True:
             self.alive()
             try:
