@@ -230,7 +230,7 @@ Make is the single development entry point.
 
 See [release and packaging](docs/RELEASE.md) for publishing a version.
 To stop monitoring an unresolved accepted task, follow the operator procedure
-in [lifecycle and state](docs/STATE.md); never assume an uncertain outcome
+in the [deployment guide](docs/DEPLOYMENT.md); never assume an uncertain outcome
 is safe to replay.
 
 ## License
