@@ -86,6 +86,11 @@ func handlerMode(b *agentiplex.Bus,u *dashboard.UI,secured bool,publicURL ...str
 	mux.HandleFunc("GET /api/v1/deliveries/{id}",func(w http.ResponseWriter,r *http.Request){
 		d,err:=b.Delivery(r.PathValue("id"));respond(w,200,d,err)
 	})
+	mux.HandleFunc("POST /api/v1/deliveries/{id}/abandon",func(w http.ResponseWriter,r *http.Request){
+		var in struct{TaskID string `json:"taskId"`;RemoteStopped bool `json:"remoteStopped"`}
+		if !decode(w,r,&in){return}
+		d,err:=b.AbandonTask(r.Context(),r.PathValue("id"),in.TaskID,in.RemoteStopped);respond(w,200,d,err)
+	})
 	mux.HandleFunc("GET /api/v1/events",func(w http.ResponseWriter,r *http.Request){
 		var after uint64
 		if raw:=r.URL.Query().Get("after");raw!=""{v,err:=strconv.ParseUint(raw,10,64);if err!=nil{respond(w,200,nil,agentiplex.ErrInvalid);return};after=v}

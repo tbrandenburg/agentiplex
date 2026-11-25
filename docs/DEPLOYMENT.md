@@ -118,3 +118,7 @@ The Release workflow runs only on vMAJOR.MINOR.PATCH[-prerelease] tags whose com
 ## Security limits
 
 This is a first network deployment boundary, not production multi-tenant security. The static role model does not scope a caller to specific deliveries, agents, or state keys. No identity provider, automatic credential rotation, HA, external policy engine or audit certification. Dashboard schema execution remains trusted operator configuration; the AMIS bundled dependency review remains open. Do not expose the old unauthenticated demo to untrusted networks. See [STATE.md](STATE.md), [MCP.md](MCP.md) and [DASHBOARD.md](DASHBOARD.md).
+
+## MVP operational limits
+
+One daemon per namespace only. Configure delivery.workers (default 4; range 1–16, zero uses default) or --workers. No active-active failover. Operator-only messages abandon requires matching downstream task ID and explicit --confirm-remote-stopped; never use merely because an endpoint is unreachable. It stops local monitoring, retains uncertainty and releases the reservation, not remote execution. No automatic replay. Retry a 409 if a poll is in flight. Release tags are created with make release bump=PATCH|MINOR|MAJOR from a clean current main; preview via make release-plan. The existing tag workflow builds/tests/publishes. No tag was pushed by implementing the target.

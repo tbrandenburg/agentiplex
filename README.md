@@ -2,7 +2,7 @@
 
 Lightweight, open-source middleware for AI agent collaboration. Agent discovery, pooling, durable messaging, broadcasting and persistent state — built in Go, with modular adapters for A2A, AHP, ACP and MCP.
 
-**Status:** early foundation; native A2A direct-send, durable group broadcasting, pool dispatch, event subscriptions, agent lifecycle and revision-checked state are the current scope.
+**Status:** v0.1 MVP stabilization; one daemon per namespace, durable A2A/MCP collaboration, shared state and optional real OpenCode team. Distributed coordination and production HA are deferred.
 
 - [Product requirements](docs/PRD.md)
 - [Architecture](docs/ARCH.md)
@@ -29,7 +29,13 @@ Open http://127.0.0.1:18080/ui/. Six independent simulated A2A agents exercise t
 
 Go 1.26 or newer. Dependencies are locked in go.mod and go.sum; run `go generate ./internal/dashboard` before `go test -race ./...`. The provider-free demonstration uses an independently running A2A server. See the foundation guide for commands and current limitations.
 
-This development version is trusted-local only: it has no authentication. Do not expose it publicly.
+Local demos are unauthenticated and must stay on loopback or isolated trusted networks. Authenticated TLS deployment is supported; see below.
+
+Use `make build`, `make test`, `make check` and `make demo-team` (existing Taskfile remains available). `agentiplexd --workers 4` bounds parallel outbound operations; use one for serial execution. For a stuck accepted task, inspect `agentiplex messages status ID`; only after independently confirming the remote task stopped, use `agentiplex messages abandon ID DOWNSTREAM_TASK_ID --confirm-remote-stopped`. This retains uncertainty and never cancels or replays remote work.
+
+### Release
+
+From clean, current `main`, preview with `make release-plan bump=MINOR`, then publish with `make release bump=MINOR` (also PATCH or MAJOR). Highest stable vMAJOR.MINOR.PATCH tag is the baseline; no tags means v0.0.0, so the first MINOR release is v0.1.0. Prerelease tags are ignored. The command pushes only an annotated release tag; existing GitHub Actions tests, builds and publishes the release. A failed push retains the local tag for manual inspection. No release is created by ordinary CI.
 
 ## MCP collaboration tools
 

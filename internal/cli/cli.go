@@ -103,6 +103,13 @@ func Command()*cobra.Command{
 	}
 	messages:=&cobra.Command{Use:"messages"}
 	messages.AddCommand(&cobra.Command{Use:"status ID",Args:cobra.ExactArgs(1),RunE:func(c *cobra.Command,a []string)error{return print(c,"GET","/api/v1/deliveries/"+url.PathEscape(a[0]),nil)}})
+	var remoteStopped bool
+	abandon:=&cobra.Command{Use:"abandon ID DOWNSTREAM_TASK_ID",Short:"Stop monitoring only after verifying remote execution stopped; outcome remains uncertain",Args:cobra.ExactArgs(2),RunE:func(c *cobra.Command,a []string)error{
+		if !remoteStopped{return fmt.Errorf("verify remote execution stopped before using --confirm-remote-stopped")}
+		return print(c,"POST","/api/v1/deliveries/"+url.PathEscape(a[0])+"/abandon",map[string]any{"taskId":a[1],"remoteStopped":true})
+	}}
+	abandon.Flags().BoolVar(&remoteStopped,"confirm-remote-stopped",false,"confirm independently that remote execution stopped; no cancellation or replay")
+	messages.AddCommand(abandon)
 	root.AddCommand(messages)
 	root.AddCommand(&cobra.Command{Use:"status",Args:cobra.NoArgs,RunE:func(c *cobra.Command,a []string)error{return print(c,"GET","/readyz",nil)}})
 	root.AddCommand(&cobra.Command{Use:"health",Args:cobra.NoArgs,RunE:func(c *cobra.Command,a []string)error{return print(c,"GET","/healthz",nil)}})
