@@ -1,7 +1,7 @@
 # Repository engineering team
 
 A third, optional example: six independent real OpenCode A2A agents collaborate
-on **one explicitly selected existing Git workspace**. Unlike the fixture-based
+on **one explicitly selected Git workspace** (a fresh scratch worktree or an existing checkout). Unlike the fixture-based
 [autonomous-team](../autonomous-team/README.md), this example can produce real
 repository changes. It is an operator-side launcher and observer, not a new
 Agentiplex runtime, workflow engine, or workspace API. The CLI and daemon only
@@ -18,10 +18,11 @@ receive agent IDs, endpoints, collaboration messages and shared state.
 
 Use Linux, Go 1.26+, Python 3.10+, Git, GNU Make, Node/npm, Bun 1.4.4, OpenCode
 2.3.2 and opencode-a2a-lite 0.8.2 on PATH (same pinned versions as the autonomous
-demo). The operator selects and prepares a clean, disposable checkout or
-worktree on an appropriate branch. The launcher never clones, switches branches,
-commits, pushes, merges, resets or cleans your repository. Full-access agents could
-perform those operations; the role instructions ask them not to, but cannot prevent them.
+demo). With REPO, the launcher creates its own independent bare clone and detached
+clean worktree; with WORKSPACE, the operator supplies a clean checkout. The launcher
+never switches branches, commits, pushes, merges, resets or cleans the source
+repository or an existing checkout. Full-access agents could perform those
+operations; the role instructions ask them not to, but cannot prevent them.
 
 The gateway requires a trusted standalone workspace with reviewed configuration.
 Do not use a workspace with untrusted project instructions, escaping symlinks,
@@ -30,6 +31,43 @@ container/user with minimal host permissions and credentials; the runtime
 profiles are **not an OS sandbox**. All six gateways and the dedicated daemon
 listen on loopback, without authentication. Never expose them to other users or
 a public proxy. The selected workspace is not copied to temporary fixtures.
+
+### Option A: fresh scratch clone (recommended)
+
+```sh
+make repository-team REPO=https://github.com/owner/repo.git \
+  REF=main MODEL=opencode/big-pickle \
+  OBJECTIVE="Improve the README and check links" \
+  REPOSITORY_ARGS="--accept-full-access --accept-provider-data --public-workspace"
+```
+
+`REF` is optional (branch or tag; default remote HEAD), `MODEL` is required, and
+`REPO` and `WORKSPACE` are mutually exclusive. HTTPS/SSH URLs without embedded
+credentials or an absolute local repository path are accepted. Git uses the
+operator's configured credentials for the clone (noninteractive terminal);
+no provider keys are forwarded to clone. Use a disposable user with minimal
+Git credentials: full-access agents may still reach credentials available to
+that user. The clone is bounded to 300 seconds and does not initialize submodules.
+
+Each run gets its own private `/tmp/agentiplex-repository-*` root, bare
+`repository.git` object database (no shared cache or hardlinks) and detached
+`workspace/` linked worktree at the exact cloned commit. Source working-tree
+changes are not copied. The launcher sets the scratch origin push URL to
+`/dev/null` as an accident guard, not an access control. It creates only an absent
+`opencode.json`, locally excluded via the scratch repository's `info/exclude`;
+existing tracked or untracked OpenCode config causes a visible refusal, not an
+overwrite. Use WORKSPACE with reviewed configuration for such projects.
+Clone runs default to a kernel-assigned daemon port; gateways also select their
+own ports. Concurrent runs of the same repository do not share Git storage,
+JetStream or ports. The actual dashboard URL and workspace are printed.
+Explicit `--port` collisions fail rather than attach to another daemon.
+
+Scratch clone/worktree and evidence are retained on success or failure; inspect
+and optionally create a branch with `git switch -c your-branch` in the printed
+workspace after review. Delete the entire private run root when finished, only
+after its processes have stopped. No automatic commit or publication.
+
+### Option B: existing local workspace
 
 Prepare a common minimal OpenCode configuration at the workspace root,
 `opencode.json` (commit it yourself or explicitly exclude it locally so Git
@@ -92,11 +130,16 @@ they may retain prompts. Explicit consent is not a privacy guarantee.
 Use a dedicated key and provider-side budget. There is no token/cost ceiling
 or paid fallback orchestrated by the launcher.
 
-The target builds Agentiplex first. Alternatively, after `make build`, use
-`python3 -B examples/repository-team/team.py --workspace ... --objective ...`
-with the same flags. Default team deadline 1200s, gateway prompt timeout 10m;
-override using `REPOSITORY_ARGS` (e.g. `--seconds 1800`). Dashboard:
-http://127.0.0.1:19080/ui/ (unless `--headless`).
+The launcher builds Agentiplex via `make build` under a cooperating source-directory
+lock and copies binaries into the private run root before releasing it. It locks
+the canonical workspace directory during provisioning, collaboration and final
+evidence capture: a second launcher using the same existing checkout fails instead
+of concurrently editing it. These advisory locks coordinate this example only,
+not arbitrary Git processes or full-access agents. Existing workspace mode uses
+port 19080 by default; choose a distinct `--port` and matching local MCP config
+for simultaneous different existing workspaces. Default team deadline 1200s,
+gateway prompt timeout 10m; override using `REPOSITORY_ARGS` (e.g. `--seconds 1800`).
+The dashboard URL is printed at startup (unless `--headless`).
 
 ## 3. Collaboration and write authority
 
@@ -108,7 +151,7 @@ http://127.0.0.1:19080/ui/ (unless `--headless`).
 | Tester 1 / Tester 2 | full-access | Independently execute build/test/lint commands and report results |
 | Quality | read-only | Independent review |
 
-All six receive the exact same canonical path as `--workspace`; they have
+All six receive the exact same canonical workspace path as gateway `--workspace`; they have
 independent gateway processes and sessions, and separate policy files outside
 the checkout. Names and skills are advertised through A2A. The PM receives a
 single objective and role guidance, and chooses the details of its delegations.
@@ -188,7 +231,8 @@ provider-free regression tests for shared workspace binding, role grants,
 registration, Git evidence, acceptance and operator test execution. Live
 repository collaboration is explicitly opt-in and not run against private source
 in CI. The Live OpenCode workflow additionally provisions six real gateways on a
-clean synthetic Git checkout with explicit full-access acknowledgement and no model submission. Review/redact run data before sharing and delete it yourself when done.
+clean synthetic Git checkout in both existing-workspace and scratch-clone modes
+with explicit full-access acknowledgement and no model submission. Review/redact run data before sharing and delete it yourself when done.
 
 Gateway reference: [v0.8.2 capability profiles](https://github.com/tbrandenburg/opencode-a2a-lite/blob/v0.8.2/README.md#capability-profiles)
 and [operator policy](https://github.com/tbrandenburg/opencode-a2a-lite/blob/v0.8.2/docs/operator-policy-state.md).
