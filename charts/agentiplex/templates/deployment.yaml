@@ -1,6 +1,6 @@
 {{- if not (hasPrefix "https://" .Values.publicURL) }}{{ fail "publicURL must use https://" }}{{ end }}
 {{- if not (has .Values.broker.credentialMode (list "token" "credentials")) }}{{ fail "broker.credentialMode must be token or credentials" }}{{ end }}
-{{- if and .Values.broker.tls (not (hasPrefix "tls://" .Values.broker.url)) }}{{ fail "broker.tls requires tls:// URL" }}{{ end }}
+{{- if not (hasPrefix "tls://" .Values.broker.url) }}{{ fail "credentialed broker requires tls:// URL" }}{{ end }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:

@@ -102,6 +102,8 @@ func (a *Auth) Wrap(next http.Handler)http.Handler{
 			next.ServeHTTP(w,r);return
 		}
 		w.Header().Set("Cache-Control","no-store")
+		w.Header().Set("X-Content-Type-Options","nosniff")
+		w.Header().Set("Referrer-Policy","no-referrer")
 		if r.TLS==nil{http.Error(w,"TLS required",403);return}
 		// Browser credentials are exclusively read-only. Block cross-site
 		// origins and all browser-origin requests to mutation endpoints.

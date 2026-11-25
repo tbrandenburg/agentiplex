@@ -46,7 +46,7 @@ func Command() *cobra.Command {
 	f.StringVar(&config,"config","","configuration YAML file")
 	f.String("listen","127.0.0.1:8080","HTTP listen address")
 	f.String("public-url","","advertised HTTP(S) origin; required on non-loopback listeners")
-	f.Bool("mcp",false,"enable trusted-local MCP Streamable HTTP endpoint")
+	f.Bool("mcp",false,"enable MCP Streamable HTTP (authentication and TLS required off loopback)")
 	f.Bool("dashboard",true,"enable embedded read-only dashboard")
 	f.String("dashboard-schema","","trusted AMIS JSON page schema file")
 	f.String("dashboard-theme","cxd","AMIS theme: cxd, antd, ang, dark")
@@ -73,7 +73,7 @@ func run(ctx context.Context,cfg agentiplex.Config,listen,publicURL string,trust
 	if auth!=nil&&(certFile==""||!strings.HasPrefix(publicURL,"https://")){return errors.New("authenticated service requires TLS certificate, key and explicit HTTPS public URL")}
 	if auth!=nil&&dashboardEnabled&&!auth.HasViewer(){return errors.New("authenticated dashboard requires a viewer credential or --dashboard=false")}
 	if mcpEnabled&&auth==nil&&(parseErr!=nil||!ip.Unmap().IsLoopback()){return errors.New("MCP requires a literal loopback listener; remote access is not supported") }
-	if auth==nil&&!trusted&&(parseErr!=nil||!ip.Unmap().IsLoopback()){return errors.New("non-loopback bind requires --trusted-network; no authentication in foundation")}
+	if auth==nil&&!trusted&&(parseErr!=nil||!ip.Unmap().IsLoopback()){return errors.New("non-loopback bind requires authenticated TLS or explicit isolated --trusted-network demo mode")}
 	ln,err:=net.Listen("tcp",listen);if err!=nil{return err};defer ln.Close()
 	publicURL,err=adapter.PublicURL(publicURL,ln.Addr().String());if err!=nil{return err}
 	if (certFile!="")!=strings.HasPrefix(publicURL,"https://"){return errors.New("public URL scheme must match listener TLS configuration")}

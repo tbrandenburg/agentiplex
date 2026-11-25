@@ -52,7 +52,7 @@ The official independent A2A Go client is exercised in the integration tests. Us
 
 ## Deployment and trust
 
-`server.public_url` / `--public-url` / `AGENTIPLEX_SERVER_PUBLIC_URL` sets the advertised origin; loopback listeners default to the actual bound address. Non-loopback listeners require an explicit advertised origin and the existing trusted-network opt-in. Docker defaults to http://127.0.0.1:8080; override the entire daemon argument list for a different port mapping. No Host header inference.
+`server.public_url` / `--public-url` / `AGENTIPLEX_SERVER_PUBLIC_URL` sets the advertised origin; loopback listeners default to the actual bound address. Non-loopback listeners require an explicit advertised origin and the existing trusted-network opt-in. Docker defaults to an internal loopback listener; use the secure deployment or explicitly configure an isolated demo listener and matching advertised origin. No Host header inference.
 
 The service is **trusted-local only**, including task lookups. No authentication, permission isolation or production network exposure. Do not put sensitive work into an unauthenticated network-accessible instance.
 

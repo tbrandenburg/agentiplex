@@ -13,7 +13,7 @@ broker:
   url: tls://nats:4222
   secret: agentiplex-broker # token (or credentials), ca.crt if TLS
   credentialMode: token # token or credentials
-  tls: true
+  tls: true # mount custom broker CA; false uses system trust (URL still tls://)
   replicas: 1
 allowedOrigins: []
 resources:
