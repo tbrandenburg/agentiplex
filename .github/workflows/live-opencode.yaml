@@ -63,7 +63,7 @@ jobs:
           git -C "$work" commit -qm "synthetic fixture"
           env -i PATH="$PATH" HOME="$home" LANG=C.UTF-8 USER="$(id -un)" \
             GOMODCACHE="$(go env GOMODCACHE)" GOCACHE="$(go env GOCACHE)" \
-            make repository-team WORKSPACE="$work" REPOSITORY_ARGS="--check --headless --seconds 180"
+            make repository-team WORKSPACE="$work" REPOSITORY_ARGS="--check --accept-full-access --headless --seconds 180"
           test -z "$(git -C "$work" status --porcelain)"
       - name: Credential-free live hybrid acceptance
         shell: bash

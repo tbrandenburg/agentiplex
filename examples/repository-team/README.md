@@ -7,13 +7,21 @@ repository changes. It is an operator-side launcher and observer, not a new
 Agentiplex runtime, workflow engine, or workspace API. The CLI and daemon only
 receive agent IDs, endpoints, collaboration messages and shared state.
 
+> **WARNING — FULL ACCESS:** Developer and both Testers can execute arbitrary shell
+> commands without per-command approval, edit any files available to your OS user,
+> use the network, access forwarded provider credentials, perform Git operations,
+> and bypass MCP role grants. There is no OS sandbox or rollback. Use a disposable
+> isolated VM/container/user with minimal credentials, not your everyday development
+> environment. The launcher requires explicit `--accept-full-access` even for startup-only checks.
+
 ## 1. Prepare a trusted workspace
 
 Use Linux, Go 1.26+, Python 3.10+, Git, GNU Make, Node/npm, Bun 1.4.4, OpenCode
 2.3.2 and opencode-a2a-lite 0.8.2 on PATH (same pinned versions as the autonomous
 demo). The operator selects and prepares a clean, disposable checkout or
 worktree on an appropriate branch. The launcher never clones, switches branches,
-commits, pushes, merges, resets or cleans your repository.
+commits, pushes, merges, resets or cleans your repository. Full-access agents could
+perform those operations; the role instructions ask them not to, but cannot prevent them.
 
 The gateway requires a trusted standalone workspace with reviewed configuration.
 Do not use a workspace with untrusted project instructions, escaping symlinks,
@@ -58,12 +66,13 @@ From the Agentiplex checkout:
 
 ```sh
 # Optional startup-only check with six real gateways; no model task:
-make repository-team WORKSPACE=/absolute/trusted/repo REPOSITORY_ARGS=--check
+make repository-team WORKSPACE=/absolute/trusted/repo \
+  REPOSITORY_ARGS="--check --accept-full-access"
 
 # A real edit on public/synthetic input only:
 make repository-team WORKSPACE=/absolute/trusted/repo \
   OBJECTIVE="Improve the README and correct broken relative links" \
-  REPOSITORY_ARGS="--accept-provider-data --public-workspace"
+  REPOSITORY_ARGS="--accept-full-access --accept-provider-data --public-workspace"
 ```
 
 For private code, select a provider/model approved for that data in
@@ -73,7 +82,7 @@ your shell (do not put key values in commands, files or logs):
 ```sh
 make repository-team WORKSPACE=/absolute/trusted/repo \
   OBJECTIVE="Improve the README" \
-  REPOSITORY_ARGS="--accept-provider-data --pass-env OPENAI_API_KEY"
+  REPOSITORY_ARGS="--accept-full-access --accept-provider-data --pass-env OPENAI_API_KEY"
 ```
 
 Provider/model availability and terms vary. Credential-free live runs require
@@ -95,34 +104,40 @@ http://127.0.0.1:19080/ui/ (unless `--headless`).
 |---|---|---|
 | PM | read-only | Discover, delegate, wait, consolidate |
 | Architect | read-only | Analyze project, propose change |
-| Developer | edit | Implement change in the actual workspace |
-| Tester 1 / Tester 2 | read-only | Inspect actual code/test changes, recommend verification |
+| Developer | full-access | Implement, build, run tests and fix failures |
+| Tester 1 / Tester 2 | full-access | Independently execute build/test/lint commands and report results |
 | Quality | read-only | Independent review |
 
 All six receive the exact same canonical path as `--workspace`; they have
 independent gateway processes and sessions, and separate policy files outside
 the checkout. Names and skills are advertised through A2A. The PM receives a
 single objective and role guidance, and chooses the details of its delegations.
-Only PM has send/broadcast/dispatch grants. Workers can inspect receipts and
-share bounded KV notes; role labels and the PM's instructions are not
-authenticated identities or filesystem permissions.
+Only PM receives explicit send/broadcast/dispatch MCP grants. Workers can inspect
+receipts and share bounded KV notes. Full-access workers can bypass the MCP grants
+through shell/network access to the unauthenticated daemon. Role instructions are
+not authenticated identities, filesystem permissions or enforceable ownership.
 
-The edit profile does not allow shell, Git or test execution. The gateway's
-full-access profile would grant unrestricted shell and host-user authority;
-this example **never enables it**. Tester agents perform review, not executable
-tests, and must label suggested commands NOT RUN. This is an intentional
-limitation, not a simulated successful test. The launcher does not add a custom
-shell MCP server or bypass hard policy denials. Review all changes before
-executing repository code; edits can affect hooks, scripts or future builds.
+For Developer and both Testers, the launcher selects gateway `full-access` and
+passes `--dangerously-skip-permissions` after the operator acknowledges the warning.
+This permits unrestricted shell execution, including Git, builds, tests, debugging,
+web access and potentially edits outside the project. Testers are instructed not
+to edit source and all agents are instructed not to stage, commit, push, merge or
+switch branches. These are behavioral requests, not enforcement. Developer and
+testers must sequence work; the PM can delegate a fix and retest after a failure
+within the existing six-delegation budget. PM, Architect and Quality retain their
+read-only gateway profiles. No custom shell MCP server or middleware change.
 
 The launcher observes authoritative delivery receipts and state. It requires a
 completed real PM plus real Architect, Developer, at least one Tester and Quality
-result, PM/developer shared-state notes, no unresolved or failed deliveries,
+result, PM/developer shared-state notes, a completed tester’s shared-state verification
+report, no unresolved or failed deliveries,
 and a Git-visible change. It does not decide detailed engineering work, replay
 ambiguous requests, or claim code correctness. If the PM returns before a worker
 finishes, the observer waits within the same bounded deadline. The unused tester
-may remain idle. Only the Developer receives edit capability; this is tool
-hardening, not enforceable artifact ownership or OS isolation.
+may remain idle. A delivery completing and a tester report existing do not independently
+prove that a command ran or passed. Agent-reported commands, exit codes and outputs
+must be reviewed; the PASS gate attests collaboration and Git-visible changes, not
+correctness. Full-access agents can also modify evidence on disk.
 
 ## 4. Inspect and actually verify
 
@@ -131,7 +146,8 @@ The launcher prints a private run directory under
 JetStream, gateway logs, `evidence.json` (actual receipts and shared state),
 `workspace.json`, `git-status.txt`, and `changes.diff` (tracked diff relative
 to HEAD). New untracked paths appear in Git status, not in the patch; inspect
-their contents separately. It checks HEAD, branch and index did not change.
+their contents separately. It checks final HEAD, branch and index against the initial
+state; it cannot prevent or prove the absence of transient Git operations or remote pushes.
 Ignored files and untracked file contents are not attested; the check is not
 a security boundary. Failed runs can leave partial edits; there is no rollback.
 
@@ -143,7 +159,8 @@ git -C /absolute/trusted/repo diff HEAD
 # Inspect any new untracked files and review potentially executable changes.
 ```
 
-After human review, an operator can run the project's **actual** test command
+The agents can run tests during the collaborative session. After human review, an
+operator can optionally independently rerun the project’s **actual** test command
 using the separate verification helper. It accepts an explicit argv command
 (not a model-generated command or shell eval), compares the tracked Git evidence
 with the recorded run, captures real stdout/stderr and exit code in a new
@@ -171,7 +188,7 @@ provider-free regression tests for shared workspace binding, role grants,
 registration, Git evidence, acceptance and operator test execution. Live
 repository collaboration is explicitly opt-in and not run against private source
 in CI. The Live OpenCode workflow additionally provisions six real gateways on a
-clean synthetic Git checkout with no model submission. Review/redact run data before sharing and delete it yourself when done.
+clean synthetic Git checkout with explicit full-access acknowledgement and no model submission. Review/redact run data before sharing and delete it yourself when done.
 
 Gateway reference: [v0.8.2 capability profiles](https://github.com/tbrandenburg/opencode-a2a-lite/blob/v0.8.2/README.md#capability-profiles)
 and [operator policy](https://github.com/tbrandenburg/opencode-a2a-lite/blob/v0.8.2/docs/operator-policy-state.md).
