@@ -8,6 +8,7 @@ on:
       - 'internal/daemon/**'
       - 'internal/nats/**'
       - '*.go'
+      - 'Makefile'
       - 'go.mod'
       - 'go.sum'
       - '.github/workflows/live-opencode.yaml'
@@ -50,5 +51,4 @@ jobs:
           trap 'rm -rf "$home"' EXIT
           env -i PATH="$PATH" HOME="$home" LANG=C.UTF-8 USER="$(id -un)" \
             GOMODCACHE="$(go env GOMODCACHE)" GOCACHE="$(go env GOCACHE)" \
-            python3 -B examples/autonomous-team/team.py \
-              --model opencode/big-pickle --accept-free-model --headless --summary-only --prompt-timeout 10m --seconds 900
+            make live-check

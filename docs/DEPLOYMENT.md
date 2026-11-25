@@ -77,6 +77,7 @@ From the repository root, with Docker Compose v2 and OpenSSL:
 ```sh
 bash scripts/demo-secrets.sh
 docker compose up -d --build --wait
+# Or: make compose-up (generates demo secrets only if absent)
 ```
 
 The development script creates unique role and broker credentials plus a seven-day demo CA and separate daemon/broker certificates under ignored .demo-secrets. The directory is 0700; mounted files are read-only and readable by service UIDs. Never reuse these demo certificates in production. Trust the CA explicitly in curl/CLI or your browser (only in a disposable profile). The simulators use unauthenticated HTTP **only** within the demo bridge network; no simulator or broker ports are published. Do not attach untrusted containers.
@@ -95,7 +96,7 @@ agentiplex pools set testers tester-1 tester-2
 agentiplex broadcast engineering "Contract update"
 ```
 
-Use the CLI built from the checkout (or docker compose exec agentiplex agentiplex with mounted credential paths). Dashboard: https://localhost:18443/ui/. The operator may use the separate collaborator credential for agent tasks. Compose down preserves JetStream volume; down -v **deletes all stored data**. Stop/start Quality and restart the daemon without deleting volumes to observe durable recovery. CI's isolated scripts/compose-check.sh generates its own credentials and destroys its test project and volume; refuses to run if .demo-secrets already exists.
+Use the CLI built from the checkout (or docker compose exec agentiplex agentiplex with mounted credential paths). Dashboard: https://localhost:18443/ui/. The operator may use the separate collaborator credential for agent tasks. `make compose-down` (Compose down) preserves JetStream volume and existing credentials; down -v **deletes all stored data**. Stop/start Quality and restart the daemon without deleting volumes to observe durable recovery. CI's isolated scripts/compose-check.sh generates its own credentials and destroys its test project and volume; refuses to run if .demo-secrets already exists.
 
 ## Helm
 
@@ -118,3 +119,7 @@ The Release workflow runs only on vMAJOR.MINOR.PATCH[-prerelease] tags whose com
 ## Security limits
 
 This is a first network deployment boundary, not production multi-tenant security. The static role model does not scope a caller to specific deliveries, agents, or state keys. No identity provider, automatic credential rotation, HA, external policy engine or audit certification. Dashboard schema execution remains trusted operator configuration; the AMIS bundled dependency review remains open. Do not expose the old unauthenticated demo to untrusted networks. See [STATE.md](STATE.md), [MCP.md](MCP.md) and [DASHBOARD.md](DASHBOARD.md).
+
+## MVP operational limits
+
+One daemon per namespace only. Configure delivery.workers (default 4; range 1–16, zero uses default) or --workers. No active-active failover. Operator-only messages abandon requires matching downstream task ID and explicit --confirm-remote-stopped; never use merely because an endpoint is unreachable. It stops local monitoring, retains uncertainty and releases the reservation, not remote execution. No automatic replay. Retry a 409 if a poll is in flight. Release tags are created with make release bump=PATCH|MINOR|MAJOR from a clean current main; preview via make release-plan. The existing tag workflow builds/tests/publishes. No tag was pushed by implementing the target.

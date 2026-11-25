@@ -17,12 +17,14 @@ Go 1.26+, Python 3.10+, Linux/macOS for simulator-only. For the UI, Node/npm is 
 ```sh
 python3 -B examples/autonomous-team/test_team.py
 python3 -B examples/autonomous-team/team.py --profile simulated --check --headless
-# or task autonomous-check
+# or make autonomous-check
 ```
 
 This validates generated configuration, explicit per-role grants, registration and collection setup, and process cleanup. It never calls a model. Go integration tests separately exercise an accepted A2A task initiating MCP discovery/delegation and awaiting a second A2A response while the original task is active, then persisting the actual receipt through MCP.
 
 ## Real-model acceptance (free or credentialed)
+
+`make live-check` runs the same default credential-free full hybrid scenario as Live OpenCode CI. Install the pinned runtimes below first. Override `LIVE_ARGS` for a different approved local scenario; no paid provider credentials are forwarded by default.
 
 On a disposable trusted Linux host, install the exact reviewed versions: OpenCode **2.3.2**, Bun **1.4.4**, Node **22+**, and [opencode-a2a-lite **0.8.2**](https://github.com/tbrandenburg/opencode-a2a-lite/releases/tag/v0.8.2) on PATH. The gateway CLI must report 0.8.2 and OpenCode must report opencode v2.3.2. Use a standalone workspace environment without managed /etc/opencode or inherited project configuration; see the upstream [operator policy](https://github.com/tbrandenburg/opencode-a2a-lite/blob/v0.8.2/docs/operator-policy-state.md). The launcher creates private standalone workspaces under /tmp, each containing only the fictional fixture and generated role/config. It does not copy your real repository or personal files.
 
