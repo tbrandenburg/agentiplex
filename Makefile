@@ -75,7 +75,7 @@ demo-team:
 demo-check:
 	bash examples/engineering-team/demo.sh --check $(DEMO_ARGS)
 
-autonomous-check: repository-check
+autonomous-check:
 	python3 -B examples/autonomous-team/test_team.py
 	python3 -B examples/autonomous-team/team.py --profile simulated --check --headless $(AUTONOMOUS_ARGS)
 
