@@ -78,7 +78,9 @@ class TeamTests(unittest.TestCase):
              "root": {"id": "root", "target": "pm", "state": "completed", "result": {"text": "review worker-1"}},
              "deliveries": [{"id": "worker-1", "target": "architect", "state": "completed", "result": {"text": "finding"}}],
              "state": [{"key": "pm", "revision": 1, "value": "plan"}, {"key": "architect", "revision": 2, "value": "finding"}]}
-        team.verify_evidence(e)
+        assessment = team.verify_evidence(e)
+        self.assertEqual(["worker-1"], assessment["completedRealWorkerReceipts"])
+        self.assertTrue(assessment["exactReceiptCitation"])
         e["agents"][1]["runtime"] = "simulated"
         with self.assertRaises(RuntimeError):
             team.verify_evidence(e)
@@ -88,7 +90,35 @@ class TeamTests(unittest.TestCase):
             team.verify_evidence(e)
         e["state"].append({"key": "architect", "revision": 2, "value": "finding"})
         e["root"]["result"] = {"text": "uncited summary"}
-        with self.assertRaises(RuntimeError):
+        assessment = team.verify_evidence(e)
+        self.assertEqual(["worker-1"], assessment["completedRealWorkerReceipts"])
+        self.assertFalse(assessment["exactReceiptCitation"])
+
+        # Missing prose citation alone passes, but incomplete real work,
+        # fake receipt claims, missing results, or absent persisted state do not.
+        e["deliveries"].append({"id": "other", "target": "architect", "state": "accepted"})
+        with self.assertRaisesRegex(RuntimeError, "unresolved delivery"):
+            team.verify_evidence(e)
+        e["deliveries"].pop()
+        e["deliveries"][0]["state"] = "failed"
+        with self.assertRaisesRegex(RuntimeError, "no completed independent real worker"):
+            team.verify_evidence(e)
+        e["deliveries"][0]["state"] = "completed"
+        e["deliveries"][0].pop("result")
+        e["root"]["result"] = {"text": "review worker-1"}
+        with self.assertRaisesRegex(RuntimeError, "no completed independent real worker"):
+            team.verify_evidence(e)
+        e["deliveries"][0]["result"] = {"text": "finding"}
+        e["deliveries"].clear()
+        with self.assertRaisesRegex(RuntimeError, "no completed independent real worker"):
+            team.verify_evidence(e)
+        e["deliveries"].append({"id": "worker-1", "target": "architect", "state": "completed", "result": {"text": "finding"}})
+        e["state"][0]["revision"] = 0
+        with self.assertRaisesRegex(RuntimeError, "missing PM shared-state evidence"):
+            team.verify_evidence(e)
+        e["state"][0]["revision"] = 1
+        e["root"]["state"] = "failed"
+        with self.assertRaisesRegex(RuntimeError, "PM did not produce a completed live result"):
             team.verify_evidence(e)
 
 
