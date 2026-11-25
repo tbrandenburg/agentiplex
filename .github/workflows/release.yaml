@@ -30,9 +30,7 @@ jobs:
         run: |
           go mod tidy
           git diff --exit-code -- go.mod go.sum
-          go generate ./internal/dashboard
-          go test -race -count=1 ./...
-          go vet ./...
+          make check
           helm lint charts/agentiplex
       - name: Package native binaries and Helm
         run: bash scripts/package-release.sh "$GITHUB_REF_NAME"

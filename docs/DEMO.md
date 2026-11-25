@@ -6,7 +6,7 @@ Requires Go 1.26+, Bash, curl and jq, plus Node/npm for first-time AMIS asset pa
 
 ```sh
 bash examples/engineering-team/demo.sh
-# or: task demo-team
+# or: make demo-team
 ```
 
 Open **http://127.0.0.1:18080/ui/**. The driver builds the daemon, CLI and simulator, creates a temporary JetStream data directory, and starts independent loopback A2A processes. It executes the scenario below, then leaves the services running until Ctrl+C. Use `--check` to exit after assertions or `--port 19080` to shift the contiguous seven-port range. The temporary state and owned processes are cleaned up on exit; do not use this script for durable production state. To see changes as they happen, open the UI when the driver prints its URL. On any failed assertion the driver exits nonzero.

@@ -77,6 +77,7 @@ From the repository root, with Docker Compose v2 and OpenSSL:
 ```sh
 bash scripts/demo-secrets.sh
 docker compose up -d --build --wait
+# Or: make compose-up (generates demo secrets only if absent)
 ```
 
 The development script creates unique role and broker credentials plus a seven-day demo CA and separate daemon/broker certificates under ignored .demo-secrets. The directory is 0700; mounted files are read-only and readable by service UIDs. Never reuse these demo certificates in production. Trust the CA explicitly in curl/CLI or your browser (only in a disposable profile). The simulators use unauthenticated HTTP **only** within the demo bridge network; no simulator or broker ports are published. Do not attach untrusted containers.
@@ -95,7 +96,7 @@ agentiplex pools set testers tester-1 tester-2
 agentiplex broadcast engineering "Contract update"
 ```
 
-Use the CLI built from the checkout (or docker compose exec agentiplex agentiplex with mounted credential paths). Dashboard: https://localhost:18443/ui/. The operator may use the separate collaborator credential for agent tasks. Compose down preserves JetStream volume; down -v **deletes all stored data**. Stop/start Quality and restart the daemon without deleting volumes to observe durable recovery. CI's isolated scripts/compose-check.sh generates its own credentials and destroys its test project and volume; refuses to run if .demo-secrets already exists.
+Use the CLI built from the checkout (or docker compose exec agentiplex agentiplex with mounted credential paths). Dashboard: https://localhost:18443/ui/. The operator may use the separate collaborator credential for agent tasks. `make compose-down` (Compose down) preserves JetStream volume and existing credentials; down -v **deletes all stored data**. Stop/start Quality and restart the daemon without deleting volumes to observe durable recovery. CI's isolated scripts/compose-check.sh generates its own credentials and destroys its test project and volume; refuses to run if .demo-secrets already exists.
 
 ## Helm
 

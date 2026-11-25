@@ -278,7 +278,7 @@ agentiplex/
 ├── .github/workflows/
 ├── Dockerfile
 ├── config.example.yaml
-├── Taskfile.yaml
+├── Makefile
 ├── go.mod
 ├── go.sum
 ├── README.md

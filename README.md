@@ -27,11 +27,11 @@ Open http://127.0.0.1:18080/ui/. Six independent simulated A2A agents exercise t
 
 ## Development
 
-Go 1.26 or newer. Dependencies are locked in go.mod and go.sum; run `go generate ./internal/dashboard` before `go test -race ./...`. The provider-free demonstration uses an independently running A2A server. See the foundation guide for commands and current limitations.
+Go 1.26 or newer, GNU Make, Bash, and Node/npm for embedded dashboard assets. Dependencies are locked in go.mod and go.sum. Run `make help` for the development commands. The provider-free demonstration uses an independently running A2A server. See the foundation guide for commands and current limitations.
 
 Local demos are unauthenticated and must stay on loopback or isolated trusted networks. Authenticated TLS deployment is supported; see below.
 
-Use `make build`, `make test`, `make check` and `make demo-team` (existing Taskfile remains available). `agentiplexd --workers 4` bounds parallel outbound operations; use one for serial execution. For a stuck accepted task, inspect `agentiplex messages status ID`; only after independently confirming the remote task stopped, use `agentiplex messages abandon ID DOWNSTREAM_TASK_ID --confirm-remote-stopped`. This retains uncertainty and never cancels or replays remote work.
+Use `make fmt`, `make build`, `make test`, `make lint`, `make check`, `make run` and `make demo-team`. Make is the single development entry point. `make run` starts the daemon with MCP on loopback; override `RUN_ARGS` if needed. `make live-check` explicitly runs the free-model hybrid review on Linux with the pinned runtimes installed (see the autonomous example). `make docker`, `make compose-up` and `make compose-down` wrap local container development. `make clean` removes only generated binaries, release artifacts and AMIS assets, not data or credentials. `agentiplexd --workers 4` bounds parallel outbound operations; use one for serial execution. For a stuck accepted task, inspect `agentiplex messages status ID`; only after independently confirming the remote task stopped, use `agentiplex messages abandon ID DOWNSTREAM_TASK_ID --confirm-remote-stopped`. This retains uncertainty and never cancels or replays remote work.
 
 ### Release
 
