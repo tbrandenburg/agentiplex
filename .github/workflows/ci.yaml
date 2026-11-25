@@ -43,6 +43,10 @@ jobs:
           node --check internal/dashboard/static/bootstrap.js
           node --check examples/engineering-team/browser-check.mjs
           bash examples/engineering-team/demo.sh --check --browser-check
+      - name: Autonomous team configuration and provider-free startup
+        run: |
+          python3 -B examples/autonomous-team/test_team.py
+          python3 -B examples/autonomous-team/team.py --profile simulated --check --headless --seconds 90
       - name: Save resolved dependency manifest
         if: always()
         uses: actions/upload-artifact@v4

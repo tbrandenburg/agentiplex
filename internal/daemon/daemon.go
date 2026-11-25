@@ -32,13 +32,13 @@ func Command() *cobra.Command {
 		"security.operator_token_file":"","security.collaborator_token_file":"","security.viewer_token_file":"","server.tls_cert_file":"","server.tls_key_file":"","broker.token_file":"","broker.credentials_file":"","broker.ca_file":"","delivery.token_files":map[string]string{},"delivery.ca_file":"",
 		"broker.mode":d.BrokerMode,"broker.url":"","broker.storage":d.Storage,"broker.replicas":d.Replicas,
 		"registry.namespace":d.Namespace,"registry.health_interval":d.HealthInterval,"delivery.allowed_origins":[]string{},"delivery.timeout":d.Timeout,
-		"delivery.retry_delay":d.RetryDelay,"delivery.max_attempts":d.MaxAttempts,
+		"delivery.retry_delay":d.RetryDelay,"delivery.max_attempts":d.MaxAttempts,"delivery.task_poll_interval":d.TaskPollInterval,
 	}
 	for k,value:=range defaults{v.SetDefault(k,value)}
 	var config string
 	cmd:=&cobra.Command{Use:"agentiplexd",Short:"Agentiplex collaboration daemon",SilenceUsage:true,Args:cobra.NoArgs,RunE:func(cmd *cobra.Command,args []string)error{
 		if config!=""{v.SetConfigFile(config);if err:=v.ReadInConfig();err!=nil{return err}}
-		cfg:=agentiplex.Config{BrokerMode:v.GetString("broker.mode"),BrokerURL:v.GetString("broker.url"),BrokerTokenFile:v.GetString("broker.token_file"),BrokerCredentialsFile:v.GetString("broker.credentials_file"),BrokerCAFile:v.GetString("broker.ca_file"),OutboundTokenFiles:v.GetStringMapString("delivery.token_files"),OutboundCAFile:v.GetString("delivery.ca_file"),Storage:v.GetString("broker.storage"),Replicas:v.GetInt("broker.replicas"),Namespace:v.GetString("registry.namespace"),AllowedOrigins:v.GetStringSlice("delivery.allowed_origins"),Timeout:v.GetDuration("delivery.timeout"),RetryDelay:v.GetDuration("delivery.retry_delay"),MaxAttempts:v.GetInt("delivery.max_attempts"),HealthInterval:v.GetDuration("registry.health_interval")}
+		cfg:=agentiplex.Config{BrokerMode:v.GetString("broker.mode"),BrokerURL:v.GetString("broker.url"),BrokerTokenFile:v.GetString("broker.token_file"),BrokerCredentialsFile:v.GetString("broker.credentials_file"),BrokerCAFile:v.GetString("broker.ca_file"),OutboundTokenFiles:v.GetStringMapString("delivery.token_files"),OutboundCAFile:v.GetString("delivery.ca_file"),Storage:v.GetString("broker.storage"),Replicas:v.GetInt("broker.replicas"),Namespace:v.GetString("registry.namespace"),AllowedOrigins:v.GetStringSlice("delivery.allowed_origins"),Timeout:v.GetDuration("delivery.timeout"),RetryDelay:v.GetDuration("delivery.retry_delay"),MaxAttempts:v.GetInt("delivery.max_attempts"),TaskPollInterval:v.GetDuration("delivery.task_poll_interval"),HealthInterval:v.GetDuration("registry.health_interval")}
 		auth,err:=security.New(security.Config{OperatorFile:v.GetString("security.operator_token_file"),CollaboratorFile:v.GetString("security.collaborator_token_file"),ViewerFile:v.GetString("security.viewer_token_file")});if err!=nil{return err}
 		return run(cmd.Context(),cfg,v.GetString("server.listen"),v.GetString("server.public_url"),v.GetBool("server.trusted_network"),v.GetBool("observability.dashboard"),v.GetBool("protocols.mcp.enabled"),dashboard.Config{Schema:v.GetString("observability.dashboard_schema"),Theme:v.GetString("observability.dashboard_theme"),Refresh:v.GetDuration("observability.dashboard_refresh_interval")},auth,v.GetString("server.tls_cert_file"),v.GetString("server.tls_key_file"))
 	}}
@@ -56,8 +56,9 @@ func Command() *cobra.Command {
 	f.String("broker-url","","external NATS URL")
 	f.String("storage",d.Storage,"embedded JetStream storage directory")
 	f.String("namespace",d.Namespace,"NATS resource namespace")
+	f.Duration("task-poll-interval",d.TaskPollInterval,"accepted task observation interval; zero inherits delivery retry delay")
 	f.Duration("health-interval",d.HealthInterval,"periodic card observation interval; zero disables")
-	for key,flag:=range map[string]string{"server.listen":"listen","server.public_url":"public-url","server.trusted_network":"trusted-network","protocols.mcp.enabled":"mcp","observability.dashboard":"dashboard","observability.dashboard_schema":"dashboard-schema","observability.dashboard_theme":"dashboard-theme","observability.dashboard_refresh_interval":"dashboard-refresh-interval","broker.mode":"broker-mode","broker.url":"broker-url","broker.storage":"storage","registry.namespace":"namespace","registry.health_interval":"health-interval"}{
+	for key,flag:=range map[string]string{"server.listen":"listen","server.public_url":"public-url","server.trusted_network":"trusted-network","protocols.mcp.enabled":"mcp","observability.dashboard":"dashboard","observability.dashboard_schema":"dashboard-schema","observability.dashboard_theme":"dashboard-theme","observability.dashboard_refresh_interval":"dashboard-refresh-interval","broker.mode":"broker-mode","broker.url":"broker-url","broker.storage":"storage","registry.namespace":"namespace","registry.health_interval":"health-interval","delivery.task_poll_interval":"task-poll-interval"}{
 		_ = v.BindPFlag(key,f.Lookup(flag))
 	}
 	return cmd

@@ -217,12 +217,16 @@ func TestA2AIngressAcceptedTaskSurvivesRestart(t *testing.T) {
 
 func testAcceptedTaskSurvivesRestart(t *testing.T,pool bool) {
 	cfg := config(t)
+	cfg.MaxAttempts = 1 // previous accepted-task limit was six polls
+	cfg.TaskPollInterval = time.Second
+	cfg.HealthInterval = 0
 	b := open(t, cfg)
 	ctx := context.Background()
 
 	// Independent SDK server creates a task and waits for an explicit release.
 	// Its lifetime is independent of the Agentiplex daemon.
 	var calls atomic.Int32
+	var unavailable atomic.Bool
 	releaseCh := make(chan struct{})
 	var releaseOnce sync.Once
 	release := func() { releaseOnce.Do(func() { close(releaseCh) }) }
@@ -255,7 +259,10 @@ func testAcceptedTaskSurvivesRestart(t *testing.T,pool bool) {
 	mux := http.NewServeMux()
 	mux.Handle("/invoke", a2asrv.NewJSONRPCHandler(a2asrv.NewHandler(executor)))
 	mux.Handle(a2asrv.WellKnownAgentCardPath, a2asrv.NewStaticAgentCardHandler(card))
-	target.Config.Handler = mux
+	target.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter,r *http.Request){
+		if unavailable.Load()&&r.URL.Path=="/invoke"{http.Error(w,"temporary outage",503);return}
+		mux.ServeHTTP(w,r)
+	})
 	target.Start()
 	t.Cleanup(func() { release(); target.Close() })
 
@@ -295,12 +302,36 @@ func testAcceptedTaskSurvivesRestart(t *testing.T,pool bool) {
 			t.Fatalf("busy member was reused or available member blocked: %+v",done)
 		}
 	}
+	// Observe healthy active work beyond the former total-poll budget.
+	waitFor:=func(bus *agentiplex.Bus, predicate func(agentiplex.Delivery)bool)agentiplex.Delivery{
+		t.Helper()
+		deadline:=time.Now().Add(30*time.Second)
+		for time.Now().Before(deadline){
+			d,err:=bus.Delivery(string(task.ID))
+			if err!=nil||d.State!="accepted"{t.Fatalf("lost accepted task: %+v %v",d,err)}
+			if predicate(d){return d}
+			time.Sleep(100*time.Millisecond)
+		}
+		t.Fatal("monitoring condition not met");return agentiplex.Delivery{}
+	}
+	healthy:=waitFor(b,func(d agentiplex.Delivery)bool{return d.Polls>cfg.MaxAttempts*6&&d.PollFailures==0&&d.LastObservedAt!=nil})
+	unavailable.Store(true)
+	lost:=waitFor(b,func(d agentiplex.Delivery)bool{return d.PollFailures>=2})
+	if lost.TaskID!=accepted.TaskID||lost.LastObservedAt==nil||lost.LastObservedAt.Before(*healthy.LastObservedAt)||calls.Load()!=1{
+		t.Fatalf("outage lost last valid observation or replayed task: %+v",lost)
+	}
+	// Daemon restart during an outage must not reset the known handle or
+	// release the busy endpoint. Re-observation resets consecutive failures.
 	_ = c.Destroy()
 	s.Close()
 	b.Close()
 
 	b2 := open(t, cfg)
 	_, c2 := ingressClient(t, b2)
+	retained,err:=b2.Delivery(string(task.ID));if err!=nil||retained.TaskID!=accepted.TaskID||retained.PollFailures<2||retained.Polls<lost.Polls{t.Fatalf("monitoring state lost: %+v %v",retained,err)}
+	health,err=b2.AgentHealth("tester");if err!=nil||!health.Busy{t.Fatalf("unobservable task released endpoint: %+v %v",health,err)}
+	unavailable.Store(false)
+	waitFor(b2,func(d agentiplex.Delivery)bool{return d.PollFailures==0&&d.Polls>retained.Polls&&d.LastObservedAt!=nil&&d.LastObservedAt.After(*lost.LastObservedAt)})
 	if working = nativeTask(t, c2, task.ID); working.Status.State != a2a.TaskStateWorking {
 		t.Fatalf("active task lost after restart: %s", working.Status.State)
 	}

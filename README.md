@@ -38,3 +38,7 @@ Enable the optional local MCP endpoint with `agentiplexd --mcp` and connect an M
 ## Secure deployment
 
 See [deployment instructions](docs/DEPLOYMENT.md) for authenticated native TLS, the six-agent Compose stack, external NATS and Helm. The legacy local demonstration remains available. No public unauthenticated deployment is supported.
+
+## Autonomous engineering team (optional live model)
+
+See [examples/autonomous-team](examples/autonomous-team/README.md) for a configurable hybrid or all-real OpenCode team. The example provisions independent A2A gateways, submits one objective to the PM and observes model-issued collaboration through MCP. Real-model execution is explicitly opt-in locally; separate Live OpenCode CI uses the free model catalog without provider credentials. Deterministic Checks exercises startup and nested A2A/MCP interoperability.
