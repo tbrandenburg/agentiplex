@@ -30,14 +30,14 @@ The dashboard is a read-only live view: registered agents (not online claims), g
 
 ## Optional real A2A Architect
 
-Any independently hosted A2A endpoint can replace the simulated Architect. The example uses OpenCode behind the [opencode-a2a-lite v0.8.2](https://github.com/tbrandenburg/opencode-a2a-lite/releases/tag/v0.8.2) gateway purely as a driver (verified upstream release and documented interface; the separate autonomous-team example tests live model interoperability in CI; this individual driver path is not separately live-verified).
+Any independently hosted A2A endpoint can replace the simulated Architect. The example uses OpenCode behind the [opencode-a2a-lite v0.8.3](https://github.com/tbrandenburg/opencode-a2a-lite/releases/tag/v0.8.3) gateway purely as a driver (verified upstream release and documented interface; the separate autonomous-team example tests live model interoperability in CI; this individual driver path is not separately live-verified).
 
 On a supported Linux host, with Node 22+, Bun 1.4.4, OpenCode >=2.2.7 on PATH, and a reviewed standalone disposable workspace with configured provider/model:
 
 ```sh
 # Separate terminal, outside a gateway repository checkout.
 # Export a provider key yourself; do not paste it into this repository.
-A2A_NAME=Architect npx --yes @tbrandenburg/opencode-a2a-lite@0.8.2 \
+A2A_NAME=Architect npx --yes @tbrandenburg/opencode-a2a-lite@0.8.3 \
   --workspace /absolute/path/to/trusted/disposable/workspace \
   --port 41241 --pass-env OPENAI_API_KEY --policy read-only
 ```

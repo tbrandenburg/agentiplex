@@ -351,7 +351,7 @@ An optional static role-credential boundary (operator, collaborator, dashboard v
 
 ### PR #8 autonomous example
 
-The disposable team example is deliberately outside the core. OpenCode 2.3.2 and opencode-a2a-lite 0.8.2 provide independent agent execution. Generated role configuration and exact read-only gateway policy exceptions permit the PM to delegate via existing MCP tools; workers can inspect and exchange KV context but cannot delegate through MCP in this profile. The launcher performs provisioning and one initial A2A-bound submission, then observes state/results. No planner or workflow engine was introduced. Provider-free tests verify active A2A task -> MCP delegation -> A2A recipient completion; real model decisions require separately observed live acceptance.
+The disposable team example is deliberately outside the core. OpenCode 2.3.2 and opencode-a2a-lite 0.8.3 provide independent agent execution. Generated role configuration and exact read-only gateway policy exceptions permit the PM to delegate via existing MCP tools; workers can inspect and exchange KV context but cannot delegate through MCP in this profile. The launcher performs provisioning and one initial A2A-bound submission, then observes state/results. No planner or workflow engine was introduced. Provider-free tests verify active A2A task -> MCP delegation -> A2A recipient completion; real model decisions require separately observed live acceptance.
 
 ### Accepted-task monitoring refinement (PR #8)
 

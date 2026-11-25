@@ -45,7 +45,7 @@ jobs:
           bun-version: '1.4.4'
       - name: Install pinned OpenCode and A2A gateway
         run: |
-          npm install --global @opencode/cli@2.3.2 @tbrandenburg/opencode-a2a-lite@0.8.2
+          npm install --global @opencode/cli@2.3.2 @tbrandenburg/opencode-a2a-lite@0.8.3
           opencode --version
           opencode-a2a-lite --version
           test "$(bun --version)" = "1.4.4"
