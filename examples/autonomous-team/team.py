@@ -271,6 +271,7 @@ class Team:
         root = self.cli("send", "pm", objective, "--idempotency-key", "autonomous-review")
         root_id = root["id"]
         previous = None
+        waiting = None
         while True:
             self.alive()
             records = self.snapshot(root_id)
@@ -282,9 +283,13 @@ class Team:
             if parent["state"] in TERMINAL:
                 # Snapshot actual evidence, including failed/intervention outcomes.
                 records = self.snapshot(root_id)
-                details = [self.cli("messages", "status", d["id"]) for d in records]
-                for d in list(details):
-                    details.extend(self.cli("messages", "status", c["id"]) for c in (d.get("children") or []))
+                details_by_id = {d["id"]: self.cli("messages", "status", d["id"]) for d in records}
+                details_by_id[root_id] = parent
+                for d in list(details_by_id.values()):
+                    for c in d.get("children") or []:
+                        if c["id"] not in details_by_id:
+                            details_by_id[c["id"]] = self.cli("messages", "status", c["id"])
+                details = list(details_by_id.values())
                 state = [self.cli("state", "get", "review", e["key"]) for e in self.cli("state", "list", "review")]
                 evidence = {"classification": "live-model", "requestedModel": self.args.model or "OpenCode default",
                             "credentialMode": "explicit-provider" if self.args.pass_env else "credential-free",
@@ -292,9 +297,24 @@ class Team:
                             "root": parent, "deliveries": details, "state": state,
                             "agents": self.team["agents"]}
                 (self.root / "evidence.json").write_text(json.dumps(evidence, indent=2) + "\n")
+                # A completed PM is not a completed team. Drain only already
+                # admitted work, within the same deadline. Preserve intermediate
+                # evidence if the deadline expires; never replay or cancel tasks.
+                pending = sorted(d["id"] for d in details if d["state"] not in TERMINAL)
+                if parent["state"] == "completed" and pending:
+                    if pending != waiting:
+                        print("PM completed; waiting for outstanding deliveries:", json.dumps(pending), flush=True)
+                        waiting = pending
+                    time.sleep(.5)
+                    continue
                 print("Terminal:", json.dumps(terminal_diagnostic(parent)), flush=True)
                 print("Observed state keys:", json.dumps([{"key": s["key"], "revision": s["revision"]} for s in state]), flush=True)
                 assessment = verify_evidence(evidence)
+                # A worker completing after PM return is valid transport evidence,
+                # not proof that its result was incorporated in the PM assessment.
+                assessment["observerDrainedAfterPM"] = waiting is not None
+                if waiting is not None:
+                    print("WARNING: PM returned before all work completed; review late worker results separately.", flush=True)
                 evidence["acceptance"] = assessment
                 (self.root / "evidence.json").write_text(json.dumps(evidence, indent=2) + "\n")
                 print("Verified real worker receipts:", json.dumps(assessment["completedRealWorkerReceipts"]), flush=True)

@@ -3,6 +3,8 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
+from types import SimpleNamespace
+from unittest.mock import patch
 
 spec = importlib.util.spec_from_file_location("team", Path(__file__).with_name("team.py"))
 team = importlib.util.module_from_spec(spec)
@@ -80,6 +82,62 @@ class TeamTests(unittest.TestCase):
             config = json.loads((project / "opencode.json").read_text())
             self.assertNotIn("model", config)
             self.assertNotIn("providers", config)
+
+    def test_observer_drains_after_pm_completion(self):
+        for outcome in ("completed", "failed", "timeout"):
+            with self.subTest(outcome=outcome), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                roster = team.load_team(team.HERE / "team.json", "configured")
+                args = SimpleNamespace(port=19080, model="opencode/big-pickle",
+                                       pass_env=[], prompt_timeout="10m",
+                                       summary_only=True, smoke=False)
+                runner = team.Team(args, roster, root, float("inf"))
+                parent = {"id": "root", "target": "pm", "state": "completed",
+                          "result": {"text": "review worker-1"}}
+                worker = {"id": "worker-1", "target": "architect", "state": "completed",
+                          "result": {"text": "finding"}}
+                late = {"id": "worker-2", "target": "architect", "state": "accepted"}
+                notes = [{"key": "pm", "revision": 1, "value": "plan"},
+                         {"key": "architect", "revision": 2, "value": "finding"}]
+                sends, polls = [], []
+                def cli(*cmd):
+                    if cmd[0] == "send":
+                        sends.append(cmd)
+                        return {"id": "root"}
+                    if cmd[:2] == ("messages", "status"):
+                        if cmd[2] == "worker-2":
+                            polls.append(cmd[2])
+                            if len(polls) > 1:
+                                if outcome == "timeout":
+                                    raise TimeoutError("team deadline exceeded")
+                                return dict(late, state=outcome, result={"text": "late finding"})
+                            return dict(late)
+                        return parent if cmd[2] == "root" else worker
+                    if cmd[:2] == ("state", "list"):
+                        return notes
+                    if cmd[:2] == ("state", "get"):
+                        return next(n for n in notes if n["key"] == cmd[3])
+                    self.fail("unexpected command " + repr(cmd))
+                with patch.object(runner, "cli", side_effect=cli), \
+                     patch.object(runner, "snapshot", return_value=[parent, worker, late]), \
+                     patch.object(team.time, "sleep"):
+                    if outcome == "completed":
+                        runner.observe("review")
+                    elif outcome == "failed":
+                        with self.assertRaisesRegex(RuntimeError, "unresolved delivery"):
+                            runner.observe("review")
+                    else:
+                        with self.assertRaisesRegex(TimeoutError, "deadline"):
+                            runner.observe("review")
+                self.assertEqual(1, len(sends))
+                self.assertEqual(2, len(polls))
+                evidence = json.loads((root / "evidence.json").read_text())
+                self.assertEqual(outcome if outcome != "timeout" else "accepted",
+                                 next(d["state"] for d in evidence["deliveries"] if d["id"] == "worker-2"))
+                if outcome == "completed":
+                    self.assertTrue(evidence["acceptance"]["observerDrainedAfterPM"])
+                else:
+                    self.assertNotIn("acceptance", evidence)
 
     def test_evidence_requires_real_worker_and_state(self):
         e = {"agents": [{"id": "pm", "runtime": "opencode"}, {"id": "architect", "runtime": "opencode"}],

@@ -3,6 +3,7 @@ on:
   pull_request:
     paths:
       - 'examples/autonomous-team/**'
+      - 'examples/repository-team/**'
       - 'internal/adapters/**'
       - 'internal/api/**'
       - 'internal/daemon/**'
@@ -42,6 +43,36 @@ jobs:
           opencode --version
           opencode-a2a-lite --version
           test "$(bun --version)" = "1.4.4"
+      - name: Shared repository provisioning (no model inference)
+        shell: bash
+        run: |
+          work=$(mktemp -d)
+          home=$(mktemp -d)
+          trap 'rm -rf "$work" "$home"' EXIT
+          git -C "$work" init -q
+          git -C "$work" config user.name "Repository example CI"
+          git -C "$work" config user.email "ci@example.invalid"
+          printf 'Synthetic repository\n' > "$work/README.md"
+          cat > "$work/opencode.json" <<'EOF'
+          {
+            "model": {"providerID": "opencode", "model": "big-pickle"},
+            "mcp": {"servers": {"agentiplex": {"type": "remote", "url": "http://127.0.0.1:19180/mcp", "protocol": "auto", "codemode": false}}}
+          }
+          EOF
+          git -C "$work" add README.md opencode.json
+          git -C "$work" commit -qm "synthetic fixture"
+          env -i PATH="$PATH" HOME="$home" LANG=C.UTF-8 USER="$(id -un)" \
+            GOMODCACHE="$(go env GOMODCACHE)" GOCACHE="$(go env GOCACHE)" \
+            make repository-team WORKSPACE="$work" REPOSITORY_ARGS="--check --accept-full-access --headless --seconds 180 --port 19180"
+          test -z "$(git -C "$work" status --porcelain)"
+          # Keep the fixed workspace check off the hybrid test's 19080-19086 ports.
+          # A second startup uses a clean independent clone/worktree and a kernel-selected port.
+          git -C "$work" rm opencode.json
+          git -C "$work" commit -qm 'remove local config for clone mode'
+          env -i PATH="$PATH" HOME="$home" LANG=C.UTF-8 USER="$(id -un)" \
+            GOMODCACHE="$(go env GOMODCACHE)" GOCACHE="$(go env GOCACHE)" \
+            make repository-team REPO="$work" MODEL=opencode/big-pickle REPOSITORY_ARGS="--check --accept-full-access --headless --seconds 180"
+          test -z "$(git -C "$work" status --porcelain)"
       - name: Credential-free live hybrid acceptance
         shell: bash
         run: |

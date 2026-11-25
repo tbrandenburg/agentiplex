@@ -1,6 +1,6 @@
-.PHONY: help fmt lint dashboard-assets build test check clean run demo-agent demo-team demo-check autonomous-check live-check docker compose-up compose-down release release-plan
+.PHONY: help fmt lint dashboard-assets build test check clean run demo-agent demo-team demo-check autonomous-check live-check repository-team repository-check docker compose-up compose-down release release-plan
 .DEFAULT_GOAL := help
-export bump
+export bump WORKSPACE OBJECTIVE REPO REF MODEL
 
 # Optional overrides; no secrets or environment files are created by make.
 GO_TEST_FLAGS ?= -race -count=1
@@ -8,6 +8,7 @@ RUN_ARGS ?= --mcp
 DEMO_ARGS ?=
 AUTONOMOUS_ARGS ?= --seconds 90
 LIVE_ARGS ?= --model opencode/big-pickle --accept-free-model --headless --summary-only --prompt-timeout 10m --seconds 900
+REPOSITORY_ARGS ?=
 IMAGE ?= agentiplex:dev
 
 help:
@@ -27,6 +28,8 @@ help:
 		'  make demo-check       Noninteractive simulated demo' \
 		'  make autonomous-check Provider-free launcher check' \
 		'  make live-check       Real OpenCode hybrid review (free model; Linux)' \
+		'  make repository-team REPO=... MODEL=... OBJECTIVE=... (or WORKSPACE=...)  Shared repository team (requires --accept-full-access in REPOSITORY_ARGS)' \
+		'  make repository-check Provider-free repository-team tests' \
 		'Deployment:' \
 		'  make docker           Build local image (IMAGE=agentiplex:dev)' \
 		'  make compose-up       Start TLS demo; generate missing demo secrets' \
@@ -53,7 +56,7 @@ test: dashboard-assets
 lint: dashboard-assets
 	go vet ./...
 
-check: test lint
+check: test lint repository-check
 	python3 -B examples/autonomous-team/test_team.py
 	bash scripts/test-release.sh
 
@@ -78,6 +81,19 @@ autonomous-check:
 
 live-check:
 	python3 -B examples/autonomous-team/team.py $(LIVE_ARGS)
+
+repository-team:
+	@set -eu; \
+	if [ -n "$${REPO}" ] && [ -z "$${WORKSPACE}" ]; then \
+	  set -- --repo "$${REPO}" --model "$${MODEL}"; \
+	  if [ -n "$${REF}" ]; then set -- "$$@" --ref "$${REF}"; fi; \
+	elif [ -n "$${WORKSPACE}" ] && [ -z "$${REPO}" ] && [ -z "$${REF}" ] && [ -z "$${MODEL}" ]; then \
+	  set -- --workspace "$${WORKSPACE}"; \
+	else echo "Specify REPO+MODEL (optional REF) or WORKSPACE alone" >&2; exit 2; fi; \
+	python3 -B examples/repository-team/team.py "$$@" --objective "$${OBJECTIVE}" $(REPOSITORY_ARGS)
+
+repository-check:
+	python3 -B examples/repository-team/test_team.py
 
 docker:
 	docker build -t $(IMAGE) .
