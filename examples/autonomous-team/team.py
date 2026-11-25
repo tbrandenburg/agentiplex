@@ -106,6 +106,11 @@ def get(url, timeout=3):
         return json.load(r)
 
 
+def opencode_supported(version):
+    match = re.fullmatch(r"opencode v(\d+)\.(\d+)\.(\d+)", version)
+    return bool(match) and tuple(map(int, match.groups())) >= (2, 3, 2)
+
+
 def clean_environment():
     # Do not pass ambient provider keys, AGENTIPLEX settings, proxy or runtime
     # overrides to the bus or simulator.
@@ -429,8 +434,9 @@ def main():
         args.gateway = shutil.which(args.gateway)
         if not args.gateway or subprocess.check_output([args.gateway, "--version"], env=clean_environment(), timeout=15, text=True).strip() != "0.8.2":
             p.error("install pinned opencode-a2a-lite 0.8.2")
-        if subprocess.check_output(["opencode", "--version"], env=clean_environment(), timeout=15, text=True).strip() != "opencode v2.3.2":
-            p.error("install tested OpenCode 2.3.2")
+        opencode_version = subprocess.check_output(["opencode", "--version"], env=clean_environment(), timeout=15, text=True).strip()
+        if not opencode_supported(opencode_version):
+            p.error("install stable OpenCode 2.3.2 or newer")
     if not args.check:
         if len(real) < 2 or not any(a["id"] == "pm" for a in real):
             p.error("live run requires a real PM and at least one real worker; use --check for provider-free setup")

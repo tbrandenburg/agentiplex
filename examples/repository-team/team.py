@@ -427,8 +427,8 @@ def main():
     args.gateway = shutil.which(args.gateway)
     if not args.gateway or subprocess.check_output([args.gateway, "--version"], env=base.clean_environment(), timeout=15, text=True).strip() != "0.8.2":
         p.error("install pinned opencode-a2a-lite 0.8.2")
-    if subprocess.check_output(["opencode", "--version"], env=base.clean_environment(), timeout=15, text=True).strip() != "opencode v2.3.2":
-        p.error("install tested OpenCode 2.3.2")
+    if not base.opencode_supported(subprocess.check_output(["opencode", "--version"], env=base.clean_environment(), timeout=15, text=True).strip()):
+        p.error("install stable OpenCode 2.3.2 or newer")
     if args.port:
         with socket.socket() as sock:
             sock.bind(("127.0.0.1", args.port))
