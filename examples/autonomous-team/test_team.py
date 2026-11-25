@@ -48,6 +48,23 @@ class TeamTests(unittest.TestCase):
                     self.assertEqual(a["id"] == "pm", "agentiplex_" + tool + ":*" in names)
                 self.assertFalse(any("shell" in n or "edit" in n for n in names))
 
+    def test_smoke_policy_reduces_tool_surface(self):
+        data = team.load_team(team.HERE / "team.json", "configured")
+        with tempfile.TemporaryDirectory() as directory:
+            for a in data["agents"][:2]:
+                project, policy = team.workspace(Path(directory), a, "http://127.0.0.1:19080", ("opencode", "big-pickle"), smoke=True)
+                names = {r["resource"] for r in json.loads(policy.read_text())["policies"]}
+                self.assertIn("agentiplex_put_state:*", names)
+                self.assertNotIn("agentiplex_broadcast:*", names)
+                self.assertNotIn("agentiplex_dispatch:*", names)
+                self.assertEqual(a["id"] == "pm", "agentiplex_send_message:*" in names)
+                self.assertIn("smoke test", (project / "AGENTS.md").read_text())
+
+    def test_terminal_diagnostic_does_not_echo_model_text(self):
+        d = {"state": "failed", "result": {"status": {"message": {"parts": [{"text": "ACP prompt timed out"}, {"text": "private"}]}}}}
+        self.assertEqual("ACP prompt timed out", team.terminal_diagnostic(d)["gatewayReason"])
+        self.assertNotIn("private", json.dumps(team.terminal_diagnostic(d)))
+
     def test_default_model_omits_model_config(self):
         a = team.load_team(team.HERE / "team.json", "configured")["agents"][0]
         with tempfile.TemporaryDirectory() as directory:

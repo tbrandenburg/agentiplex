@@ -60,13 +60,20 @@ def load_team(path, profile):
     return team
 
 
-def workspace(root, agent, endpoint, model):
+def workspace(root, agent, endpoint, model, smoke=False):
     # No arbitrary source tree, inherited config, plugins, or local tool commands.
     project = root / agent["id"]
     project.mkdir(mode=0o700)
     shutil.copytree(HERE / "fixture", project / "fixture")
     tools = READ_TOOLS + (DELEGATE_TOOLS if agent["id"] == "pm" else ())
-    role = (HERE / "roles" / (agent["role"] + ".md")).read_text()
+    if smoke and agent["id"] == "pm":
+        tools = ("discover_agents", "send_message", "get_delivery", "put_state")
+    elif smoke and agent["role"] == "architect":
+        tools = ("put_state",)
+    role_path = HERE / "roles" / (agent["role"] + ".md")
+    if smoke and agent["role"] in ("pm", "architect"):
+        role_path = HERE / "roles" / (agent["role"] + "-smoke.md")
+    role = role_path.read_text()
     system = "Logical agent ID: " + agent["id"] + ". " + role
     permissions = [{"action": "*", "resource": "*", "effect": "deny"}]
     permissions += [{"action": name, "resource": "*", "effect": "allow"} for name in ("read", "glob", "grep")]
@@ -219,7 +226,7 @@ class Team:
                                        "--skill", skill, "--port", str(port)], self.env)
                 url = "http://127.0.0.1:" + str(port)
             else:
-                project, policy = workspace(self.root, a, self.endpoint, self.args.model.split("/", 1) if self.args.model else None)
+                project, policy = workspace(self.root, a, self.endpoint, self.args.model.split("/", 1) if self.args.model else None, self.args.smoke)
                 env = dict(self.env, A2A_NAME=name, A2A_DESCRIPTION="Read-only engineering " + skill,
                            A2A_TAGS=skill + ",real-opencode")
                 for key in self.args.pass_env:
@@ -283,11 +290,27 @@ class Team:
                             "root": parent, "deliveries": details, "state": state,
                             "agents": self.team["agents"]}
                 (self.root / "evidence.json").write_text(json.dumps(evidence, indent=2) + "\n")
+                print("Terminal:", json.dumps(terminal_diagnostic(parent)), flush=True)
+                print("Observed state keys:", json.dumps([{"key": s["key"], "revision": s["revision"]} for s in state]), flush=True)
                 verify_evidence(evidence)
                 print("PASS: real PM, completed real worker and persisted review state; manual evidence review still required.", flush=True)
-                print(json.dumps(parent.get("result"), indent=2), flush=True)
+                if not self.args.smoke:
+                    print(json.dumps(parent.get("result"), indent=2), flush=True)
                 return
             time.sleep(.5)
+
+
+def terminal_diagnostic(delivery):
+    result = delivery.get("result")
+    status = result.get("status", {}) if isinstance(result, dict) else {}
+    message = status.get("message", {}) if isinstance(status, dict) else {}
+    parts = message.get("parts", []) if isinstance(message, dict) else []
+    known = {"ACP prompt timed out", "ACP execution failed", "ACP did not complete the turn",
+             "Gateway busy; retry after the active turn finishes"}
+    reasons = [part.get("text") for part in parts if isinstance(part, dict)
+               and isinstance(part.get("text"), str) and part["text"] in known]
+    return {"state": delivery["state"], "gatewayReason": reasons[0] if reasons else "not exposed",
+            "hasResult": bool(result)}
 
 
 def verify_evidence(e):
@@ -321,6 +344,7 @@ def main():
     p.add_argument("--port", type=int, default=19080)
     p.add_argument("--seconds", type=int, default=600, help="runtime deadline including startup (60–1800s)")
     p.add_argument("--headless", action="store_true")
+    p.add_argument("--smoke", action="store_true", help="minimal credential-free live architecture consultation")
     p.add_argument("--check", action="store_true", help="provision only; never submit a model task")
     p.add_argument("--objective", default="Review the fictional controller fixture for architectural, implementation and verification risks. Collaborate with the team and produce a consolidated evidence-based assessment.")
     p.add_argument("--accept-live-cost", action="store_true", help="allow model execution with explicit provider credentials")
@@ -330,6 +354,10 @@ def main():
     real = [a for a in team["agents"] if a["runtime"] == "opencode"]
     if not 1024 <= args.port <= 65535 - len(team["agents"]) or not 60 <= args.seconds <= 1800:
         p.error("invalid port or deadline")
+    if args.smoke:
+        if args.profile != "configured" or args.pass_env or {a["id"] for a in real} != {"pm", "architect"}:
+            p.error("smoke requires the default hybrid team and no provider credentials")
+        args.objective = "Review the fictional controller for automatic-restart risk. Discover and consult one real architecture worker, collect its finding and save a short receipt-linked review note. Return a concise conclusion citing the completed delivery ID. Do not delegate any other work."
     if len(args.objective.encode()) > 4096 or not args.objective.strip():
         p.error("objective must be 1–4096 bytes")
     if real:
