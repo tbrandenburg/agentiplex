@@ -1,54 +1,238 @@
-# agentiplex
+# Agentiplex
 
-Lightweight, open-source middleware for AI agent collaboration. Agent discovery, pooling, durable messaging, broadcasting and persistent state — built in Go, with modular adapters for A2A, AHP, ACP and MCP.
+**Bring your own agents. Build your own organization.**
 
-**Status:** v0.1 MVP stabilization; one daemon per namespace, durable A2A/MCP collaboration, shared state and optional real OpenCode team. Distributed coordination and production HA are deferred.
+[![Checks](https://github.com/tbrandenburg/agentiplex/actions/workflows/ci.yaml/badge.svg?branch=main)](https://github.com/tbrandenburg/agentiplex/actions/workflows/ci.yaml)
+[![Live OpenCode](https://github.com/tbrandenburg/agentiplex/actions/workflows/live-opencode.yaml/badge.svg?branch=main)](https://github.com/tbrandenburg/agentiplex/actions/workflows/live-opencode.yaml)
+[![Release](https://img.shields.io/github/v/release/tbrandenburg/agentiplex)](https://github.com/tbrandenburg/agentiplex/releases)
+[![Go](https://img.shields.io/badge/Go-1.26%2B-00ADD8?logo=go&logoColor=white)](https://go.dev/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-- [Product requirements](docs/PRD.md)
-- [Architecture](docs/ARCH.md)
-- [Foundation scope, demo instructions and merge gates](docs/FOUNDATION.md)
-- [Native A2A ingress contract and examples](docs/A2A.md)
-- [Collaboration primitives and demo](docs/COLLABORATION.md)
-- [Six-agent demonstrator and OpenCode integration](docs/DEMO.md)
-- [Agent lifecycle and persistent application state](docs/STATE.md)
-- [Configurable AMIS dashboard](docs/DASHBOARD.md)
+Lightweight, open-source middleware for autonomous agent collaboration.
+Discover agents, deliver tasks reliably, distribute work across teams and
+share durable application state — independently of any model, IDE or agent framework.
 
-Agentiplex reuses the official A2A SDK, AI Catalog SDK and NATS JetStream. A headless daemon (`agentiplexd`) owns infrastructure; a separate CLI (`agentiplex`) administers it remotely.
+[Quick start](#quick-start) · [Examples](#examples) · [Architecture](#architecture) · [Documentation](#documentation) · [Contributing](#contributing)
 
-## Quick demo
+## Why Agentiplex?
 
-With Go 1.26+, Bash, curl, jq and Node/npm for build-time asset packaging:
+Direct agent-to-agent communication is useful when every endpoint is known and
+available. A team of independent agents also needs discovery, durable delivery,
+shared context and visibility into what actually happened.
+
+Agentiplex provides that infrastructure without deciding what agents should do,
+how they should reason or where they should execute. Agents and their operators
+own models, tools, workflows, workspaces and permissions.
+
+| Capability | What it provides |
+| --- | --- |
+| **Discover** | Register existing A2A endpoints, publish an AI Catalog and find agents by skill, tag or group. |
+| **Send** | Queue a task durably, track its downstream result and retry safe transient failures. |
+| **Broadcast** | Deliver an update to every member of a configured group. |
+| **Dispatch** | Assign work to one eligible member of a worker pool. |
+| **Share state** | Store bounded, namespaced key/value context with revision checks. |
+| **Observe** | Inspect agent health, delivery receipts and events through a remote CLI or live dashboard. |
+
+## Quick start
+
+Try the complete collaboration demo locally, without an LLM or API key.
+
+**Prerequisites:** Git, Go 1.26+, GNU Make, Bash, curl, jq and Node/npm
+(for packaging dashboard assets at build time).
 
 ```sh
-bash examples/engineering-team/demo.sh
+git clone https://github.com/tbrandenburg/agentiplex.git
+cd agentiplex
+make demo-team
 ```
 
-Open http://127.0.0.1:18080/ui/. Six independent simulated A2A agents exercise the real collaboration infrastructure; Ctrl+C cleans up. Use `--check` for a noninteractive smoke test. See [DEMO.md](docs/DEMO.md) for replacing the Architect with OpenCode.
+Open [the collaboration dashboard](http://127.0.0.1:18080/ui/).
+Six independent simulated A2A agents demonstrate discovery, direct messages,
+broadcast, pool dispatch, offline delivery and recovery across a daemon restart.
+Press Ctrl+C to stop the demo, or use `make demo-check` for a noninteractive run.
 
-## Development
+The responses are deterministic fixtures, not model-generated engineering results.
+See the [demo guide](docs/DEMO.md) for the scenario and how to attach a real agent.
 
-Go 1.26 or newer, GNU Make, Bash, and Node/npm for embedded dashboard assets. Dependencies are locked in go.mod and go.sum. Run `make help` for the development commands. The provider-free demonstration uses an independently running A2A server. See the foundation guide for commands and current limitations.
+### Connect your own agents
 
-Local demos are unauthenticated and must stay on loopback or isolated trusted networks. Authenticated TLS deployment is supported; see below.
+Run the daemon with its embedded broker and MCP endpoint:
 
-Use `make fmt`, `make build`, `make test`, `make lint`, `make check`, `make run` and `make demo-team`. Make is the single development entry point. `make run` starts the daemon with MCP on loopback; override `RUN_ARGS` if needed. `make live-check` explicitly runs the free-model hybrid review on Linux with the pinned runtimes installed (see the autonomous example). `make docker`, `make compose-up` and `make compose-down` wrap local container development. `make clean` removes only generated binaries, release artifacts and AMIS assets, not data or credentials. `agentiplexd --workers 4` bounds parallel outbound operations; use one for serial execution. For a stuck accepted task, inspect `agentiplex messages status ID`; only after independently confirming the remote task stopped, use `agentiplex messages abandon ID DOWNSTREAM_TASK_ID --confirm-remote-stopped`. This retains uncertainty and never cancels or replays remote work.
+```sh
+make run
+```
 
-### Release
+In a separate terminal, start a sample A2A endpoint:
 
-From clean, current `main`, preview with `make release-plan bump=MINOR`, then publish with `make release bump=MINOR` (also PATCH or MAJOR). Highest stable vMAJOR.MINOR.PATCH tag is the baseline; no tags means v0.0.0, so the first MINOR release is v0.1.0. Prerelease tags are ignored. The preview reports the Helm `version` and `appVersion` changes without editing files. The release command requires Python 3, updates both fields in `charts/agentiplex/Chart.yaml`, commits only that file when necessary, creates an annotated release tag on that commit (or current HEAD if already synchronized), and atomically pushes `main` and the tag. This requires permission to push directly to `main` and an atomic-push-capable remote; branch protection is never bypassed. Existing GitHub Actions tests, builds and publishes the release; stable packaging rejects chart metadata that differs from the tag. A failed push retains the local release commit and tag for manual inspection; check remote main and the tag before recovering, never force push. A newer unpublished stable tag blocks subsequent releases. No release is created by ordinary CI.
+```sh
+make demo-agent
+```
 
-## MCP collaboration tools
+Register that endpoint and send a task from another terminal:
 
-Enable the optional local MCP endpoint with `agentiplexd --mcp` and connect an MCP host to `http://127.0.0.1:8080/mcp`. See [docs/MCP.md](docs/MCP.md) for tool contracts, OpenCode configuration and the provider-free client demo.
+```sh
+./bin/agentiplex register architect http://127.0.0.1:8001
+./bin/agentiplex discover --skill architecture
+./bin/agentiplex send architect "Review requirement 42"
+./bin/agentiplex messages status DELIVERY_ID
+```
 
-## Secure deployment
+Replace `DELIVERY_ID` with the receipt ID returned by the send command.
+The CLI talks to the daemon over HTTP; it never needs direct access to broker storage.
 
-See [deployment instructions](docs/DEPLOYMENT.md) for authenticated native TLS, the six-agent Compose stack, external NATS and Helm. The legacy local demonstration remains available. No public unauthenticated deployment is supported.
+Existing A2A agents can be registered the same way. An MCP host can use
+`http://127.0.0.1:8080/mcp` for discovery, messaging and shared state.
+See the [A2A contract](docs/A2A.md) and [MCP tools](docs/MCP.md).
 
-## Autonomous engineering team (optional live model)
+> [!IMPORTANT]
+> Local examples are unauthenticated. Keep them on loopback in a trusted
+> environment. For network deployment, configure authenticated TLS and
+> approved outbound agent origins using the [deployment guide](docs/DEPLOYMENT.md).
 
-See [examples/autonomous-team](examples/autonomous-team/README.md) for a configurable hybrid or all-real OpenCode team. The example provisions independent A2A gateways, submits one objective to the PM and observes model-issued collaboration through MCP. Real-model execution is explicitly opt-in locally; separate Live OpenCode CI uses the free model catalog without provider credentials. Deterministic Checks exercises startup and nested A2A/MCP interoperability.
+## Examples
 
-## Shared repository engineering team (optional live model)
+Choose the level of collaboration you want to explore.
 
-See [examples/repository-team](examples/repository-team/README.md) for six real OpenCode agents working in a single Git workspace chosen by the operator: an existing checkout or a fresh, independent scratch clone and worktree (`REPO`, `MODEL`, optional `REF`). `make repository-team` provisions the gateways, delegates one objective to the PM, and records actual receipts and Git changes. Developer and Testers have full shell access after explicit `--accept-full-access` acknowledgement; use an isolated disposable environment. Agents can build and test, and the operator can independently verify after review. Agentiplex does not own the workspace. `make repository-check` runs provider-free regression tests.
+| Example | Command | What it demonstrates |
+| --- | --- | --- |
+| [Engineering team](docs/DEMO.md) | `make demo-team` | Six simulated agents; deterministic communication, persistence and recovery. |
+| [Autonomous team](examples/autonomous-team/README.md) | `make live-check` | Real model-driven delegation through A2A and MCP using synthetic fixtures. |
+| [Repository team](examples/repository-team/README.md) | `make repository-team` with options | Six real agents working on the same Git worktree, with implementation and executable verification. |
+
+The real-agent examples require the pinned OpenCode and
+[opencode-a2a-lite](https://github.com/tbrandenburg/opencode-a2a-lite) runtimes.
+Follow their setup guides before running them. Live inference may transmit
+project content to the selected provider.
+
+### Collaborate on a real repository
+
+Run the repository team against an explicitly selected, trusted Git repository
+that is safe to share with the chosen model:
+
+```sh
+make repository-team \
+  REPO=https://github.com/owner/repo.git \
+  MODEL=opencode/big-pickle \
+  OBJECTIVE="Improve the README and verify the changes" \
+  REPOSITORY_ARGS="--accept-full-access --accept-provider-data --public-workspace"
+```
+
+Replace the example URL with your own public or synthetic repository.
+The launcher creates an independent scratch clone and clean detached worktree,
+starts six gateways and sends one objective to the PM. Each run has its own
+Git storage, daemon port and evidence directory. Alternatively, supply an
+existing checkout with `WORKSPACE` and a reviewed local configuration.
+An optional `REF` selects a branch or tag for clone mode.
+
+> [!WARNING]
+> Developer and Tester agents have unrestricted shell access as the OS user.
+> There is no OS sandbox. Use an isolated disposable VM, container or user
+> environment with minimal credentials. Do not send private source or secrets
+> to free models. For approved private-provider usage and independent
+> verification, follow the [repository-team guide](examples/repository-team/README.md).
+
+Review retained Git changes, delivery receipts and test evidence before committing.
+The launcher does not automatically publish the changes.
+
+## Architecture
+
+```mermaid
+flowchart LR
+    CLI["Remote CLI"]
+    UI["Live dashboard"]
+    Host["MCP host / agent"]
+    Client["A2A client"]
+    subgraph Daemon["agentiplexd"]
+        API["HTTP API · MCP · A2A ingress"]
+        Core["Registry · Messaging · Collaboration · State"]
+        API --> Core
+    end
+    CLI --> API
+    UI --> API
+    Host -->|MCP| API
+    Client -->|A2A| API
+    Core <-->|Durable state and queues| NATS[("NATS JetStream")]
+    Core -->|Native A2A| Agents["Independent agent endpoints"]
+    Agents -->|Optional MCP| API
+```
+
+- **`agentiplexd`** owns the registry, queues, shared state, delivery workers and optional dashboard.
+- **`agentiplex`** administers the daemon remotely.
+- **Agent runtimes** own task execution, sessions, tools and workspace access.
+- **NATS JetStream** provides durable messaging and KV storage; use embedded or external NATS.
+
+Implemented in Go with the official [A2A Go SDK](https://github.com/a2aproject/a2a-go),
+[MCP Go SDK](https://github.com/modelcontextprotocol/go-sdk),
+[AI Catalog SDK](https://github.com/Agent-Card/ai-catalog-go) and
+[NATS JetStream](https://docs.nats.io/nats-concepts/jetstream).
+
+Durable delivery is not exactly-once external execution. Ambiguous remote
+outcomes remain visible instead of being silently replayed. Parallel outbound
+operations are bounded by `agentiplexd --workers 4`; use one for serial execution.
+See [architecture](docs/ARCH.md), [collaboration](docs/COLLABORATION.md) and
+[lifecycle and state](docs/STATE.md) for the precise contracts.
+
+## Installation and deployment
+
+Download versioned native binaries and Helm packages from
+[GitHub Releases](https://github.com/tbrandenburg/agentiplex/releases), or build
+from source using `make build` (binaries in `bin/`).
+
+| Deployment | Guide |
+| --- | --- |
+| Native daemon with embedded or external NATS | [Configuration and deployment](docs/DEPLOYMENT.md) |
+| OCI image and secure Docker Compose | [Container deployment](docs/DEPLOYMENT.md) |
+| Single-replica Kubernetes / Helm | [Helm chart](charts/agentiplex/) and [deployment guide](docs/DEPLOYMENT.md) |
+
+Agentiplex supports authenticated TLS deployments. Multiple replicas sharing
+one namespace are not supported.
+
+## Project status
+
+**v0.1 — MVP stabilization.** A2A and MCP collaboration, durable state, the dashboard
+and single-daemon deployment are implemented. AHP and ACP adapters are future
+work, as are distributed ownership, production high availability and per-agent
+or tenant isolation.
+
+Agentiplex is a collaboration layer, not a model runtime, workflow engine,
+filesystem sandbox or exactly-once execution system.
+
+## Documentation
+
+| Topic | Guide |
+| --- | --- |
+| Product direction and scope | [Requirements](docs/PRD.md) · [Architecture](docs/ARCH.md) |
+| Protocols | [Native A2A](docs/A2A.md) · [MCP](docs/MCP.md) |
+| Collaboration and operations | [Messaging, groups and pools](docs/COLLABORATION.md) · [Lifecycle and state](docs/STATE.md) |
+| Dashboard and deployment | [Dashboard](docs/DASHBOARD.md) · [Secure deployment](docs/DEPLOYMENT.md) |
+| Verification and history | [Foundation](docs/FOUNDATION.md) · [Engineering demo](docs/DEMO.md) |
+| Maintainer tasks | [Release and packaging](docs/RELEASE.md) |
+
+## Contributing
+
+Bug reports and focused improvements are welcome. Open an
+[issue](https://github.com/tbrandenburg/agentiplex/issues) or submit a
+[pull request](https://github.com/tbrandenburg/agentiplex/pulls).
+For larger changes, discuss the proposed scope and verification plan first.
+
+```sh
+make help       # All development and example targets
+make fmt        # Format tracked Go source
+make build      # Build daemon and CLI
+make check      # Go tests, vet, Python and release-script tests
+make demo-check # Deterministic end-to-end demo
+```
+
+For focused integration checks, use `make autonomous-check`,
+`make repository-check` or the explicitly opt-in `make live-check`.
+The Go dependencies are pinned in `go.mod` and `go.sum`.
+Make is the single development entry point.
+
+See [release and packaging](docs/RELEASE.md) for publishing a version.
+To stop monitoring an unresolved accepted task, follow the operator procedure
+in [lifecycle and state](docs/STATE.md); never assume an uncertain outcome
+is safe to replay.
+
+## License
+
+[MIT](LICENSE). Third-party notices are retained with their respective components.

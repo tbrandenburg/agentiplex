@@ -1,7 +1,6 @@
 # Agentiplex — Product Requirements Document
 
 **Status:** Initial proposal / v0.1 demonstrator baseline  
-**Date:** 2026-11-24  
 **Companion:** [Architecture](ARCH.md)
 
 ## 1. Product vision
@@ -18,7 +17,7 @@ Existing A2A agents can communicate directly once endpoints are known. An engine
 
 Primary users are developers and platform engineers assembling multi-agent systems from existing agents. Secondary users are operators who need to inspect delivery, diagnose failures and deploy the same service locally or in a container environment.
 
-The initial motivating scenario is a small engineering organization inspired by Syspilot/Jarvis: architect, developer, testers and quality reviewer. Agentiplex does not implement their roles, contracts or governance. Those remain applications built on the communication fabric.
+The initial motivating scenario is a small engineering organization: architect, developer, testers and quality reviewer. Agentiplex does not implement their roles, contracts or governance. Those remain applications built on the communication fabric.
 
 ## 3. Product principles and boundaries
 
@@ -71,7 +70,7 @@ P0 is the first usable demo and release gate. P1 follows if the foundation works
 
 P0 includes loopback binding and restricted outbound endpoints (see architecture); SEC-01 is not permission to expose an unauthenticated service.
 
-## 6. Demonstrator for 2026-11-25
+## 6. Demonstrator
 
 Use a repeatable provider-free demo as the baseline, optionally substituting a real OpenCode Architect after a live smoke test.
 
