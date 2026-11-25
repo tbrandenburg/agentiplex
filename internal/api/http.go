@@ -15,6 +15,7 @@ import (
 	adapter "github.com/tbrandenburg/agentiplex/internal/adapters/a2a"
 	cat "github.com/tbrandenburg/agentiplex/internal/catalog"
 	"github.com/tbrandenburg/agentiplex/internal/dashboard"
+	mcpadapter "github.com/tbrandenburg/agentiplex/internal/adapters/mcp"
 )
 
 // Handler exposes the administration API and native A2A ingress when configured.
@@ -31,6 +32,14 @@ func HandlerWithDashboard(b *agentiplex.Bus, enabled bool, publicURL string) htt
 }
 
 func HandlerWithUI(b *agentiplex.Bus,u *dashboard.UI,publicURL string)http.Handler{return handler(b,u,publicURL)}
+
+// HandlerWithProtocols enables optional protocol adapters explicitly.
+func HandlerWithProtocols(b *agentiplex.Bus,u *dashboard.UI,publicURL string,mcpEnabled bool)http.Handler{
+	mux:=http.NewServeMux()
+	if mcpEnabled{mux.Handle(mcpadapter.Path,mcpadapter.Handler(b))}
+	mux.Handle("/",handler(b,u,publicURL))
+	return mux
+}
 
 func handler(b *agentiplex.Bus, u *dashboard.UI, publicURL ...string) http.Handler {
 	mux:=http.NewServeMux()
