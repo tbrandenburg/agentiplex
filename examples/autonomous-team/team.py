@@ -73,7 +73,6 @@ def workspace(root, agent, endpoint, model):
     permissions += [{"action": "agentiplex_" + tool, "resource": "*", "effect": "allow"} for tool in tools]
     config = {
         "$schema": "https://opencode.ai/config.json",
-        "model": {"providerID": model[0], "model": model[1]},
         "default_agent": agent["id"],
         "agents": {agent["id"]: {"mode": "primary", "description": agent["skill"],
                                  "system": system, "permissions": permissions}},
@@ -82,6 +81,8 @@ def workspace(root, agent, endpoint, model):
         "mcp": {"servers": {"agentiplex": {"type": "remote", "url": endpoint + "/mcp",
                                           "protocol": "auto", "codemode": False}}},
     }
+    if model is not None:
+        config["model"] = {"providerID": model[0], "model": model[1]}
     policy = {"version": 1, "base": "read-only", "policies": [
         {"action": "mcp.use", "resource": "agentiplex", "effect": "allow"},
         *[{"action": "tool.use", "resource": "agentiplex_" + tool + ":*", "effect": "allow"} for tool in tools]
@@ -218,7 +219,7 @@ class Team:
                                        "--skill", skill, "--port", str(port)], self.env)
                 url = "http://127.0.0.1:" + str(port)
             else:
-                project, policy = workspace(self.root, a, self.endpoint, self.args.model.split("/", 1))
+                project, policy = workspace(self.root, a, self.endpoint, self.args.model.split("/", 1) if self.args.model else None)
                 env = dict(self.env, A2A_NAME=name, A2A_DESCRIPTION="Read-only engineering " + skill,
                            A2A_TAGS=skill + ",real-opencode")
                 for key in self.args.pass_env:
@@ -277,7 +278,9 @@ class Team:
                 for d in list(details):
                     details.extend(self.cli("messages", "status", c["id"]) for c in (d.get("children") or []))
                 state = [self.cli("state", "get", "review", e["key"]) for e in self.cli("state", "list", "review")]
-                evidence = {"classification": "live-model", "root": parent, "deliveries": details, "state": state,
+                evidence = {"classification": "live-model", "requestedModel": self.args.model or "OpenCode default",
+                            "credentialMode": "explicit-provider" if self.args.pass_env else "credential-free",
+                            "root": parent, "deliveries": details, "state": state,
                             "agents": self.team["agents"]}
                 (self.root / "evidence.json").write_text(json.dumps(evidence, indent=2) + "\n")
                 verify_evidence(evidence)
@@ -313,14 +316,15 @@ def main():
     p.add_argument("--team", default=str(HERE / "team.json"))
     p.add_argument("--profile", choices=["configured", "simulated", "real"], default="configured")
     p.add_argument("--gateway", default="opencode-a2a-lite")
-    p.add_argument("--model", help="explicit OpenCode provider/model")
+    p.add_argument("--model", help="optional OpenCode provider/model; omit for credential-free default")
     p.add_argument("--pass-env", action="append", default=[], help="explicit provider variable; repeat")
     p.add_argument("--port", type=int, default=19080)
     p.add_argument("--seconds", type=int, default=600, help="runtime deadline including startup (60–1800s)")
     p.add_argument("--headless", action="store_true")
     p.add_argument("--check", action="store_true", help="provision only; never submit a model task")
     p.add_argument("--objective", default="Review the fictional controller fixture for architectural, implementation and verification risks. Collaborate with the team and produce a consolidated evidence-based assessment.")
-    p.add_argument("--accept-live-cost", action="store_true")
+    p.add_argument("--accept-live-cost", action="store_true", help="allow model execution with explicit provider credentials")
+    p.add_argument("--accept-free-model", action="store_true", help="allow credential-free live inference on the synthetic fixture")
     args = p.parse_args()
     team = load_team(args.team, args.profile)
     real = [a for a in team["agents"] if a["runtime"] == "opencode"]
@@ -329,22 +333,36 @@ def main():
     if len(args.objective.encode()) > 4096 or not args.objective.strip():
         p.error("objective must be 1–4096 bytes")
     if real:
-        if sys.platform != "linux" or not args.model or not re.fullmatch(r"[^/\s]+/[^/\s]+", args.model):
-            p.error("real agents require Linux and explicit provider/model")
-        if not args.pass_env or any(not re.fullmatch(r"[A-Z][A-Z0-9_]*_API_KEY", k) or not os.environ.get(k) for k in args.pass_env):
-            p.error("explicit nonempty provider *_API_KEY variable(s) required")
+        if sys.platform != "linux" or (args.model and not re.fullmatch(r"[^/\s]+/[^/\s]+", args.model)):
+            p.error("real agents require Linux and valid optional provider/model")
+        if args.pass_env:
+            if not args.model or any(not re.fullmatch(r"[A-Z][A-Z0-9_]*_API_KEY", k) or not os.environ.get(k) for k in args.pass_env):
+                p.error("credentialed mode requires a model and explicit nonempty provider *_API_KEY variable(s)")
+            if args.accept_free_model:
+                p.error("free-model mode never forwards credentials")
+        elif args.model and not (args.model == "opencode/big-pickle" or
+                                 re.fullmatch(r"opencode/[a-z0-9][a-z0-9.-]*-free", args.model)):
+            p.error("credential-free mode requires OpenCode default, opencode/big-pickle or an opencode/*-free model")
         args.gateway = shutil.which(args.gateway)
         if not args.gateway or subprocess.check_output([args.gateway, "--version"], env=clean_environment(), timeout=15, text=True).strip() != "0.8.1":
             p.error("install pinned opencode-a2a-lite 0.8.1")
         if subprocess.check_output(["opencode", "--version"], env=clean_environment(), timeout=15, text=True).strip() != "opencode v2.3.2":
             p.error("install tested OpenCode 2.3.2")
-    if not args.check and (not args.accept_live_cost or len(real) < 2 or not any(a["id"] == "pm" for a in real)):
-        p.error("live run requires explicit cost acceptance, a real PM and at least one real worker; use --check for provider-free setup")
+    if not args.check:
+        if len(real) < 2 or not any(a["id"] == "pm" for a in real):
+            p.error("live run requires a real PM and at least one real worker; use --check for provider-free setup")
+        if args.pass_env and not args.accept_live_cost:
+            p.error("credentialed live run requires --accept-live-cost")
+        if not args.pass_env and (not args.accept_free_model or args.accept_live_cost):
+            p.error("credential-free live run requires --accept-free-model, not --accept-live-cost")
     # Private standalone root outside the checkout. Retain artifacts for
     # operator review; never automatically publish model content or logs.
     os.umask(0o077)
     root = Path(tempfile.mkdtemp(prefix="agentiplex-autonomous-", dir="/tmp")).resolve()
     print("Private run directory:", root, flush=True)
+    if real:
+        print("Requested model:", args.model or "OpenCode default",
+              "| credentials:", "explicit provider" if args.pass_env else "none", flush=True)
     build_env = {k: v for k, v in os.environ.items() if not k.endswith("_API_KEY") and not k.startswith("AGENTIPLEX_")}
     if not args.headless:
         subprocess.run(["go", "generate", "./internal/dashboard"], env=build_env, cwd=ROOT, check=True, timeout=300)
