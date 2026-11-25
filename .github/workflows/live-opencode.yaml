@@ -1,7 +1,8 @@
-name: Live OpenCode
+name: Live example
 on:
-  pull_request:
-    paths:
+  push:
+    branches: [main]
+    paths: &paths
       - 'examples/autonomous-team/**'
       - 'examples/repository-team/**'
       - 'internal/adapters/**'
@@ -13,6 +14,8 @@ on:
       - 'go.mod'
       - 'go.sum'
       - '.github/workflows/live-opencode.yaml'
+  pull_request:
+    paths: *paths
   workflow_dispatch:
 permissions:
   contents: read
