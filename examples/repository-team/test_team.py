@@ -138,6 +138,8 @@ class RepositoryTests(unittest.TestCase):
 
         def spawn(name, cmd, env, cwd=None):
             commands.append((name, cmd, env, cwd))
+            if name == "daemon":
+                (self.root / "daemon.log").write_text("INFO agentiplexd ready listen=127.0.0.1:19080 broker_mode=embedded\n")
             return name
 
         def cli(*args):
@@ -163,6 +165,23 @@ class RepositoryTests(unittest.TestCase):
         self.assertEqual(6, len(registrations))
         self.assertTrue(all(len(c) == 3 and c[2].startswith("http://127.0.0.1:") for c in registrations))
         self.assertFalse(team.git_snapshot(self.workspace)["status"])
+
+    def test_daemon_auto_port_uses_owned_readiness_record(self):
+        args = SimpleNamespace(port=0, headless=True, accept_full_access=True)
+        runner = team.RepositoryTeam(args, {}, self.root, float("inf"))
+        (self.root / "daemon.log").write_text("INFO agentiplexd ready listen=127.0.0.1:29451 broker_mode=embedded\n")
+        with patch.object(runner, "spawn") as spawn, patch.object(team.base, "get", return_value={"ready": True}) as get:
+            runner.start_daemon()
+            cmd = spawn.call_args.args[1]
+            self.assertEqual("127.0.0.1:0", cmd[cmd.index("--listen") + 1])
+            self.assertNotIn("--public-url", cmd)
+            get.assert_called_once_with("http://127.0.0.1:29451/readyz")
+        self.assertEqual("http://127.0.0.1:29451", runner.endpoint)
+        args.port = 19080
+        with patch.object(runner, "spawn"), patch.object(team.base, "get") as get:
+            with self.assertRaisesRegex(RuntimeError, "unexpected daemon"):
+                runner.start_daemon()
+            get.assert_not_called()
 
     def evidence(self):
         root = {"id": "root", "target": "pm", "state": "completed", "result": {"text": "done"}}
