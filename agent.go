@@ -38,7 +38,9 @@ type Delivery struct {
 	CardURL string `json:"cardUrl"`
 	State string `json:"state"`
 	Attempts int `json:"attempts"`
-	Polls int `json:"polls"`
+	Polls int `json:"polls"` // cumulative status lookup attempts, never a lifetime budget
+	PollFailures int `json:"pollFailures,omitempty"` // consecutive failed lookups
+	LastObservedAt *time.Time `json:"lastObservedAt,omitempty"` // last valid downstream task snapshot
 	TaskID a2a.TaskID `json:"taskId,omitempty"`
 	ContextID string `json:"contextId,omitempty"`
 	Result json.RawMessage `json:"result,omitempty"`

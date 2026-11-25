@@ -71,3 +71,7 @@ The same structured data contract accepts operation=broadcast (target is a group
 ## Authenticated deployment (PR #7)
 
 With secure server configuration, the public Agent Card advertises bearer authentication and A2A requests require the operator or collaborator token over verified HTTPS. Outbound A2A bearer credentials are configured by explicitly allowed HTTPS origin and mounted file; they are not accepted from registered cards or stored in JetStream. See [DEPLOYMENT.md](DEPLOYMENT.md).
+
+## Long-running accepted tasks
+
+SendMessage requests return immediately when supported. The per-request delivery.timeout is a transport/blocking ingress wait budget, not a remote execution deadline. delivery.max_attempts limits pre-submission reachability. Once a downstream task ID is known, Agentiplex observes it via GetTask indefinitely, at delivery.task_poll_interval (zero inherits retry_delay), with exponential backoff up to one minute for consecutive failed lookups. A failed/mismatched lookup retains accepted state, last valid result, task ID, assignment and busy reservation; detail, pollFailures and lastObservedAt distinguish lost observability from a confirmed terminal outcome. Successful lookup resets failures. State survives restart. No automatic replay, task cancellation or reassignment. A permanently missing remote task may require future explicit reconciliation; it is not safe to infer execution failure from lost contact. Old terminal uncertain records remain terminal.
