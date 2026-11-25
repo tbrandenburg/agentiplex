@@ -18,6 +18,9 @@ bump=MINOR bash "$script"
 git ls-remote --exit-code --tags origin refs/tags/v0.1.0 >/dev/null
 bump=PATCH bash "$script" --dry-run | grep -q 'v0.1.0 -> v0.1.1'
 bump=MAJOR bash "$script" --dry-run | grep -q 'v0.1.0 -> v1.0.0'
+git tag v0.1.1
+if bump=PATCH bash "$script" --dry-run; then exit 1; fi
+git tag -d v0.1.1 >/dev/null
 git tag v0.2.0-rc.1
 bump=MINOR bash "$script" --dry-run | grep -q 'v0.1.0 -> v0.2.0'
 if bump=INVALID bash "$script"; then exit 1; fi
