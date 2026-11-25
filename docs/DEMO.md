@@ -57,3 +57,7 @@ Checks builds and tests the existing integration suite and executes the entire p
 ## Configure the dashboard
 
 See [DASHBOARD.md](DASHBOARD.md) for AMIS schema, build-time assets, themes and refresh configuration. The browser test asserts the real AMIS-rendered interface and automatic refresh after a group update.
+
+## Container team
+
+See [DEPLOYMENT.md](DEPLOYMENT.md) for the six independent simulators on an isolated Docker Compose network with authenticated Agentiplex, TLS and a persistent external JetStream volume. The native scripted demonstration is unchanged.

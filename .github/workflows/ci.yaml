@@ -11,7 +11,7 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -72,3 +72,34 @@ jobs:
             sleep 1
           done
           exit 1
+      - name: Secure Compose deployment and recovery
+        run: |
+          bash -n scripts/demo-secrets.sh scripts/compose-check.sh scripts/helm-check.sh scripts/package-release.sh
+          bash scripts/compose-check.sh
+      - name: Helm deployment on kind
+        run: |
+          kind version
+          helm version
+          bash scripts/helm-check.sh
+  release-artifacts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.x'
+          cache: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Dry-run native and Helm release packaging
+        run: |
+          helm lint charts/agentiplex
+          bash scripts/package-release.sh v0.0.0-ci
+          (cd dist && sha256sum -c SHA256SUMS)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-dry-run
+          path: dist/
+          if-no-files-found: error

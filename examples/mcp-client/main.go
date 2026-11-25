@@ -7,6 +7,9 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"net/http"
+	"net/url"
+	"github.com/tbrandenburg/agentiplex/internal/security"
 	"os"
 	"time"
 
@@ -22,11 +25,19 @@ func run()error{
 	target:=flag.String("target","","optional registered recipient")
 	prompt:=flag.String("text","","explicit text request")
 	key:=flag.String("key","","stable idempotency key for delegation")
+	tokenFile:=flag.String("token-file","","optional mounted bearer credential")
+	caFile:=flag.String("ca-file","","additional trusted CA certificate")
 	flag.Parse()
 	if (*target==""&&(*prompt!=""||*key!=""))||(*target!=""&&(*prompt==""||*key=="")){return fmt.Errorf("provide target, text and key together")}
 	ctx,cancel:=context.WithTimeout(context.Background(),2*time.Minute);defer cancel()
+	u,err:=url.Parse(*endpoint);if err!=nil||u.Hostname()==""||u.User!=nil{return fmt.Errorf("invalid MCP URL")}
+	var token string
+	if *tokenFile!=""{if u.Scheme!="https"{return fmt.Errorf("credential requires HTTPS")};token,err=security.ReadToken(*tokenFile);if err!=nil{return err}}
+	tlsConfig,err:=security.TLSConfig(*caFile);if err!=nil{return err}
+	transport:=http.DefaultTransport.(*http.Transport).Clone();transport.TLSClientConfig=tlsConfig
+	httpClient:=&http.Client{Transport:bearerTransport{transport,token,u.Scheme+"://"+u.Host},CheckRedirect:func(*http.Request,[]*http.Request)error{return http.ErrUseLastResponse}}
 	client:=mcp.NewClient(&mcp.Implementation{Name:"agentiplex-example",Version:"0.1.0"},nil)
-	session,err:=client.Connect(ctx,&mcp.StreamableClientTransport{Endpoint:*endpoint,DisableStandaloneSSE:true},nil)
+	session,err:=client.Connect(ctx,&mcp.StreamableClientTransport{Endpoint:*endpoint,DisableStandaloneSSE:true,HTTPClient:httpClient},nil)
 	if err!=nil{return err};defer session.Close()
 	tools,err:=session.ListTools(ctx,&mcp.ListToolsParams{});if err!=nil{return err}
 	for _,tool:=range tools.Tools{fmt.Println("Tool:",tool.Name)}
@@ -55,4 +66,11 @@ func run()error{
 		}
 		select{case<-ctx.Done():return fmt.Errorf("wait ended; delivery %s remains queryable: %w",receipt.ID,ctx.Err());case<-ticker.C:}
 	}
+}
+
+type bearerTransport struct{base http.RoundTripper;token,origin string}
+func(t bearerTransport) RoundTrip(r *http.Request)(*http.Response,error){
+	if r.URL.Scheme+"://"+r.URL.Host!=t.origin{return nil,fmt.Errorf("unexpected MCP request origin")}
+	if t.token!=""{r=r.Clone(r.Context());r.Header.Set("Authorization","Bearer "+t.token)}
+	return t.base.RoundTrip(r)
 }
