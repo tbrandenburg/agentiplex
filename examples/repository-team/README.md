@@ -17,7 +17,7 @@ receive agent IDs, endpoints, collaboration messages and shared state.
 ## 1. Prepare a trusted workspace
 
 Use Linux, Go 1.26+, Python 3.10+, Git, GNU Make, Node/npm, Bun 1.4.4, OpenCode
-2.3.2 and opencode-a2a-lite 0.8.2 on PATH (same pinned versions as the autonomous
+2.3.2 or newer and opencode-a2a-lite 0.8.2 on PATH (same pinned versions as the autonomous
 demo). With REPO, the launcher creates its own independent bare clone and detached
 clean worktree; with WORKSPACE, the operator supplies a clean checkout. The launcher
 never switches branches, commits, pushes, merges, resets or cleans the source
