@@ -23,7 +23,7 @@ The initial motivating scenario is a small engineering organization: architect, 
 
 - Standards-first: use A2A 1.0 at agent-facing boundaries; publish AI Catalog entries referencing native Agent Cards. Do not invent a replacement wire protocol.
 - Glue code first: reuse official SDKs and NATS JetStream for messaging, persistence and consumer coordination.
-- Runtime-independent: independently hosted agents remain responsible for their execution and context. No requirement for VS Code, Copilot, OpenCode or a particular model.
+- Runtime-independent: independently hosted agents remain responsible for their execution and context. No requirement for a particular IDE, agent runtime or model.
 - Library-first Go design, with a headless daemon (`agentiplexd`) and separate remote CLI (`agentiplex`).
 - Deployment-agnostic: native, Docker/Compose and Kubernetes via configuration, not platform-specific core code.
 - Honest reliability: distinguish durable enqueue, delivery, acceptance, execution and completion. At-least-once transport is not exactly-once agent execution.
@@ -62,7 +62,7 @@ P0 is the first usable demo and release gate. P1 follows if the foundation works
 | POOL-01 | P1 | Dispatch one item to one eligible member of a configured pool via shared durable consumption, not broadcast. Assign distinct work to available members; preserve assignment after downstream acceptance. |
 | STATE-01 | P1 | Offer bounded, namespaced persistent key/value context storage with revision checks. This is application-managed state, not automatic LLM conversational memory or runtime checkpointing. |
 | UI-01 | P1 | Provide a minimal live dashboard driven by actual registry, delivery and event state. Clearly label simulated agents and observed versus unknown reachability. |
-| DEMO-02 | P1 | Register and invoke a real `tbrandenburg/opencode-a2a-lite` endpoint unchanged; show actual response and distinguish it from simulated output. |
+| DEMO-02 | P1 | Register and invoke a real third-party A2A endpoint unchanged (the examples use `tbrandenburg/opencode-a2a-lite`); show actual response and distinguish it from simulated output. |
 | DEP-01 | P1 | Package a non-root OCI image and Docker Compose example using persistent external NATS; provide a basic single-replica Helm deployment when tested. |
 | SEC-01 | P2 | Authenticated identities, per-agent authorization, TLS, secret management and tenant boundaries for network-accessible deployments. |
 | HA-01 | P2 | Multi-replica daemon coordination, replicated JetStream, safe ownership/reconciliation, failover tests and operational SLOs. |
@@ -72,7 +72,7 @@ P0 includes loopback binding and restricted outbound endpoints (see architecture
 
 ## 6. Demonstrator
 
-Use a repeatable provider-free demo as the baseline, optionally substituting a real OpenCode Architect after a live smoke test.
+Use a repeatable provider-free demo as the baseline, optionally substituting a real A2A Architect after a live smoke test.
 
 | Scene | Action | Evidence |
 |---|---|---|
@@ -83,9 +83,9 @@ Use a repeatable provider-free demo as the baseline, optionally substituting a r
 | 5 (P1) | Dispatch several tasks to a tester pool | One assignment per task; observed distribution across available workers |
 | 6 | Stop one recipient; submit a message; restart it | Message remains queued/retryable while offline, then actually completes |
 | 7 | Stop daemon with queued work; restart using same data directory | Registry and pending work survive; delivery continues |
-| 8 (P1) | Send a read-only repository analysis task to OpenCode | Real A2A response and task status; no mocked success |
+| 8 (P1) | Send a read-only repository analysis task to a real A2A agent | Real A2A response and task status; no mocked success |
 
-Suggested agents: Architect (OpenCode or mock), Developer (mock), Tester-1/Tester-2 (mock), Quality (mock). Use a disposable trusted workspace and deterministic mock responses. A failed real-model demo must not invalidate the provider-free transport tests or be presented as a success.
+Suggested agents: Architect (real A2A agent or mock), Developer (mock), Tester-1/Tester-2 (mock), Quality (mock). Use a disposable trusted workspace and deterministic mock responses. A failed real-model demo must not invalidate the provider-free transport tests or be presented as a success.
 
 ## 7. Quality gates and non-functional requirements
 
