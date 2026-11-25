@@ -1,12 +1,17 @@
 server:
   listen: "127.0.0.1:8080"
   # public_url: "http://127.0.0.1:8080" # defaults to actual loopback listener
-  trusted_network: false
+  trusted_network: false # isolated demo only; not needed with authentication
+  tls_cert_file: ""
+  tls_key_file: ""
 broker:
   mode: embedded
   storage: "./data"
   replicas: 1
-  # url: "nats://127.0.0.1:4222" # external mode
+  # url: "tls://nats.example:4222" # external mode
+  token_file: ""
+  credentials_file: "" # alternative to token_file
+  ca_file: ""
 registry:
   namespace: engineering
   health_interval: 30s # zero disables periodic observations
@@ -15,6 +20,8 @@ delivery:
   retry_delay: 5s
   max_attempts: 10
   allowed_origins: [] # loopback allowed; explicit non-loopback HTTP(S) origins
+  ca_file: ""
+  token_files: {} # map approved HTTPS origins to mounted bearer credential files
 
 observability:
   dashboard: true # read-only UI; trusted local use only
@@ -24,7 +31,7 @@ observability:
 
 protocols:
   mcp:
-    enabled: false # opt-in; loopback only, no authentication yet
+    enabled: false # opt-in; authenticated TLS required off loopback
 
 # Secure deployment: all credentials are mounted files, never values in YAML.
 # server.tls_cert_file and server.tls_key_file plus HTTPS public_url required.

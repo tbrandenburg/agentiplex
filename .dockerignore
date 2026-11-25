@@ -2,3 +2,6 @@
 bin
 data
 *.log
+
+.demo-secrets
+internal/dashboard/static/vendor
