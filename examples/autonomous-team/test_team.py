@@ -1,0 +1,71 @@
+import importlib.util
+import json
+from pathlib import Path
+import tempfile
+import unittest
+
+spec = importlib.util.spec_from_file_location("team", Path(__file__).with_name("team.py"))
+team = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(team)
+
+
+class TeamTests(unittest.TestCase):
+    def test_profiles(self):
+        path = team.HERE / "team.json"
+        configured = team.load_team(path, "configured")
+        self.assertEqual(2, sum(a["runtime"] == "opencode" for a in configured["agents"]))
+        self.assertTrue(all(a["runtime"] == "simulated" for a in team.load_team(path, "simulated")["agents"]))
+        self.assertTrue(all(a["runtime"] == "opencode" for a in team.load_team(path, "real")["agents"]))
+        self.assertEqual(["tester-1", "tester-2"], configured["pools"]["testers"])
+
+    def test_reject_coordinator_in_collection(self):
+        data = team.load_team(team.HERE / "team.json", "configured")
+        data["groups"]["engineering"].append("pm")
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "team.json"
+            path.write_text(json.dumps(data))
+            with self.assertRaises(ValueError):
+                team.load_team(path, "configured")
+
+    def test_exact_policy_and_workspace(self):
+        data = team.load_team(team.HERE / "team.json", "real")
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for a in data["agents"]:
+                project, policy = team.workspace(root, a, "http://127.0.0.1:19080", ("openai", "example-model"))
+                self.assertNotIn(project, policy.parents)
+                self.assertTrue((project / "fixture" / "controller.txt").is_file())
+                config = json.loads((project / "opencode.json").read_text())
+                self.assertEqual("http://127.0.0.1:19080/mcp", config["mcp"]["servers"]["agentiplex"]["url"])
+                self.assertFalse(config["mcp"]["servers"]["agentiplex"]["codemode"])
+                self.assertEqual(a["id"], config["default_agent"])
+                rules = json.loads(policy.read_text())
+                self.assertEqual("read-only", rules["base"])
+                names = {r["resource"] for r in rules["policies"]}
+                self.assertIn("agentiplex_get_state:*", names)
+                self.assertIn("agentiplex_put_state:*", names)
+                for tool in team.DELEGATE_TOOLS:
+                    self.assertEqual(a["id"] == "pm", "agentiplex_" + tool + ":*" in names)
+                self.assertFalse(any("shell" in n or "edit" in n for n in names))
+
+    def test_evidence_requires_real_worker_and_state(self):
+        e = {"agents": [{"id": "pm", "runtime": "opencode"}, {"id": "architect", "runtime": "opencode"}],
+             "root": {"id": "root", "target": "pm", "state": "completed", "result": {"text": "review worker-1"}},
+             "deliveries": [{"id": "worker-1", "target": "architect", "state": "completed", "result": {"text": "finding"}}],
+             "state": [{"key": "pm", "revision": 1, "value": "plan"}, {"key": "architect", "revision": 2, "value": "finding"}]}
+        team.verify_evidence(e)
+        e["agents"][1]["runtime"] = "simulated"
+        with self.assertRaises(RuntimeError):
+            team.verify_evidence(e)
+        e["agents"][1]["runtime"] = "opencode"
+        e["state"].pop()
+        with self.assertRaises(RuntimeError):
+            team.verify_evidence(e)
+        e["state"].append({"key": "architect", "revision": 2, "value": "finding"})
+        e["root"]["result"] = {"text": "uncited summary"}
+        with self.assertRaises(RuntimeError):
+            team.verify_evidence(e)
+
+
+if __name__ == "__main__":
+    unittest.main()

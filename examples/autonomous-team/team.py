@@ -68,12 +68,15 @@ def workspace(root, agent, endpoint, model):
     tools = READ_TOOLS + (DELEGATE_TOOLS if agent["id"] == "pm" else ())
     role = (HERE / "roles" / (agent["role"] + ".md")).read_text()
     system = "Logical agent ID: " + agent["id"] + ". " + role
+    permissions = [{"action": "*", "resource": "*", "effect": "deny"}]
+    permissions += [{"action": name, "resource": "*", "effect": "allow"} for name in ("read", "glob", "grep")]
+    permissions += [{"action": "agentiplex_" + tool, "resource": "*", "effect": "allow"} for tool in tools]
     config = {
         "$schema": "https://opencode.ai/config.json",
         "model": {"providerID": model[0], "model": model[1]},
         "default_agent": agent["id"],
         "agents": {agent["id"]: {"mode": "primary", "description": agent["skill"],
-                                 "system": system}},
+                                 "system": system, "permissions": permissions}},
         "plugins": [], "skills": [], "instructions": [],
         "snapshots": False, "warming": False,
         "mcp": {"servers": {"agentiplex": {"type": "remote", "url": endpoint + "/mcp",
@@ -97,7 +100,7 @@ def get(url, timeout=3):
 
 def clean_environment():
     # Do not pass ambient provider keys, AGENTIPLEX settings, proxy or runtime
-    # overrides to the bus or simulator. Build tools inherit the operator env.
+    # overrides to the bus or simulator.
     keys = ("PATH", "HOME", "LANG", "LC_ALL", "TMPDIR", "USER", "LOGNAME")
     env = {k: os.environ[k] for k in keys if k in os.environ}
     env["NO_PROXY"] = "127.0.0.1,localhost"
@@ -242,6 +245,17 @@ class Team:
             raise RuntimeError("unexpected existing deliveries")
         print("Team ready; dashboard:", self.endpoint + "/ui/", flush=True)
 
+    def snapshot(self, root_id):
+        records = get(self.endpoint + "/api/v1/deliveries?limit=100")
+        nested = [d for d in records if d["id"] != root_id]
+        total = sum(len(d.get("children") or []) or 1 for d in nested)
+        if len(nested) > 6 or total > 16:
+            raise RuntimeError("observed delegation budget exceeded; stopping team")
+        if any(d["target"] == "pm" or d.get("assignedAgent") == "pm" or
+               any(c["target"] == "pm" for c in (d.get("children") or [])) for d in nested):
+            raise RuntimeError("recursive PM delegation observed; stopping team")
+        return records
+
     def observe(self, objective):
         # The one and only workflow submission by the launcher. Thereafter it
         # reads receipts and state; models choose all collaboration operations.
@@ -250,14 +264,7 @@ class Team:
         previous = None
         while True:
             self.alive()
-            records = get(self.endpoint + "/api/v1/deliveries?limit=100")
-            nested = [d for d in records if d["id"] != root_id]
-            total = sum(len(d.get("children") or []) or 1 for d in nested)
-            if len(nested) > 6 or total > 16:
-                raise RuntimeError("observed delegation budget exceeded; stopping team")
-            if any(d["target"] == "pm" or d.get("assignedAgent") == "pm" or
-                   any(c["target"] == "pm" for c in (d.get("children") or [])) for d in nested):
-                raise RuntimeError("recursive PM delegation observed; stopping team")
+            records = self.snapshot(root_id)
             summary = sorted((d["id"], d["target"], d["state"]) for d in records)
             if summary != previous:
                 print("Observed:", json.dumps(summary), flush=True)
@@ -265,6 +272,7 @@ class Team:
             parent = self.cli("messages", "status", root_id)
             if parent["state"] in TERMINAL:
                 # Snapshot actual evidence, including failed/intervention outcomes.
+                records = self.snapshot(root_id)
                 details = [self.cli("messages", "status", d["id"]) for d in records]
                 for d in list(details):
                     details.extend(self.cli("messages", "status", c["id"]) for c in (d.get("children") or []))
@@ -288,6 +296,9 @@ def verify_evidence(e):
               and (d.get("assignedAgent") or d["target"]) in real - {"pm"} and d.get("result")]
     if not worker:
         raise RuntimeError("no completed independent real worker result")
+    result_text = json.dumps(e["root"]["result"])
+    if not any(d["id"] in result_text for d in worker):
+        raise RuntimeError("PM result does not cite any observed real worker receipt")
     if any(d["state"] != "completed" for d in e["deliveries"]):
         raise RuntimeError("unresolved delivery; inspect evidence instead of claiming success")
     if not any(s["key"] == "pm" and s.get("revision", 0) > 0 and s.get("value") for s in e["state"]):
@@ -327,18 +338,19 @@ def main():
             p.error("install pinned opencode-a2a-lite 0.8.1")
         if subprocess.check_output(["opencode", "--version"], env=clean_environment(), timeout=15, text=True).strip() != "opencode v2.3.2":
             p.error("install tested OpenCode 2.3.2")
-    if not args.check and (not args.accept_live_cost or len(real) < 2 or team["agents"][[a["id"] for a in team["agents"]].index("pm")]["runtime"] != "opencode"):
+    if not args.check and (not args.accept_live_cost or len(real) < 2 or not any(a["id"] == "pm" for a in real)):
         p.error("live run requires explicit cost acceptance, a real PM and at least one real worker; use --check for provider-free setup")
     # Private standalone root outside the checkout. Retain artifacts for
     # operator review; never automatically publish model content or logs.
     os.umask(0o077)
     root = Path(tempfile.mkdtemp(prefix="agentiplex-autonomous-", dir="/tmp")).resolve()
     print("Private run directory:", root, flush=True)
+    build_env = {k: v for k, v in os.environ.items() if not k.endswith("_API_KEY") and not k.startswith("AGENTIPLEX_")}
     if not args.headless:
-        subprocess.run(["go", "generate", "./internal/dashboard"], cwd=ROOT, check=True, timeout=300)
+        subprocess.run(["go", "generate", "./internal/dashboard"], env=build_env, cwd=ROOT, check=True, timeout=300)
     for name, pkg in (("agentiplexd", "./cmd/agentiplexd"), ("agentiplex", "./cmd/agentiplex"),
                       ("simulated-agent", "./examples/simulated-agent")):
-        subprocess.run(["go", "build", "-mod=readonly", "-o", str(root / name), pkg], cwd=ROOT, check=True, timeout=300)
+        subprocess.run(["go", "build", "-mod=readonly", "-o", str(root / name), pkg], cwd=ROOT, env=build_env, check=True, timeout=300)
     # Reject pre-existing listeners before launch. The bus uses a fixed port;
     # simulators use distinct ports, real gateways announce ephemeral ports.
     for port in range(args.port, args.port + len(team["agents"]) + 1):

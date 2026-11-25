@@ -350,3 +350,7 @@ The official MCP Go SDK supplies an optional stateless Streamable HTTP adapter a
 ### PR #7 implementation refinement
 
 An optional static role-credential boundary (operator, collaborator, dashboard viewer) requires native TLS, explicit HTTPS advertised origin and mounted credentials. The public probes and bus Agent Card contain no credentials; all other routes are authenticated in secure mode. Outbound A2A uses approved HTTPS origin-scoped bearer credentials and verified CA roots; external NATS uses native token/credentials and TLS options. No individual identities, tenant isolation or distributed ownership. Compose uses official NATS and isolated simulator endpoints; Helm deploys one daemon with Recreate strategy and external official NATS. See [DEPLOYMENT.md](DEPLOYMENT.md).
+
+### PR #8 autonomous example
+
+The disposable team example is deliberately outside the core. OpenCode 2.3.2 and opencode-a2a-lite 0.8.1 provide independent agent execution. Generated role configuration and exact read-only gateway policy exceptions permit the PM to delegate via existing MCP tools; workers can inspect and exchange KV context but cannot delegate through MCP in this profile. The launcher performs provisioning and one initial A2A-bound submission, then observes state/results. No planner or workflow engine was introduced. Provider-free tests verify active A2A task -> MCP delegation -> A2A recipient completion; real model decisions require separately observed live acceptance.
