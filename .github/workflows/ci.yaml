@@ -39,6 +39,8 @@ jobs:
           node --check internal/dashboard/static/bootstrap.js
           node --check examples/engineering-team/browser-check.mjs
           make demo-check DEMO_ARGS=--browser-check
+      - name: Shared repository example regression tests
+        run: make repository-check
       - name: Autonomous team configuration and provider-free startup
         run: make autonomous-check
       - name: Save resolved dependency manifest
