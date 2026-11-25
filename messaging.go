@@ -6,7 +6,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"log/slog"
 	"strings"
 	"time"
@@ -133,8 +132,24 @@ func(b *Bus) settle(m *nats.Msg,d *Delivery,state,detail string){
 }
 
 func(b *Bus) later(m *nats.Msg,d *Delivery,state,detail string){
+	b.laterAfter(m,d,state,detail,b.cfg.RetryDelay)
+}
+
+func(b *Bus) laterAfter(m *nats.Msg,d *Delivery,state,detail string,delay time.Duration){
 	if err:=b.save(d,state,detail);err!=nil{slog.Warn("delivery state persistence failed","id",d.ID)}
-	_ = m.NakWithDelay(b.cfg.RetryDelay)
+	_ = m.NakWithDelay(delay)
+}
+
+// Polling is a read-only observation, not a new execution attempt.
+// Back off consecutive failures up to a minute without imposing a task lifetime.
+func(c Config) pollDelay(failures int)time.Duration{
+	delay:=c.TaskPollInterval
+	if delay==0{delay=c.RetryDelay}
+	for i:=0;i<failures&&delay<time.Minute;i++{
+		delay*=2
+		if delay>time.Minute{delay=time.Minute}
+	}
+	return delay
 }
 
 func(b *Bus) process(ctx context.Context,m *nats.Msg){
@@ -188,6 +203,8 @@ func(b *Bus) process(ctx context.Context,m *nats.Msg){
 func(b *Bus) recordTask(m *nats.Msg,d *Delivery,t *a2a.Task){
 	if t==nil||t.ID==""{b.settle(m,d,"uncertain","missing downstream task ID");return}
 	d.TaskID=t.ID;d.ContextID=t.ContextID
+	d.PollFailures=0
+	now:=time.Now().UTC();d.LastObservedAt=&now
 	d.Result,_=json.Marshal(t)
 	switch t.Status.State{
 	case a2a.TaskStateCompleted:b.settle(m,d,"completed","")
@@ -195,24 +212,27 @@ func(b *Bus) recordTask(m *nats.Msg,d *Delivery,t *a2a.Task){
 	case a2a.TaskStateInputRequired:b.settle(m,d,"input-required","operator action required at target")
 	case a2a.TaskStateAuthRequired:b.settle(m,d,"auth-required","target authentication required")
 	case a2a.TaskStateSubmitted,a2a.TaskStateWorking:
-		b.later(m,d,"accepted","downstream task active")
+		b.laterAfter(m,d,"accepted","downstream task active",b.cfg.pollDelay(0))
 	default:b.settle(m,d,"uncertain","unknown downstream task state")
 	}
 }
 
 func(b *Bus) poll(ctx context.Context,m *nats.Msg,d *Delivery){
 	if ctx.Err()!=nil{_ = m.Nak();return}
-	d.Polls++
-	// Bounded status polling; never send another prompt to recover a task.
+	// Each lookup has a transport deadline; accepted execution does not.
 	call,cancel:=context.WithTimeout(ctx,b.cfg.Timeout)
 	t,err:=b.adapter.Task(call,d.Endpoint,d.TaskID);cancel()
-	if err!=nil{
-		if d.Polls>=b.cfg.MaxAttempts*6{b.settle(m,d,"uncertain","downstream task status unavailable")}else{b.later(m,d,"accepted","task status lookup failed")}
+	if ctx.Err()!=nil{_ = m.Nak();return}
+	d.Polls++
+	if err!=nil||t==nil||t.ID!=d.TaskID{
+		// Never discard the known task handle or release its endpoint merely
+		// because observation failed. Retain the last valid snapshot, and
+		// retry only GetTask (never SendMessage or pool reassignment).
+		if d.PollFailures<63{d.PollFailures++}
+		detail:="task status unavailable; monitoring continues"
+		if err==nil{detail="task status invalid or ID mismatch; monitoring continues"}
+		b.laterAfter(m,d,"accepted",detail,b.cfg.pollDelay(d.PollFailures))
 		return
-	}
-	if t==nil||t.ID!=d.TaskID{b.settle(m,d,"uncertain","task ID mismatch");return}
-	if d.Polls>=b.cfg.MaxAttempts*6&&(t.Status.State==a2a.TaskStateWorking||t.Status.State==a2a.TaskStateSubmitted){
-		b.settle(m,d,"uncertain",fmt.Sprintf("task %s still active at polling limit",d.TaskID));return
 	}
 	b.recordTask(m,d,t)
 }
