@@ -1,0 +1,54 @@
+name: Live OpenCode
+on:
+  pull_request:
+    paths:
+      - 'examples/autonomous-team/**'
+      - 'internal/adapters/**'
+      - 'internal/api/**'
+      - 'internal/daemon/**'
+      - 'internal/nats/**'
+      - '*.go'
+      - 'go.mod'
+      - 'go.sum'
+      - '.github/workflows/live-opencode.yaml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: live-opencode-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  hybrid-free-model:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.x'
+          cache: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: '1.4.4'
+      - name: Install pinned OpenCode and A2A gateway
+        run: |
+          npm install --global @opencode/cli@2.3.2 @tbrandenburg/opencode-a2a-lite@0.8.1
+          opencode --version
+          opencode-a2a-lite --version
+          test "$(bun --version)" = "1.4.4"
+      - name: Credential-free live hybrid acceptance
+        shell: bash
+        run: |
+          # No credential forwarding; isolate the launcher from ambient keys
+          # and OpenCode home/config. Only the synthetic fixture is reviewed.
+          home=$(mktemp -d)
+          trap 'rm -rf "$home"' EXIT
+          env -i PATH="$PATH" HOME="$home" LANG=C.UTF-8 USER="$(id -un)" \
+            GOMODCACHE="$(go env GOMODCACHE)" GOCACHE="$(go env GOCACHE)" \
+            python3 -B examples/autonomous-team/team.py \
+              --model opencode/big-pickle --accept-free-model --headless --seconds 600

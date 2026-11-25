@@ -41,4 +41,4 @@ See [deployment instructions](docs/DEPLOYMENT.md) for authenticated native TLS, 
 
 ## Autonomous engineering team (optional live model)
 
-See [examples/autonomous-team](examples/autonomous-team/README.md) for a configurable hybrid or all-real OpenCode team. The example provisions independent A2A gateways, submits one objective to the PM and observes model-issued collaboration through MCP. Real-model execution is explicitly opt-in and remains a manual acceptance gate; provider-free CI exercises startup and nested A2A/MCP interoperability.
+See [examples/autonomous-team](examples/autonomous-team/README.md) for a configurable hybrid or all-real OpenCode team. The example provisions independent A2A gateways, submits one objective to the PM and observes model-issued collaboration through MCP. Real-model execution is explicitly opt-in locally; separate Live OpenCode CI uses the free model catalog without provider credentials. Deterministic Checks exercises startup and nested A2A/MCP interoperability.

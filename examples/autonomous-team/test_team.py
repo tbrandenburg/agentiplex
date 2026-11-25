@@ -48,6 +48,14 @@ class TeamTests(unittest.TestCase):
                     self.assertEqual(a["id"] == "pm", "agentiplex_" + tool + ":*" in names)
                 self.assertFalse(any("shell" in n or "edit" in n for n in names))
 
+    def test_default_model_omits_model_config(self):
+        a = team.load_team(team.HERE / "team.json", "configured")["agents"][0]
+        with tempfile.TemporaryDirectory() as directory:
+            project, _ = team.workspace(Path(directory), a, "http://127.0.0.1:19080", None)
+            config = json.loads((project / "opencode.json").read_text())
+            self.assertNotIn("model", config)
+            self.assertNotIn("providers", config)
+
     def test_evidence_requires_real_worker_and_state(self):
         e = {"agents": [{"id": "pm", "runtime": "opencode"}, {"id": "architect", "runtime": "opencode"}],
              "root": {"id": "root", "target": "pm", "state": "completed", "result": {"text": "review worker-1"}},
