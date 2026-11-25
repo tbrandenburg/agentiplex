@@ -21,6 +21,9 @@ concurrency:
   cancel-in-progress: true
 jobs:
   hybrid-free-model:
+    env:
+      # CI pins the free model; the launchers otherwise use the OpenCode default.
+      CI_MODEL: opencode/big-pickle
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     steps:
@@ -53,9 +56,9 @@ jobs:
           git -C "$work" config user.name "Repository example CI"
           git -C "$work" config user.email "ci@example.invalid"
           printf 'Synthetic repository\n' > "$work/README.md"
-          cat > "$work/opencode.json" <<'EOF'
+          cat > "$work/opencode.json" <<EOF
           {
-            "model": {"providerID": "opencode", "model": "big-pickle"},
+            "model": {"providerID": "${CI_MODEL%%/*}", "model": "${CI_MODEL#*/}"},
             "mcp": {"servers": {"agentiplex": {"type": "remote", "url": "http://127.0.0.1:19180/mcp", "protocol": "auto", "codemode": false}}}
           }
           EOF
@@ -71,7 +74,7 @@ jobs:
           git -C "$work" commit -qm 'remove local config for clone mode'
           env -i PATH="$PATH" HOME="$home" LANG=C.UTF-8 USER="$(id -un)" \
             GOMODCACHE="$(go env GOMODCACHE)" GOCACHE="$(go env GOCACHE)" \
-            make repository-team REPO="$work" MODEL=opencode/big-pickle REPOSITORY_ARGS="--check --accept-full-access --headless --seconds 180"
+            make repository-team REPO="$work" MODEL="$CI_MODEL" REPOSITORY_ARGS="--check --accept-full-access --headless --seconds 180"
           test -z "$(git -C "$work" status --porcelain)"
       - name: Credential-free live hybrid acceptance
         shell: bash
@@ -82,4 +85,4 @@ jobs:
           trap 'rm -rf "$home"' EXIT
           env -i PATH="$PATH" HOME="$home" LANG=C.UTF-8 USER="$(id -un)" \
             GOMODCACHE="$(go env GOMODCACHE)" GOCACHE="$(go env GOCACHE)" \
-            make live-check
+            make live-check MODEL="$CI_MODEL"

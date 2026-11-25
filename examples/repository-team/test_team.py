@@ -46,6 +46,27 @@ class RepositoryTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "clean"):
             team.inspect_workspace(str(self.workspace), self.endpoint)
 
+    def test_model_is_optional_and_never_invented(self):
+        del self.config["model"]
+        (self.workspace / "opencode.json").write_text(json.dumps(self.config))
+        subprocess.run(["git", "-C", str(self.workspace), "commit", "-qam", "no model"], check=True)
+        _, _, model = team.inspect_workspace(str(self.workspace), self.endpoint)
+        self.assertIsNone(model)
+        self.config["model"] = {"providerID": "opencode"}
+        (self.workspace / "opencode.json").write_text(json.dumps(self.config))
+        subprocess.run(["git", "-C", str(self.workspace), "commit", "-qam", "bad model"], check=True)
+        with self.assertRaisesRegex(ValueError, "model must be"):
+            team.inspect_workspace(str(self.workspace), self.endpoint)
+
+    def test_clone_config_without_model_omits_key(self):
+        subprocess.run(["git", "-C", str(self.workspace), "rm", "-q", "opencode.json"], check=True)
+        subprocess.run(["git", "-C", str(self.workspace), "commit", "-qm", "rm"], check=True)
+        team.prepare_clone_config(self.workspace, self.endpoint, None)
+        written = json.loads((self.workspace / "opencode.json").read_text())
+        self.assertNotIn("model", written)
+        self.assertEqual(self.config["mcp"], written["mcp"])
+        self.assertFalse(team.git_snapshot(self.workspace)["status"])
+
     def test_concurrent_independent_clones_and_clean_worktrees(self):
         # Separate source with no OpenCode config, branch/tag and an uncommitted edit.
         source = self.workspace
