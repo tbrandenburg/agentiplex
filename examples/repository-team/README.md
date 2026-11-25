@@ -170,7 +170,8 @@ third-party Python dependencies are introduced. `make repository-check` runs
 provider-free regression tests for shared workspace binding, role grants,
 registration, Git evidence, acceptance and operator test execution. Live
 repository collaboration is explicitly opt-in and not run against private source
-in CI. Review/redact run data before sharing and delete it yourself when done.
+in CI. The Live OpenCode workflow additionally provisions six real gateways on a
+clean synthetic Git checkout with no model submission. Review/redact run data before sharing and delete it yourself when done.
 
 Gateway reference: [v0.8.2 capability profiles](https://github.com/tbrandenburg/opencode-a2a-lite/blob/v0.8.2/README.md#capability-profiles)
 and [operator policy](https://github.com/tbrandenburg/opencode-a2a-lite/blob/v0.8.2/docs/operator-policy-state.md).
