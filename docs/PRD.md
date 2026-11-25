@@ -1,7 +1,6 @@
 # Agentiplex — Product Requirements Document
 
 **Status:** Initial proposal / v0.1 demonstrator baseline  
-**Date:** 2026-10-14  
 **Companion:** [Architecture](ARCH.md)
 
 ## 1. Product vision
@@ -71,7 +70,7 @@ P0 is the first usable demo and release gate. P1 follows if the foundation works
 
 P0 includes loopback binding and restricted outbound endpoints (see architecture); SEC-01 is not permission to expose an unauthenticated service.
 
-## 6. Demonstrator for 2026-11-25
+## 6. Demonstrator
 
 Use a repeatable provider-free demo as the baseline, optionally substituting a real OpenCode Architect after a live smoke test.
 

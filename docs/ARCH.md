@@ -1,7 +1,6 @@
 # Agentiplex — Architecture
 
 **Status:** Initial design proposal / v0.1 demonstrator  
-**Date:** 2026-10-14  
 **Requirements:** [PRD](PRD.md)
 
 ## 1. Architecture decisions
