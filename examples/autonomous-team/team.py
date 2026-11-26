@@ -237,7 +237,7 @@ class Team:
                 for key in self.args.pass_env:
                     env[key] = os.environ[key]
                 cmd = [self.args.gateway, "--workspace", str(project), "--port", "0",
-                       "--policy", "read-only", "--permissions", "reject", "--policy-file", str(policy),
+                       "--access", "read", "--policy-file", str(policy),
                        "--prompt-timeout", self.args.prompt_timeout]
                 for key in self.args.pass_env:
                     cmd += ["--pass-env", key]
@@ -432,8 +432,8 @@ def main():
                                  re.fullmatch(r"opencode/[a-z0-9][a-z0-9.-]*-free", args.model)):
             p.error("credential-free mode requires OpenCode default, opencode/big-pickle or an opencode/*-free model")
         args.gateway = shutil.which(args.gateway)
-        if not args.gateway or subprocess.check_output([args.gateway, "--version"], env=clean_environment(), timeout=15, text=True).strip() != "0.8.3":
-            p.error("install pinned opencode-a2a-lite 0.8.3")
+        if not args.gateway or subprocess.check_output([args.gateway, "--version"], env=clean_environment(), timeout=15, text=True).strip() != "0.9.0":
+            p.error("install pinned opencode-a2a-lite 0.9.0")
         opencode_version = subprocess.check_output(["opencode", "--version"], env=clean_environment(), timeout=15, text=True).strip()
         if not opencode_supported(opencode_version):
             p.error("install stable OpenCode 2.3.2 or newer")

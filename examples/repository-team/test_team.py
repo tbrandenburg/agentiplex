@@ -142,9 +142,10 @@ class RepositoryTests(unittest.TestCase):
                 self.assertEqual(a["id"] == "pm", "agentiplex_" + tool + ":*" in resources)
             cmd = team.gateway_command(args, self.workspace, self.root / "policy.json", profile)
             self.assertEqual(str(self.workspace), cmd[cmd.index("--workspace") + 1])
-            self.assertEqual("reject", cmd[cmd.index("--permissions") + 1])
-            self.assertEqual(profile == "full-access", "--dangerously-skip-permissions" in cmd)
-            self.assertEqual(profile, cmd[cmd.index("--policy") + 1])
+            self.assertNotIn("--permissions", cmd)
+            self.assertNotIn("--dangerously-skip-permissions", cmd)
+            self.assertNotIn("--policy", cmd)
+            self.assertEqual("danger-full-access" if profile == "full-access" else "read", cmd[cmd.index("--access") + 1])
             self.assertEqual(["--pass-env", "EXAMPLE_API_KEY"], cmd[-2:])
 
     def test_full_access_requires_acknowledgement(self):
