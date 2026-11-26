@@ -199,6 +199,14 @@ def policy_for(agent):
     ]}
 
 
+def log_tail(path, lines=3, width=300):
+    try:
+        text = path.read_text(errors="replace").strip().splitlines()[-lines:]
+    except OSError:
+        return ""
+    return "".join("\n  log: " + line[:width] for line in text if line.strip())
+
+
 def gateway_command(args, workspace, policy_path, profile):
     command = [args.gateway, "--workspace", str(workspace), "--port", "0",
                "--policy", profile, "--permissions", "reject",
@@ -309,10 +317,14 @@ class RepositoryTeam(base.Team):
                        A2A_TAGS=skill + ",real-opencode,repository-team")
             for key in self.args.pass_env:
                 env[key] = os.environ[key]
+            print("Starting", name, "gateway (runtime preflight can take a minute or more)", flush=True)
             proc = self.spawn(name, gateway_command(self.args, self.args.workspace, path, profile),
                               env, self.args.workspace)
-            url = self.gateway_ready(name, proc)
-            card = self.wait_card(url, proc, name, skill)
+            try:
+                url = self.gateway_ready(name, proc)
+                card = self.wait_card(url, proc, name, skill)
+            except RuntimeError as exc:
+                raise RuntimeError(str(exc) + log_tail(self.root / (name + ".log"))) from exc
             tags = {t for s in card.get("skills", []) for t in s.get("tags", [])}
             if "simulated" in tags or "real-opencode" not in tags:
                 raise RuntimeError("unexpected agent runtime label")
