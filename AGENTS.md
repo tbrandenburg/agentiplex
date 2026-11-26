@@ -24,5 +24,5 @@ The owner allows inference (real model calls) for testing and validation, includ
 
 ## Examples
 Real-agent examples (`examples/repository-team`, `autonomous-team`) start full-access OpenCode
-agents. Run them only on explicit user request, and read `examples/README.md` first
+agents. Running them for testing is allowed without asking; read `examples/README.md` first
 (setup, private-repo handling, known flaky startup, operating tips).
