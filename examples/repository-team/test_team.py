@@ -46,6 +46,14 @@ class RepositoryTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "clean"):
             team.inspect_workspace(str(self.workspace), self.endpoint)
 
+    def test_log_tail_shows_last_lines_truncated_and_tolerates_missing_log(self):
+        log = self.root / "pm.log"
+        log.write_text("one\n\ntwo\nthree\n" + "x" * 500 + "\nlast\n")
+        tail = team.log_tail(log, lines=2, width=10)
+        self.assertEqual("\n  log: " + "x" * 10 + "\n  log: last", tail)
+        self.assertNotIn("three", tail)
+        self.assertEqual("", team.log_tail(self.root / "missing.log"))
+
     def test_model_is_optional_and_never_invented(self):
         del self.config["model"]
         (self.workspace / "opencode.json").write_text(json.dumps(self.config))
