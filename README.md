@@ -99,41 +99,11 @@ Choose the level of collaboration you want to explore.
 | [Autonomous team](examples/autonomous-team/README.md) | `make live-check` | Real model-driven delegation through A2A and MCP using synthetic fixtures. |
 | [Repository team](examples/repository-team/README.md) | `make repository-team` with options | Six real agents working on the same Git worktree, with implementation and executable verification. |
 
-The core is agent-runtime independent. The real-agent examples use
-[OpenCode](https://opencode.ai) with
-[opencode-a2a-lite](https://github.com/tbrandenburg/opencode-a2a-lite) purely as a
-convenient A2A agent driver; any A2A agent can be registered instead.
-Follow the example setup guides before running them. Live inference may transmit
-project content to the selected provider.
-
-### Collaborate on a real repository
-
-Run the repository team against an explicitly selected, trusted Git repository
-that is safe to share with the chosen model:
-
-```sh
-make repository-team \
-  REPO=https://github.com/owner/repo.git \
-  OBJECTIVE="Improve the README and verify the changes" \
-  REPOSITORY_ARGS="--accept-full-access --accept-provider-data --public-workspace"
-```
-
-Replace the example URL with your own public or synthetic repository.
-The launcher creates an independent scratch clone and clean detached worktree,
-starts six gateways and sends one objective to the PM. Each run has its own
-Git storage, daemon port and evidence directory. Alternatively, supply an
-existing checkout with `WORKSPACE` and a reviewed local configuration.
-An optional `REF` selects a branch or tag for clone mode.
-
-> [!WARNING]
-> Developer and Tester agents have unrestricted shell access as the OS user.
-> There is no OS sandbox. Use an isolated disposable VM, container or user
-> environment with minimal credentials. Do not send private source or secrets
-> to free models. For approved private-provider usage and independent
-> verification, follow the [repository-team guide](examples/repository-team/README.md).
-
-Review retained Git changes, delivery receipts and test evidence before committing.
-The launcher does not automatically publish the changes.
+The core is agent-runtime independent. The real-agent examples use an off-the-shelf
+A2A agent driver; any A2A agent can be registered instead. Setup, prerequisites and
+safety notes are in the [examples guide](examples/README.md). Real-agent runs
+may transmit project content to the selected model provider and give agents
+unrestricted shell access, so use a disposable environment.
 
 ## Architecture
 
