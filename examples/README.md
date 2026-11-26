@@ -18,6 +18,17 @@ full-access OpenCode agents. The core middleware does not depend on any of this.
 - Never use `--public-workspace` for private code (it attests the code may go to free models).
 - Clone first and pass the local path as `REPO=/abs/path`, because the launcher has no GitHub credentials.
 
+## Collaboration model
+- Agents collaborate through the MCP tools of the daemon. The coordinator (PM) delegates with the blocking `ask`, which
+  returns the finished result; the model does not poll. Findings are shared with `note`/`read_notes`.
+- The repository team is configured by [repository-team/team.json](repository-team/team.json) (`id`, `access`, `role` per agent).
+  Shared scaffolding is in [teamlib.py](teamlib.py). Timeouts (`--prompt-timeout`, `--mcp-timeout`, `--seconds`) are launcher options.
+- **Restart expectation:** if the daemon is killed (even SIGKILL) mid-run and restarted on the same storage and port, the run
+  continues to the PASS gate: the PM's failed `ask` is repeated and re-attaches to the same delivery, with no duplicate downstream
+  execution. This relies on the restart policy of [DEPLOYMENT](../docs/DEPLOYMENT.md) (#31) or an operator restart; the repository launcher
+  can do it for you with `--port N --restart-daemon`. A model turn that was in flight in an agent is not resumed.
+- Repeat a team N times with `make repository-measure` (see the repository-team README).
+
 ## Known issue: flaky startup preflight
 The gateway checks the private policy with `opencode --standalone debug agents`. OpenCode
 intermittently omits the policy, and the gateway retries only 3 times. Measured probe pass
