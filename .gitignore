@@ -44,3 +44,6 @@ go.work.sum
 /dist/
 
 /.playwright-mcp/
+
+# parallel-agent worktrees
+.worktrees/
