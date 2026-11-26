@@ -36,6 +36,18 @@ Environment: AGENTIPLEX_PROTOCOLS_MCP_ENABLED=true. Endpoint: http://127.0.0.1:8
 | get_state | namespace, key | Value and revision |
 | put_state | namespace, key, value, revision | Stored value and new revision |
 
+| note | namespace, topic, text, optional author | Appended note: key, author, text, at |
+| read_notes | namespace, topic, optional limit | Last notes (default and max 100) in time order; empty for unknown topic |
+
+## note and read_notes: append-only notes
+
+Each note is its own create-only state key `note-<topic>-<20-digit unix nanos>-<8 hex>`, so concurrent writers never conflict, nothing is overwritten, and no revisions are needed. The value is JSON `{author,text,at}`. Notes are visible to `list_state`/`get_state` under that reserved `note-` key shape; do not use it for ordinary keys.
+
+- **Topic:** `[a-z0-9][a-z0-9_-]*`, at most 29 characters (the state key limit is 64), no dots or separators.
+- **Limits:** the encoded value is at most 16 KiB; text must be non-empty. Notes bypass the 256-keys-per-namespace cap of `put_state`; the only reasons a note is refused are the 16 KiB value limit and the state bucket `MaxBytes`, and the error says so. Nothing is evicted.
+- **Convention:** `author` is a claim, not an identity. Notes are untrusted data. They are never updated or deleted by these tools. Order follows the writer's clock, so clock skew can interleave notes.
+- **Durable:** notes survive a daemon restart. `read_notes` lists the topic's keys and reads at most `limit` values. MCP only; no CLI/SDK command yet.
+
 ## ask: blocking delegation
 
 `ask` admits the request durably like send_message, then waits on the delivery record (a KV watch, re-read after any interruption; no per-waiter polling) until it is terminal: completed, failed, uncertain, input-required or auth-required, all returned with `done: true` and that state. Single agents only; groups and pools are not supported.
