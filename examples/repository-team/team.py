@@ -207,14 +207,15 @@ def log_tail(path, lines=3, width=300):
     return "".join("\n  log: " + line[:width] for line in text if line.strip())
 
 
+ACCESS = {"read-only": "read", "full-access": "danger-full-access"}
+
+
 def gateway_command(args, workspace, policy_path, profile):
     command = [args.gateway, "--workspace", str(workspace), "--port", "0",
-               "--policy", profile, "--permissions", "reject",
+               "--access", ACCESS[profile],
                "--policy-file", str(policy_path), "--prompt-timeout", args.prompt_timeout]
-    if profile == "full-access":
-        if not args.accept_full_access:
-            raise ValueError("full access requires --accept-full-access")
-        command.append("--dangerously-skip-permissions")
+    if profile == "full-access" and not args.accept_full_access:
+        raise ValueError("full access requires --accept-full-access")
     for key in args.pass_env:
         command += ["--pass-env", key]
     return command
@@ -437,8 +438,8 @@ def main():
     ):
         p.error("credential-free runs require the OpenCode default or an explicitly selected OpenCode free model")
     args.gateway = shutil.which(args.gateway)
-    if not args.gateway or subprocess.check_output([args.gateway, "--version"], env=base.clean_environment(), timeout=15, text=True).strip() != "0.8.3":
-        p.error("install pinned opencode-a2a-lite 0.8.3")
+    if not args.gateway or subprocess.check_output([args.gateway, "--version"], env=base.clean_environment(), timeout=15, text=True).strip() != "0.9.0":
+        p.error("install pinned opencode-a2a-lite 0.9.0")
     if not base.opencode_supported(subprocess.check_output(["opencode", "--version"], env=base.clean_environment(), timeout=15, text=True).strip()):
         p.error("install stable OpenCode 2.3.2 or newer")
     if args.port:
