@@ -7,6 +7,7 @@ import (
 	"errors"
 	"log/slog"
 	"sync"
+	"sync/atomic"
 	"sort"
 	"time"
 
@@ -27,12 +28,15 @@ type Bus struct {
 	inflight map[string]bool // guarded by mu; includes status polls and probes
 	wg sync.WaitGroup
 	closeOnce sync.Once
+	unreturned atomic.Int64 // terminal records kept past retention by the last sweep
 }
 
 // Open starts the worker. One active daemon per namespace is supported in v0.1.
 func Open(ctx context.Context,cfg Config)(*Bus,error){
 	if err:=cfg.validate();err!=nil{return nil,err}
 	if cfg.Workers==0{cfg.Workers=DefaultConfig().Workers}
+	if cfg.Retention==0{cfg.Retention=defaultRetention}
+	if cfg.UnreturnedRetention==0{cfg.UnreturnedRetention=defaultUnreturnedRetention}
 	a,err:=adapter.NewWithCredentials(cfg.AllowedOrigins,cfg.Timeout,cfg.OutboundTokenFiles,cfg.OutboundCAFile)
 	if err!=nil{return nil,err}
 	s,err:=store.Open(cfg.BrokerMode,cfg.BrokerURL,cfg.Storage,cfg.Namespace,cfg.Replicas,cfg.Timeout,cfg.BrokerSync,store.AuthConfig{TokenFile:cfg.BrokerTokenFile,CredentialsFile:cfg.BrokerCredentialsFile,CAFile:cfg.BrokerCAFile})

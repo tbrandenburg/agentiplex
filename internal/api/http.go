@@ -55,7 +55,8 @@ func handlerMode(b *agentiplex.Bus,u *dashboard.UI,secured bool,publicURL ...str
 	mux.HandleFunc("GET /healthz",func(w http.ResponseWriter,r *http.Request){write(w,200,map[string]bool{"alive":true})})
 	mux.HandleFunc("GET /readyz",func(w http.ResponseWriter,r *http.Request){
 		if !b.Ready(){write(w,503,map[string]bool{"ready":false});return}
-		write(w,200,map[string]bool{"ready":true})
+		u,err:=b.Usage();if err!=nil{write(w,200,map[string]bool{"ready":true});return}
+		write(w,200,map[string]any{"ready":true,"deliveries":u})
 	})
 	mux.HandleFunc("POST /api/v1/agents",func(w http.ResponseWriter,r *http.Request){
 		var in struct{ID string `json:"id"`; URL string `json:"url"`}
