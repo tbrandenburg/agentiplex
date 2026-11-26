@@ -42,3 +42,5 @@ go.work.sum
 
 /.demo-secrets/
 /dist/
+
+/.playwright-mcp/

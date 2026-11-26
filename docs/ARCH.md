@@ -138,7 +138,33 @@ Broadcast snapshots group membership, creates deterministic child delivery IDs, 
 
 Pool dispatch publishes one item to the pool subject. Worker loops associated with eligible agents share one durable pull consumer (not one independent consumer per member); only available members pull. Persist assignment before external invocation; honor capacity and keep the same target after acceptance or ambiguity. Only reassign definitively unaccepted work. For the single-daemon demo, local per-agent concurrency gates suffice; cross-replica ownership and leases are future work. Native queue groups alone are not durable pooling.
 
-## 6. External interfaces
+### 5.5 Day-long durability
+
+Agent networks may run for days: work outlives connections, agent turns, daemon restarts and operator sessions. Design rules (each mechanism below already exists or is tracked as an issue):
+
+| Rule | Mechanism |
+|---|---|
+| The durable record is the only source of truth | Delivery state lives in the DELIVERIES KV; nothing authoritative is held in memory, goroutines or a connection. |
+| No wall-clock lifetime on accepted work | Only a single network operation is bounded (`delivery.timeout`). Accepted tasks are monitored until terminal (see "Accepted-task monitoring"); the runtime or operator owns execution deadlines. |
+| Connections are disposable views | A blocking call (MCP `ask`, A2A `SendMessage`) only observes a durable record. A dropped connection, client timeout or daemon restart loses nothing; the caller re-attaches with the same deterministic key (derived from target and text when not supplied) and never causes a second downstream execution. |
+| Unbounded waits are allowed | A wait ends on a terminal state, an explicit caller budget, or cancellation of the caller's own context. No server-side maximum, no extra configuration. |
+| Waiting is event-driven with a safety net | Waiters use KV watch on the delivery key (current value first, then updates), not per-waiter polling. On watch error or reconnect they re-read the record, so a missed update cannot hang a wait. |
+| Events record changes, not heartbeats | `delivery.state` is emitted only on a real state change so retention covers days of work. |
+| Bounded retention never evicts pending work | Limits apply to events and terminal records; pending work is rejected at admission when full, never silently dropped. |
+| Idempotent re-entry everywhere | Deterministic IDs and create-only writes make admission, reconciliation, recovery and re-attach safe to repeat. |
+| Time-dependent behaviour is tested | Restart, reconnect and long-wait paths are tested with real JetStream and failure injection, using short intervals to stand in for days. |
+
+**Crash and restart promise.** After any daemon exit, clean or not (SIGKILL, OOM, panic, host power loss), restarting `agentiplexd` resumes the team where it stopped: queued work is redelivered, `preparing` records are republished, accepted tasks keep their reservations and are monitored again, and waiters re-attach. The only state that does not resume automatically is a send that was in flight at the crash: it becomes `uncertain` and is never replayed (5.3). Agents see this as a failed tool call and continue by repeating the same call; the middleware does not resume an agent's own LLM turn.
+
+| Failure | Guarantee |
+|---|---|
+| Daemon process exits or is killed | Nothing acknowledged is lost: the OS still flushes written data. Restart resumes as above. |
+| Host crash or power loss (embedded broker) | Acknowledged writes must be on disk. The embedded broker therefore fsyncs every write (`SyncAlways`, planned as `broker.sync`, default durable; relax only by explicit configuration). The nats-server default is a 2 minute background fsync, which would lose acknowledged work and must not be relied on. |
+| External or replicated NATS | Durability is the cluster's replication and storage configuration, documented in DEPLOYMENT.md. |
+
+Verify with a kill test: SIGKILL the daemon during an active multi-agent run, restart it, and assert queued and accepted work completes with no duplicate downstream execution.
+
+Consequence for features: a new wait, notification or collaboration primitive must work after a connection drop and a daemon restart, or it is not done.
 
 ### 6.1 A2A
 
