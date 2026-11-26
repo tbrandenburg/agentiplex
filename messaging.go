@@ -27,10 +27,11 @@ func(b *Bus) rawDelivery(id string)(Delivery,error){
 }
 
 func(b *Bus) save(d *Delivery,state,detail string)error{
+	prev:=d.State
 	d.State=state;d.Detail=detail;d.UpdatedAt=time.Now().UTC()
 	raw,err:=json.Marshal(d);if err!=nil{return err}
 	_,err=b.store.Deliveries.Put(d.ID,raw)
-	if err==nil{b.emit("delivery.state",d.ID,state)}
+	if err==nil&&state!=prev{b.emit("delivery.state",d.ID,state)}
 	return err
 }
 
