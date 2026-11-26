@@ -35,7 +35,7 @@ type Store struct {
 
 type AuthConfig struct{TokenFile,CredentialsFile,CAFile string}
 
-func Open(mode, brokerURL, storage, namespace string, replicas int, timeout time.Duration, auth ...AuthConfig) (_ *Store, err error) {
+func Open(mode, brokerURL, storage, namespace string, replicas int, timeout, syncEvery time.Duration, auth ...AuthConfig) (_ *Store, err error) {
 	s := &Store{}
 	var a AuthConfig
 	if len(auth)>0{a=auth[0]}
@@ -43,8 +43,10 @@ func Open(mode, brokerURL, storage, namespace string, replicas int, timeout time
 	if mode=="embedded"&&(a!=(AuthConfig{})){return nil,errors.New("external broker authentication settings require external mode")}
 	defer func() { if err != nil { s.Close() } }()
 	if mode == "embedded" {
+		// Acknowledged writes are fsynced unless an interval is explicitly configured.
 		s.embedded, err = server.NewServer(&server.Options{
 			Host: "127.0.0.1", Port: -1, JetStream: true, StoreDir: storage, NoLog: true, NoSigs: true,
+			SyncAlways: syncEvery == 0, SyncInterval: syncEvery,
 		})
 		if err != nil { return nil, err }
 		go s.embedded.Start()

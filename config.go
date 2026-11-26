@@ -12,6 +12,7 @@ type Config struct {
 	BrokerTokenFile string
 	BrokerCredentialsFile string
 	BrokerCAFile string
+	BrokerSync time.Duration // embedded fsync interval; zero fsyncs every write
 	OutboundTokenFiles map[string]string
 	OutboundCAFile string
 	Storage string
@@ -49,6 +50,7 @@ func (c Config) validate() error {
 	if c.Timeout < time.Second || c.Timeout > 5*time.Minute || c.RetryDelay < time.Second || c.RetryDelay > time.Minute || c.MaxAttempts < 1 || c.MaxAttempts > 100 {
 		return fmt.Errorf("invalid delivery limits")
 	}
+	if c.BrokerSync!=0&&(c.BrokerSync<time.Second||c.BrokerSync>time.Hour){return fmt.Errorf("invalid broker sync (always or 1s–1h)")}
 	if c.Workers<0||c.Workers>16{return fmt.Errorf("invalid delivery worker count (0–16)")}
 	if c.TaskPollInterval!=0&&(c.TaskPollInterval<time.Second||c.TaskPollInterval>time.Minute){return fmt.Errorf("invalid task poll interval")}
 	if c.HealthInterval!=0&&(c.HealthInterval<time.Second||c.HealthInterval>time.Hour){return fmt.Errorf("invalid health interval")}
