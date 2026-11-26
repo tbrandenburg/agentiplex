@@ -46,6 +46,8 @@ class TeamTests(unittest.TestCase):
                 names = {r["resource"] for r in rules["policies"]}
                 self.assertIn("agentiplex_get_state:*", names)
                 self.assertIn("agentiplex_put_state:*", names)
+                self.assertTrue({"agentiplex_note:*", "agentiplex_read_notes:*"} <= names)
+                self.assertEqual(a["id"] == "pm", "agentiplex_ask:*" in names)
                 for tool in team.DELEGATE_TOOLS:
                     self.assertEqual(a["id"] == "pm", "agentiplex_" + tool + ":*" in names)
                 self.assertFalse(any("shell" in n or "edit" in n for n in names))

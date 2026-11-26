@@ -12,16 +12,13 @@ import subprocess
 import sys
 import tempfile
 import time
-import urllib.request
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
-ID = re.compile(r"[a-z0-9][a-z0-9_-]{0,63}")
-READ_TOOLS = ("discover_agents", "list_collections", "get_agent_health",
-              "get_delivery", "list_state", "get_state", "put_state")
-DELEGATE_TOOLS = ("send_message", "broadcast", "dispatch")
-TERMINAL = {"completed", "failed", "partial", "uncertain", "input-required", "auth-required"}
-OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+sys.path.insert(0, str(HERE.parent))
+import teamlib
+from teamlib import (DELEGATE_TOOLS, ID, READ_TOOLS, TERMINAL, call_evidence, clean_environment,
+                     get, opencode_supported, policy, valid_prompt_timeout)
 
 
 def load_team(path, profile):
@@ -90,139 +87,17 @@ def workspace(root, agent, endpoint, model, smoke=False):
     }
     if model is not None:
         config["model"] = {"providerID": model[0], "model": model[1]}
-    policy = {"version": 1, "base": "read-only", "policies": [
-        {"action": "mcp.use", "resource": "agentiplex", "effect": "allow"},
-        *[{"action": "tool.use", "resource": "agentiplex_" + tool + ":*", "effect": "allow"} for tool in tools]
-    ]}
+    rules = policy("read-only", tools)
     (project / "opencode.json").write_text(json.dumps(config, indent=2) + "\n")
     (project / "AGENTS.md").write_text(system)
     path = root / (agent["id"] + "-policy.json")
-    path.write_text(json.dumps(policy, indent=2) + "\n")
+    path.write_text(json.dumps(rules, indent=2) + "\n")
     return project, path
 
 
-def get(url, timeout=3):
-    with OPENER.open(url, timeout=timeout) as r:
-        return json.load(r)
-
-
-def opencode_supported(version):
-    match = re.fullmatch(r"opencode v(\d+)\.(\d+)\.(\d+)", version)
-    return bool(match) and tuple(map(int, match.groups())) >= (2, 3, 2)
-
-
-def clean_environment():
-    # Do not pass ambient provider keys, AGENTIPLEX settings, proxy or runtime
-    # overrides to the bus or simulator.
-    keys = ("PATH", "HOME", "LANG", "LC_ALL", "TMPDIR", "USER", "LOGNAME")
-    env = {k: os.environ[k] for k in keys if k in os.environ}
-    env["NO_PROXY"] = "127.0.0.1,localhost"
-    return env
-
-
-class Team:
-    def __init__(self, args, team, root, deadline):
-        self.args, self.team, self.root, self.deadline = args, team, root, deadline
-        self.endpoint = "http://127.0.0.1:" + str(args.port)
-        self.children = []
-        self.env = clean_environment()
-
-    def remaining(self):
-        n = self.deadline - time.monotonic()
-        if n <= 0:
-            raise TimeoutError("team deadline exceeded; stopping owned processes")
-        return n
-
-    def spawn(self, name, command, env, cwd=None):
-        with (self.root / (name + ".log")).open("wb") as log:
-            proc = subprocess.Popen(command, env=env, cwd=cwd, stdout=log,
-                                    stderr=subprocess.STDOUT, start_new_session=True)
-        self.children.append((name, proc))
-        return proc
-
-    def alive(self):
-        self.remaining()
-        for name, p in self.children:
-            if p.poll() is not None:
-                raise RuntimeError(name + " exited; inspect private log")
-
-    def stop(self):
-        # Stop submitter/agents first, then daemon; signal only owned process
-        # groups while their leader is alive. Gateway handles its private ACP cleanup.
-        for _, p in reversed(self.children):
-            if p.poll() is None:
-                try:
-                    p.terminate()
-                except ProcessLookupError:
-                    pass
-        end = time.monotonic() + 15
-        for _, p in reversed(self.children):
-            try:
-                p.wait(timeout=max(.1, end - time.monotonic()))
-            except subprocess.TimeoutExpired:
-                if p.poll() is None:
-                    os.killpg(p.pid, signal.SIGKILL)
-                p.wait()
-
-    def cli(self, *args):
-        self.alive()
-        raw = subprocess.check_output([str(self.root / "agentiplex"), "--server", self.endpoint, *args],
-                                      env=self.env, timeout=min(20, self.remaining()))
-        return json.loads(raw)
-
-    def wait_card(self, url, proc, name, skill):
-        while self.remaining() > 0:
-            if proc.poll() is not None:
-                raise RuntimeError(name + " startup failed; inspect private log")
-            try:
-                card = get(url + "/.well-known/agent-card.json")
-            except (OSError, ValueError):
-                time.sleep(.3)
-                continue
-            if card.get("name") != name:
-                raise RuntimeError("unexpected agent card identity at " + url)
-            if not any(skill in s.get("tags", []) or s.get("id") == skill for s in card.get("skills", [])):
-                raise RuntimeError("missing advertised role skill/tag: " + name)
-            return card
-
-    def gateway_ready(self, name, proc):
-        # The pinned gateway chooses a free port itself. Accept only its own
-        # readiness record, never infer readiness from an arbitrary port.
-        path = self.root / (name + ".log")
-        while self.remaining() > 0:
-            if proc.poll() is not None:
-                raise RuntimeError(name + " startup failed; inspect private log")
-            with path.open(errors="replace") as f:
-                for line in f:
-                    if not line.startswith("{"):
-                        continue
-                    try:
-                        item = json.loads(line)
-                    except ValueError:
-                        continue
-                    if item.get("ready") is True:
-                        url = item.get("url", "").rstrip("/")
-                        if not re.fullmatch(r"http://127\.0\.0\.1:[0-9]{1,5}", url):
-                            raise RuntimeError("unexpected gateway URL")
-                        return url
-            time.sleep(.3)
-
+class Team(teamlib.Team):
     def start(self):
-        self.spawn("daemon", [str(self.root / "agentiplexd"), "--listen",
-                   "127.0.0.1:" + str(self.args.port), "--public-url", self.endpoint,
-                   "--broker-mode", "embedded", "--namespace", "autonomous-demo",
-                   "--storage", str(self.root / "jetstream"), "--mcp",
-                   "--dashboard=" + str(not self.args.headless).lower()],
-                   dict(self.env, AGENTIPLEX_DELIVERY_TIMEOUT="30s",
-                        AGENTIPLEX_DELIVERY_RETRY_DELAY="2s", AGENTIPLEX_DELIVERY_MAX_ATTEMPTS="80"))
-        while True:
-            self.alive()
-            try:
-                if get(self.endpoint + "/readyz").get("ready"):
-                    break
-            except (OSError, ValueError):
-                pass
-            time.sleep(.2)
+        self.start_daemon("autonomous-demo", not self.args.headless)
         for i, a in enumerate(self.team["agents"]):
             name, skill = a["id"], a["skill"]
             if a["runtime"] == "simulated":
@@ -288,18 +163,13 @@ class Team:
             if parent["state"] in TERMINAL:
                 # Snapshot actual evidence, including failed/intervention outcomes.
                 records = self.snapshot(root_id)
-                details_by_id = {d["id"]: self.cli("messages", "status", d["id"]) for d in records}
-                details_by_id[root_id] = parent
-                for d in list(details_by_id.values()):
-                    for c in d.get("children") or []:
-                        if c["id"] not in details_by_id:
-                            details_by_id[c["id"]] = self.cli("messages", "status", c["id"])
-                details = list(details_by_id.values())
+                parent, details = self.details(root_id, records)
                 state = [self.cli("state", "get", "review", e["key"]) for e in self.cli("state", "list", "review")]
                 evidence = {"classification": "live-model", "requestedModel": self.args.model or "OpenCode default",
                             "credentialMode": "explicit-provider" if self.args.pass_env else "credential-free",
                             "gatewayPromptTimeout": self.args.prompt_timeout,
                             "root": parent, "deliveries": details, "state": state,
+                            "toolCalls": call_evidence(details, "pm"),
                             "agents": self.team["agents"]}
                 (self.root / "evidence.json").write_text(json.dumps(evidence, indent=2) + "\n")
                 # A completed PM is not a completed team. Drain only already
@@ -322,6 +192,7 @@ class Team:
                     print("WARNING: PM returned before all work completed; review late worker results separately.", flush=True)
                 evidence["acceptance"] = assessment
                 (self.root / "evidence.json").write_text(json.dumps(evidence, indent=2) + "\n")
+                print("PM tool-call evidence:", json.dumps(evidence["toolCalls"]), flush=True)
                 print("Verified real worker receipts:", json.dumps(assessment["completedRealWorkerReceipts"]), flush=True)
                 if not assessment["exactReceiptCitation"]:
                     print("WARNING: PM prose does not reproduce an exact observed worker receipt ID; manual quality review advised.", flush=True)
@@ -379,17 +250,6 @@ def verify_evidence(e):
         "completedRealWorkerReceipts": sorted({d["id"] for d in worker}),
         "exactReceiptCitation": any(d["id"] in result_text for d in worker),
     }
-
-
-def valid_prompt_timeout(value):
-    if value == "unlimited":
-        return value
-    match = re.fullmatch(r"([0-9]{1,10})(ms|s|m|h)", value)
-    if match:
-        ms = int(match.group(1)) * {"ms": 1, "s": 1000, "m": 60000, "h": 3600000}[match.group(2)]
-        if 30 <= ms <= 2147483647:
-            return value
-    raise argparse.ArgumentTypeError("prompt timeout must be 30ms–2147483647ms, or unlimited")
 
 
 def main():

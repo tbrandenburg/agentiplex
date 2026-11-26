@@ -1,4 +1,4 @@
-.PHONY: help fmt lint dashboard-assets build test check clean run demo-agent demo-team demo-check autonomous-check live-check repository-team repository-check docker compose-up compose-down release release-plan
+.PHONY: help fmt lint dashboard-assets build test check clean run demo-agent demo-team demo-check autonomous-check live-check repository-team repository-check repository-measure docker compose-up compose-down release release-plan
 .DEFAULT_GOAL := help
 export bump WORKSPACE OBJECTIVE REPO REF MODEL
 
@@ -30,6 +30,7 @@ help:
 		'  make live-check       Real-agent hybrid review example (MODEL optional; Linux)' \
 		'  make repository-team REPO=... [MODEL=...] OBJECTIVE=... (or WORKSPACE=...)  Shared repository team (requires --accept-full-access in REPOSITORY_ARGS)' \
 		'  make repository-check Provider-free repository-team tests' \
+		'  make repository-measure N=10 MEASURE_ARGS="--repo ... --objective ... --accept-full-access ..."  Repeat the team, write a results table' \
 		'Deployment:' \
 		'  make docker           Build local image (IMAGE=agentiplex:dev)' \
 		'  make compose-up       Start TLS demo; generate missing demo secrets' \
@@ -95,6 +96,9 @@ repository-team:
 
 repository-check:
 	python3 -B examples/repository-team/test_team.py
+
+repository-measure:
+	python3 -B examples/repository-team/measure.py -n $(or $(N),10) -- $(MEASURE_ARGS)
 
 docker:
 	docker build -t $(IMAGE) .

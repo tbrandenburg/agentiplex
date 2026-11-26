@@ -8,14 +8,14 @@ import subprocess
 import sys
 import tempfile
 
-import team
+import repo
 
 
 def verify(workspace, run_dir, command, seconds):
     metadata = json.loads((run_dir / "workspace.json").read_text())
     if workspace != Path(metadata["workspace"]).resolve():
         raise ValueError("workspace does not match the recorded run")
-    before = team.git_snapshot(workspace)
+    before = repo.git_snapshot(workspace)
     if (before["head"] != metadata["finalHead"] or before["branch"] != metadata["finalBranch"] or
             before["index"] or before["status"] != (run_dir / "git-status.txt").read_bytes() or
             before["diff"] != (run_dir / "changes.diff").read_bytes()):
@@ -28,11 +28,11 @@ def verify(workspace, run_dir, command, seconds):
     error = None
     with (out / "command.log").open("wb") as log:
         try:
-            code = subprocess.run(command, cwd=workspace, env=team.base.clean_environment(),
+            code = subprocess.run(command, cwd=workspace, env=repo.clean_environment(),
                                   stdout=log, stderr=subprocess.STDOUT, timeout=seconds).returncode
         except (OSError, subprocess.TimeoutExpired) as exc:
             error = type(exc).__name__
-    after = team.git_snapshot(workspace)
+    after = repo.git_snapshot(workspace)
     unchanged = before == after
     (out / "git-status-after.txt").write_bytes(after["status"])
     (out / "changes-after.diff").write_bytes(after["diff"])
