@@ -246,13 +246,16 @@ func(b *Bus) poll(ctx context.Context,m *nats.Msg,d *Delivery){
 	t,err:=b.adapter.Task(call,d.Endpoint,d.TaskID);cancel()
 	if ctx.Err()!=nil{_ = m.Nak();return}
 	d.Polls++
-	if err!=nil||t==nil||t.ID!=d.TaskID{
+	if errors.Is(err,a2a.ErrTaskNotFound)||(err==nil&&t!=nil&&t.ID!=d.TaskID){
+		b.settle(m,d,"uncertain","remote task lost; outcome unknown; no automatic replay");return
+	}
+	if err!=nil||t==nil{
 		// Never discard the known task handle or release its endpoint merely
 		// because observation failed. Retain the last valid snapshot, and
 		// retry only GetTask (never SendMessage or pool reassignment).
 		if d.PollFailures<63{d.PollFailures++}
 		detail:="task status unavailable; monitoring continues"
-		if err==nil{detail="task status invalid or ID mismatch; monitoring continues"}
+		if err==nil{detail="task status invalid; monitoring continues"}
 		b.laterAfter(m,d,"accepted",detail,b.cfg.pollDelay(d.PollFailures))
 		return
 	}
