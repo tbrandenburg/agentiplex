@@ -1,0 +1,21 @@
+# Example unit. Adjust paths, User and the environment file (credentials,
+# TLS and broker settings as in docs/DEPLOYMENT.md). Single daemon per namespace.
+[Unit]
+Description=Agentiplex daemon
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=agentiplex
+EnvironmentFile=/etc/agentiplex/agentiplexd.env
+ExecStart=/usr/local/bin/agentiplexd --listen 0.0.0.0:8080 --storage /var/lib/agentiplex --public-url https://agentiplex.example.com:8080
+Restart=on-failure
+RestartSec=2s
+StateDirectory=agentiplex
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

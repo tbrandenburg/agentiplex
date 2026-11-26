@@ -125,3 +125,13 @@ This is a first network deployment boundary, not production multi-tenant securit
 ## MVP operational limits
 
 One daemon per namespace only. Configure delivery.workers (default 4; range 1–16, zero uses default) or --workers. No active-active failover. Operator-only messages abandon requires matching downstream task ID and explicit --confirm-remote-stopped; never use merely because an endpoint is unreachable. It stops local monitoring, retains uncertainty and releases the reservation, not remote execution. No automatic replay. Retry a 409 if a poll is in flight. Release tags are created with make release bump=PATCH|MINOR|MAJOR from a clean current main; preview via make release-plan. The existing tag workflow builds/tests/publishes. No tag was pushed by implementing the target.
+
+## Restart and supervision
+
+The daemon keeps its durable record in JetStream, so a crashed or killed daemon only needs to be started again. Every packaging mode does this:
+
+- Compose: `agentiplex` and `nats` use `restart: unless-stopped`; the daemon healthcheck runs `agentiplex status` (GET `/readyz`) against the TLS endpoint. `scripts/compose-check.sh` SIGKILLs the daemon process from the host PID namespace and verifies it restarts healthy with state intact (`docker kill` does not exercise the restart policy).
+- Helm: the kubelet restarts a crashed container (default `restartPolicy: Always`); liveness uses `/healthz`, readiness and startup use `/readyz`, and the Deployment uses `Recreate` with one replica.
+- systemd: [deploy/agentiplexd.service](../deploy/agentiplexd.service) sets `Restart=on-failure`; verify with `systemd-analyze verify deploy/agentiplexd.service`.
+
+Downtime assumption: one daemon per namespace, no HA. While the daemon is down it accepts nothing and clients must retry; queued work waits in JetStream, and after restart accepted tasks are monitored again and queued deliveries resume.
