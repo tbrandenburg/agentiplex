@@ -84,7 +84,7 @@ func run(ctx context.Context,cfg agentiplex.Config,listen,publicURL string,trust
 	var tlsConfig *tls.Config
 	if certFile!=""{pair,e:=tls.LoadX509KeyPair(certFile,keyFile);if e!=nil{return errors.New("cannot load TLS certificate/key")};tlsConfig=&tls.Config{MinVersion:tls.VersionTLS12,Certificates:[]tls.Certificate{pair}}}
 	b,err:=agentiplex.Open(ctx,cfg);if err!=nil{return err};defer b.Close()
-	srv:=&http.Server{Handler:api.HandlerSecure(b,ui,publicURL,mcpEnabled,auth),TLSConfig:tlsConfig,ReadHeaderTimeout:5*time.Second,ReadTimeout:15*time.Second,WriteTimeout:cfg.Timeout+15*time.Second,IdleTimeout:30*time.Second}
+	srv:=NewServer(api.HandlerSecure(b,ui,publicURL,mcpEnabled,auth),tlsConfig,cfg.Timeout)
 	result:=make(chan error,1)
 	go func(){if tlsConfig!=nil{result<-srv.ServeTLS(ln,"","")}else{result<-srv.Serve(ln)}}()
 	slog.Info("agentiplexd ready","listen",ln.Addr().String(),"broker_mode",cfg.BrokerMode,"namespace",cfg.Namespace)
@@ -96,6 +96,11 @@ func run(ctx context.Context,cfg agentiplex.Config,listen,publicURL string,trust
 		if err:=srv.Shutdown(stop);err!=nil{_ = srv.Close();return err}
 	}
 	return nil
+}
+
+// NewServer applies the daemon's HTTP deadlines; /mcp clears its own per request.
+func NewServer(h http.Handler,tlsConfig *tls.Config,timeout time.Duration)*http.Server{
+	return &http.Server{Handler:h,TLSConfig:tlsConfig,ReadHeaderTimeout:5*time.Second,ReadTimeout:15*time.Second,WriteTimeout:timeout+15*time.Second,IdleTimeout:30*time.Second}
 }
 
 // parseSync maps broker.sync ("always" or a duration) to an fsync interval; zero means every write.

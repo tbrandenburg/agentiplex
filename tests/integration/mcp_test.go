@@ -56,7 +56,7 @@ func TestMCPDelegationAndStateAcrossRestart(t *testing.T){
 	if _,err:=b.SetCollection(ctx,"pool","testers",[]string{"tester-1","tester-2"});err!=nil{t.Fatal(err)}
 	s,c:=mcpSession(t,b,false)
 	list,err:=c.ListTools(ctx,&mcp.ListToolsParams{});if err!=nil{t.Fatal(err)}
-	want:=map[string]bool{"discover_agents":true,"list_collections":true,"get_agent_health":true,"send_message":false,"broadcast":false,"dispatch":false,"get_delivery":true,"list_state":true,"get_state":true,"put_state":false}
+	want:=map[string]bool{"discover_agents":true,"list_collections":true,"get_agent_health":true,"send_message":false,"broadcast":false,"dispatch":false,"get_delivery":true,"list_state":true,"get_state":true,"put_state":false,"ask":false}
 	if len(list.Tools)!=len(want){t.Fatalf("unexpected tool count %d",len(list.Tools))}
 	for _,tool:=range list.Tools{
 		read,ok:=want[tool.Name]
