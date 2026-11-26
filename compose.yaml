@@ -12,6 +12,7 @@ x-simulator: &simulator
 services:
   nats:
     image: nats:2.15.3-alpine
+    restart: unless-stopped
     command: ["-c", "/run/secrets/nats.conf"]
     volumes:
       - jetstream:/data
@@ -27,6 +28,7 @@ services:
       retries: 30
   agentiplex:
     image: agentiplex:demo
+    restart: unless-stopped
     build:
       context: .
       target: release
