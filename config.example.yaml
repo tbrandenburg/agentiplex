@@ -8,6 +8,7 @@ broker:
   mode: embedded
   storage: "./data"
   replicas: 1
+  sync: always # embedded fsync of every acknowledged write; a duration such as 2m relaxes it (host crash may lose that window)
   # url: "tls://nats.example:4222" # external mode
   token_file: ""
   credentials_file: "" # alternative to token_file

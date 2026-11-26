@@ -57,6 +57,8 @@ delivery:
 
 Tokens are attached only to the approved HTTPS origin (card resolution, send and task polling); redirects are not followed, and the interface must match the card's origin. URLs containing credentials are rejected. The public Agentiplex card advertises bearer auth when secured. MCP hosts may supply a static bearer header if supported; OAuth discovery, individual agent identity, fine-grained authorization, cross-tenant boundaries, mTLS client authentication and enterprise SSO are not implemented.
 
+Embedded broker durability: `broker.sync` (default `always`) fsyncs every acknowledged JetStream write, so a host crash or power loss does not roll back accepted work; `kill -9` of the daemon is covered by `tests/integration/kill_restart_test.go`. A duration such as `2m` selects the nats-server background fsync interval instead: faster, but a host crash may lose up to that window of acknowledged writes (a process kill still loses nothing). Valid values are `always` or 1s–1h. Indicative cost on a low-end 2-core Celeron under concurrent load (`go test ./tests/integration -run xxx -bench BrokerSync -benchtime 30x`, local simulated agent): Send latency 16.8 ms with `always` vs 4.5 ms with `2m`; end-to-end delivery throughput 21 vs 68 deliveries/s. Agent traffic is low, so this is accepted; re-measure on your storage. For external or replicated NATS, `broker.sync` is ignored and durability follows the cluster configuration (server `sync_interval`, JetStream replication and storage).
+
 External NATS:
 ```yaml
 broker:

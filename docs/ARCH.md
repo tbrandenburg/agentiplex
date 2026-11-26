@@ -159,7 +159,7 @@ Agent networks may run for days: work outlives connections, agent turns, daemon 
 | Failure | Guarantee |
 |---|---|
 | Daemon process exits or is killed | Nothing acknowledged is lost: the OS still flushes written data. Restart resumes as above. |
-| Host crash or power loss (embedded broker) | Acknowledged writes must be on disk. The embedded broker therefore fsyncs every write (`SyncAlways`, planned as `broker.sync`, default durable; relax only by explicit configuration). The nats-server default is a 2 minute background fsync, which would lose acknowledged work and must not be relied on. |
+| Host crash or power loss (embedded broker) | Acknowledged writes must be on disk. The embedded broker therefore fsyncs every write (`SyncAlways`; setting `broker.sync`, default `always`; relax only by explicit configuration such as `2m`). The nats-server default is a 2 minute background fsync, which would lose acknowledged work and must not be relied on. |
 | External or replicated NATS | Durability is the cluster's replication and storage configuration, documented in DEPLOYMENT.md. |
 
 Verify with a kill test: SIGKILL the daemon during an active multi-agent run, restart it, and assert queued and accepted work completes with no duplicate downstream execution.
