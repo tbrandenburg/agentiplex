@@ -2,11 +2,9 @@ package agentiplex
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"strconv"
+	"fmt"
 	"time"
 
 	"github.com/nats-io/nats.go"
@@ -17,22 +15,15 @@ func terminalState(s string)bool{
 	return false
 }
 
-// Ask durably admits one text request like Send, then blocks until the delivery
-// is terminal, ctx ends, or the optional timeout elapses (done false, no error).
-// The wait is only a view on the durable record: asking again re-attaches.
-// An empty key derives one from target and text; it re-attaches to a delivery
-// that is nonterminal or whose result was not yet returned, otherwise it starts
-// a new delivery. An explicit key re-attaches forever.
+// Ask is Send plus a wait: it durably admits one text request under a required
+// stable key, then blocks until the delivery is terminal, ctx ends, or the
+// optional timeout elapses (done false, no error). The wait is only a view on
+// the durable record and never cancels remote work: asking again with the same
+// key re-attaches while the record is retained. A blocking ask to the caller's
+// own agent is rejected because a one-turn gateway would deadlock on itself.
 func(b *Bus) Ask(ctx context.Context,target,text,key string,timeout time.Duration)(Delivery,bool,error){
-	var d Delivery
-	var err error
-	if key!=""{
-		d,err=b.Send(ctx,target,text,key)
-	}else{
-		var id string
-		if id,err=b.askID(target,text);err!=nil{return Delivery{},false,err}
-		d,err=b.sendWithID(ctx,target,text,id,"")
-	}
+	if err:=b.rejectSelfAsk(ctx,target);err!=nil{return Delivery{},false,err}
+	d,err:=b.Send(ctx,target,text,key)
 	if err!=nil{return Delivery{},false,err}
 	wctx:=ctx
 	if timeout>0{var cancel context.CancelFunc;wctx,cancel=context.WithTimeout(ctx,timeout);defer cancel()}
@@ -43,45 +34,21 @@ func(b *Bus) Ask(ctx context.Context,target,text,key string,timeout time.Duratio
 		return last,false,nil
 	}
 	if err!=nil{return Delivery{},false,err}
-	if last.ReturnedAt==nil{
-		if last,err=b.markReturned(d.ID);err!=nil{return Delivery{},false,err}
-	}
 	return last,true,nil
 }
 
-// askID picks the first derived delivery that does not exist, is nonterminal,
-// or whose result was not returned yet.
-func(b *Bus) askID(target,text string)(string,error){
-	const gap=8
-	next,missing:="",0
-	for n:=0;missing<gap;n++{
-		h:=sha256.Sum256([]byte("ask\x00"+target+"\x00"+text+"\x00"+strconv.Itoa(n)))
-		id:=hex.EncodeToString(h[:])
-		d,err:=b.rawDelivery(id)
-		if errors.Is(err,ErrNotFound){
-			if next==""{next=id}
-			missing++;continue
-		}
-		if err!=nil{return "",err}
-		missing,next=0,""
-		if !terminalState(d.State)||d.ReturnedAt==nil{return id,nil}
-	}
-	return next,nil
-}
+// ErrSelfAsk rejects a blocking ask whose target is the caller's own agent.
+var ErrSelfAsk=fmt.Errorf("%w: blocking ask to your own agent would deadlock; use send_message and poll get_delivery",ErrInvalid)
 
-// markReturned sets the durable returned mark by compare-and-swap so it never
-// clobbers a concurrent save. It adds no event and leaves UpdatedAt untouched.
-func(b *Bus) markReturned(id string)(Delivery,error){
-	var err error
-	for range 5{
-		d,rev,e:=read[Delivery](b.store.Deliveries,id)
-		if e!=nil{return Delivery{},e}
-		if d.ReturnedAt!=nil{return d,nil}
-		now:=time.Now().UTC();d.ReturnedAt=&now
-		raw,e:=json.Marshal(d);if e!=nil{return Delivery{},e}
-		if _,err=b.store.Deliveries.Update(id,raw,rev);err==nil{return d,nil}
-	}
-	return Delivery{},err
+// rejectSelfAsk compares the target with the authenticated caller's agent ID
+// and its registered endpoint (an alias registered under another ID).
+func(b *Bus) rejectSelfAsk(ctx context.Context,target string)error{
+	caller:=callerID(ctx)
+	if caller==""{return nil}
+	if target==caller{return ErrSelfAsk}
+	t,err:=b.Agent(target);if err!=nil{return nil}
+	if me,err:=b.Agent(caller);err==nil&&me.Endpoint==t.Endpoint{return ErrSelfAsk}
+	return nil
 }
 
 func(b *Bus) watchDelivery(ctx context.Context,id string)(nats.KeyWatcher,error){

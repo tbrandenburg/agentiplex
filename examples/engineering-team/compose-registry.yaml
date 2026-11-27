@@ -1,0 +1,14 @@
+# Static team for compose.yaml: endpoints, per-agent credentials and membership; no registration commands.
+registry:
+  namespace: compose-demo
+  agents:
+    pm: {url: "http://pm:8001", token_file: /run/secrets/agent-pm}
+    architect: {url: "http://architect:8001", token_file: /run/secrets/agent-architect}
+    developer: {url: "http://developer:8001", token_file: /run/secrets/agent-developer}
+    tester-1: {url: "http://tester-1:8001", token_file: /run/secrets/agent-tester-1}
+    tester-2: {url: "http://tester-2:8001", token_file: /run/secrets/agent-tester-2}
+    quality: {url: "http://quality:8001", token_file: /run/secrets/agent-quality}
+  groups:
+    engineering: [pm, architect, developer, tester-1, tester-2, quality]
+  pools:
+    testers: [tester-1, tester-2]

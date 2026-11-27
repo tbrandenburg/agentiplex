@@ -54,9 +54,11 @@ func noteTopic(namespace,topic string)(string,error){
 }
 
 // Note appends one note. Concurrent writers never conflict and nothing is overwritten.
-func (b *Bus) Note(ctx context.Context,namespace,topic,text,author string)(Note,error){
+// The author is the authenticated principal, never a caller-supplied claim.
+func (b *Bus) Note(ctx context.Context,namespace,topic,text string)(Note,error){
+	author:=authorAs(ctx)
 	prefix,err:=noteTopic(namespace,topic);if err!=nil{return Note{},err}
-	if strings.TrimSpace(text)==""||!utf8.ValidString(text)||!utf8.ValidString(author)||len(author)>128{return Note{},fmt.Errorf("%w: text must be non-empty UTF-8 and author at most 128 bytes",ErrInvalid)}
+	if strings.TrimSpace(text)==""||!utf8.ValidString(text){return Note{},fmt.Errorf("%w: text must be non-empty UTF-8",ErrInvalid)}
 	now:=time.Now().UTC()
 	val,err:=json.Marshal(noteValue{Author:author,Text:text,At:now});if err!=nil{return Note{},err}
 	if len(val)>MaxStateValueBytes{return Note{},fmt.Errorf("%w: encoded note exceeds the %d byte value limit",ErrInvalid,MaxStateValueBytes)}
@@ -68,7 +70,7 @@ func (b *Bus) Note(ctx context.Context,namespace,topic,text,author string)(Note,
 		if errors.Is(err,nats.ErrKeyExists){return Note{},ErrConflict}
 		return Note{},fmt.Errorf("note refused (value limit %d bytes or bucket MaxBytes reached): %w",MaxStateValueBytes,err)
 	}
-	b.emit("state.updated",k,"")
+	b.emit("state.updated",k,"",author)
 	return Note{Key:strings.TrimPrefix(k,namespace+"."),Author:author,Text:text,At:now},nil
 }
 

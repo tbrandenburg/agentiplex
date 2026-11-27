@@ -20,13 +20,13 @@ python3 -B examples/autonomous-team/team.py --profile simulated --check --headle
 # or make autonomous-check
 ```
 
-This validates generated configuration, explicit per-role grants, registration and collection setup, and process cleanup. It never calls a model. Go integration tests separately exercise an accepted A2A task initiating MCP discovery/delegation and awaiting a second A2A response while the original task is active, then persisting the actual receipt through MCP.
+This validates generated configuration, explicit per-role grants, generated registry configuration (agents, group and pool registered by the daemon at startup from `team.json`), and process cleanup. It never calls a model. Go integration tests separately exercise an accepted A2A task initiating MCP discovery/delegation and awaiting a second A2A response while the original task is active, then persisting the actual receipt through MCP.
 
 ## Real-model acceptance (free or credentialed)
 
 `make live-check` runs the credential-free full hybrid scenario of Live OpenCode CI, using the OpenCode default model unless `MODEL=provider/model` is set (CI sets `MODEL=opencode/big-pickle`). Install the pinned runtimes below first. Override `LIVE_ARGS` for a different approved local scenario; no paid provider credentials are forwarded by default.
 
-On a disposable trusted Linux host, install the exact reviewed versions: OpenCode **2.3.2 or newer**, Bun **1.4.4**, Node **22+**, and [opencode-a2a-lite **0.9.0**](https://github.com/tbrandenburg/opencode-a2a-lite/releases/tag/v0.9.0) on PATH. The gateway CLI must report 0.9.0 and OpenCode must report a stable opencode v2.3.2 or newer. Use a standalone workspace environment without managed /etc/opencode or inherited project configuration; see the upstream [operator policy](https://github.com/tbrandenburg/opencode-a2a-lite/blob/v0.9.0/docs/operator-policy-state.md). The launcher creates private standalone workspaces under /tmp, each containing only the fictional fixture and generated role/config. It does not copy your real repository or personal files.
+On a disposable trusted Linux host, install OpenCode **2.3.2 or newer**, Bun **1.4.4** and Node **22+** on PATH. [opencode-a2a-lite **0.9.0 or newer**](https://github.com/tbrandenburg/opencode-a2a-lite/releases/tag/v0.9.0) is used from PATH or fetched with npx. The gateway CLI must report 0.9.0 or newer and OpenCode must report a stable opencode v2.3.2 or newer. Use a standalone workspace environment without managed /etc/opencode or inherited project configuration; see the upstream [operator policy](https://github.com/tbrandenburg/opencode-a2a-lite/blob/v0.9.0/docs/operator-policy-state.md). The launcher creates private standalone workspaces under /tmp, each containing only the fictional fixture and generated role/config. It does not copy your real repository or personal files.
 
 OpenCode offers [rotating free models](https://opencode.ai/docs/console/models/) including Big Pickle at the time of writing. For an isolated credential-free run, omit --model to use OpenCode's default, or explicitly select an available free model. No provider variable is forwarded. The free catalog, rate limits and service availability may change. Use only the bundled synthetic fixture, never private or customer source: free-model providers may retain prompts or use them to improve models.
 
@@ -67,7 +67,7 @@ The launcher stops its own foreground children on exit or Ctrl+C; the private ru
 
 ### Tool-call evidence
 
-The gateway logs only show the policy grant, so the observer also records `toolCalls` in `evidence.json` (and prints "PM tool-call evidence"): deliveries per target, PM turns and how many blocking `ask` calls handed a result back (the daemon sets `returnedAt` on the delivery only then).
+The gateway logs only show the policy grant, so the observer also records `toolCalls` in `evidence.json` (and prints "PM tool-call evidence"): deliveries per target and state, authenticated callers and PM turns. The delivery record does not store the tool used, so `ask` cannot be distinguished from other delegation tools.
 
 ### Completion and outstanding work
 

@@ -17,7 +17,7 @@ cleanup(){
 trap cleanup EXIT
 kind create cluster --name "$cluster" --wait 120s
 kind load docker-image agentiplex:ci --name "$cluster"
-kubectl create secret generic agentiplex-auth --from-file=.demo-secrets/operator --from-file=.demo-secrets/collaborator --from-file=.demo-secrets/viewer
+kubectl create secret generic agentiplex-auth --from-file=.demo-secrets/operator --from-file=.demo-secrets/agent-demo --from-file=.demo-secrets/viewer
 kubectl create secret tls agentiplex-tls --cert=.demo-secrets/server.crt --key=.demo-secrets/server.key
 kubectl create secret tls nats-tls --cert=.demo-secrets/nats.crt --key=.demo-secrets/nats.key
 kubectl create secret generic agentiplex-broker --from-file=token=.demo-secrets/nats-token --from-file=.demo-secrets/ca.crt
@@ -34,7 +34,7 @@ port_forward(){
 }
 port_forward
 go build -mod=readonly -o /tmp/agentiplex-helm-cli ./cmd/agentiplex
-cli(){ /tmp/agentiplex-helm-cli --server https://localhost:18443 --ca-file .demo-secrets/ca.crt --token-file .demo-secrets/collaborator "$@"; }
+cli(){ /tmp/agentiplex-helm-cli --server https://localhost:18443 --ca-file .demo-secrets/ca.crt --token-file .demo-secrets/agent-demo "$@"; }
 cli state put engineering key durable | jq -e '.revision>0'
 kill "$pf" 2>/dev/null || true; wait "$pf" 2>/dev/null || true; pf=""
 kubectl rollout restart deployment/agentiplex

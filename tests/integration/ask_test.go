@@ -64,7 +64,7 @@ func TestAskWaitsPastDeliveryTimeoutWithoutPollingPerWaiter(t *testing.T){
 	_,c:=mcpSession(t,b,false)
 	const waiters=8
 	res:=make([]askResult,waiters);var wg sync.WaitGroup
-	for i:=range waiters{wg.Add(1);go func(){defer wg.Done();res[i],_=askTool(c,map[string]any{"target":"worker","text":"long task"})}()}
+	for i:=range waiters{wg.Add(1);go func(){defer wg.Done();res[i],_=askTool(c,map[string]any{"target":"worker","text":"long task","idempotencyKey":"waiters"})}()}
 	time.Sleep(3*time.Second)
 	if a.sends.Load()!=1{t.Fatalf("sends %d",a.sends.Load())}
 	close(a.release);wg.Wait()
@@ -76,39 +76,38 @@ func TestAskWaitsPastDeliveryTimeoutWithoutPollingPerWaiter(t *testing.T){
 	if a.sends.Load()!=1||int(invokes.Load())>d.Polls+2{t.Fatalf("waiters polled: invokes=%d polls=%d sends=%d",invokes.Load(),d.Polls,a.sends.Load())}
 }
 
-func TestAskTimeoutReattachAndReturnedMark(t *testing.T){
+func TestAskTimeoutReattachAndRetention(t *testing.T){
 	b,c,a,_:=askSetup(t,time.Second)
-	args:=map[string]any{"target":"worker","text":"long task","timeoutSeconds":3}
+	args:=map[string]any{"target":"worker","text":"long task","timeoutSeconds":3,"idempotencyKey":"k1"}
 	first:=mustAsk(t,c,args)
 	if first.Done||!first.StillRunning||first.LastObservedAt==nil||first.Polls<1||first.State!="accepted"{t.Fatalf("stillRunning shape: %+v",first)}
 	again:=mustAsk(t,c,args)
-	if again.ID!=first.ID||again.Done{t.Fatalf("re-attach: %+v",again)}
+	if again.ID!=first.ID||again.Done||a.sends.Load()!=1{t.Fatalf("re-attach: %+v sends=%d",again,a.sends.Load())}
 	close(a.release)
-	// Result becomes terminal while nobody is attached: unreturned, so keyless ask collects it.
 	wait(t,b,first.ID,"completed")
-	if d,_:=b.Delivery(first.ID);d.ReturnedAt!=nil{t.Fatal("marked returned before any ask handed it back")}
 	got:=mustAsk(t,c,args)
-	if got.ID!=first.ID||!got.Done||got.State!="completed"||len(got.Result)==0{t.Fatalf("collect: %+v",got)}
-	d,_:=b.Delivery(first.ID)
-	if d.ReturnedAt==nil||d.State!="completed"{t.Fatalf("returned mark missing: %+v",d)}
+	if got.ID!=first.ID||!got.Done||got.State!="completed"||len(got.Result)==0||a.sends.Load()!=1{t.Fatalf("collect: %+v",got)}
+	again=mustAsk(t,c,args)
+	if again.ID!=first.ID||a.sends.Load()!=1{t.Fatalf("same key stays the same operation while retained: %+v sends=%d",again,a.sends.Load())}
+	args["idempotencyKey"]="k2"
 	next:=mustAsk(t,c,args)
-	if next.ID==first.ID||!next.Done||a.sends.Load()!=2{t.Fatalf("identical keyless ask must start a new delivery: %+v sends=%d",next,a.sends.Load())}
-	time.Sleep(1500*time.Millisecond)
-	if d,_=b.Delivery(first.ID);d.ReturnedAt==nil{t.Fatal("returned mark lost after later saves")}
+	if next.ID==first.ID||!next.Done||a.sends.Load()!=2{t.Fatalf("new key must start new work: %+v sends=%d",next,a.sends.Load())}
 }
 
-func TestAskExplicitKeyReattachesAfterReturned(t *testing.T){
+func TestAskRequiresKeyAndRejectsChangedPayload(t *testing.T){
 	b,c,a,_:=askSetup(t,time.Second)
 	close(a.release)
+	if _,err:=askTool(c,map[string]any{"target":"worker","text":"quick"});err==nil{t.Fatal("ask without key must be rejected")}
+	if _,err:=askTool(c,map[string]any{"target":"worker","text":"quick","idempotencyKey":" "});err==nil{t.Fatal("blank key must be rejected")}
 	args:=map[string]any{"target":"worker","text":"quick","idempotencyKey":"ask-key"}
 	one:=mustAsk(t,c,args)
 	if !one.Done||one.State!="completed"{t.Fatalf("%+v",one)}
-	if d,_:=b.Delivery(one.ID);d.ReturnedAt==nil{t.Fatal("explicit key must still set the mark")}
 	two:=mustAsk(t,c,args)
-	if two.ID!=one.ID||!two.Done||a.sends.Load()!=1{t.Fatalf("explicit key re-attach: %+v sends=%d",two,a.sends.Load())}
+	if two.ID!=one.ID||!two.Done||a.sends.Load()!=1{t.Fatalf("key re-attach: %+v sends=%d",two,a.sends.Load())}
 	if _,err:=askTool(c,map[string]any{"target":"worker","text":"different","idempotencyKey":"ask-key"});err==nil{t.Fatal("changed text under a used key must be an error")}
-	if _,err:=askTool(c,map[string]any{"target":"nobody","text":"x"});err==nil{t.Fatal("unknown target must be an error")}
-	if _,err:=askTool(c,map[string]any{"target":"worker","text":" "});err==nil{t.Fatal("empty text must be an error")}
+	if _,err:=askTool(c,map[string]any{"target":"nobody","text":"x","idempotencyKey":"u"});err==nil{t.Fatal("unknown target must be an error")}
+	if _,err:=askTool(c,map[string]any{"target":"worker","text":" ","idempotencyKey":"e"});err==nil{t.Fatal("empty text must be an error")}
+	if n,_:=b.RecentDeliveries(10);len(n)!=1||a.sends.Load()!=1{t.Fatalf("rejected calls created work: %d sends=%d",len(n),a.sends.Load())}
 }
 
 func TestAskReattachesAfterRestart(t *testing.T){
@@ -117,20 +116,20 @@ func TestAskReattachesAfterRestart(t *testing.T){
 	if _,err:=b.Register(context.Background(),"worker",a.srv.URL);err!=nil{t.Fatal(err)}
 	s:=httptest.NewServer(api.HandlerWithProtocols(b,nil,"",true))
 	c1:=mcpClient(t,s.URL)
-	args:=map[string]any{"target":"worker","text":"long task","timeoutSeconds":1}
+	args:=map[string]any{"target":"worker","text":"long task","timeoutSeconds":1,"idempotencyKey":"restart-key"}
 	first:=mustAsk(t,c1,args)
 	if first.Done{t.Fatalf("%+v",first)}
 	_ = c1.Close();s.Close();b.Close()
 	b2:=open(t,cfg);_,c2:=mcpSession(t,b2,false)
 	go func(){time.Sleep(2*time.Second);close(a.release)}()
-	got:=mustAsk(t,c2,map[string]any{"target":"worker","text":"long task"})
+	got:=mustAsk(t,c2,map[string]any{"target":"worker","text":"long task","idempotencyKey":"restart-key"})
 	if got.ID!=first.ID||!got.Done||got.State!="completed"||a.sends.Load()!=1{t.Fatalf("after restart: %+v sends=%d",got,a.sends.Load())}
 }
 
 func TestAskReturnsFailedAndUncertainAsDone(t *testing.T){
 	b,c,a,_:=askSetup(t,time.Second)
 	_ = b
-	args:=map[string]any{"target":"worker","text":"long task"}
+	args:=map[string]any{"target":"worker","text":"long task","idempotencyKey":"uncertain-key"}
 	go func(){time.Sleep(time.Second);a.restart(a.card())}()
 	u:=mustAsk(t,c,args)
 	if !u.Done||u.State!="uncertain"||u.StillRunning{t.Fatalf("uncertain: %+v",u)}
@@ -140,7 +139,7 @@ func TestAskReturnsFailedAndUncertainAsDone(t *testing.T){
 	if _,err:=b2.Register(context.Background(),"gone",dead.srv.URL);err!=nil{t.Fatal(err)}
 	dead.srv.Close()
 	_,c2:=mcpSession(t,b2,false)
-	f:=mustAsk(t,c2,map[string]any{"target":"gone","text":"anything"})
+	f:=mustAsk(t,c2,map[string]any{"target":"gone","text":"anything","idempotencyKey":"gone-key"})
 	if !f.Done||f.State!="failed"{t.Fatalf("failed: %+v",f)}
 }
 
@@ -153,7 +152,7 @@ func TestAskSurvivesHTTPWriteTimeout(t *testing.T){
 	hs.ReadTimeout=time.Second;hs.WriteTimeout=time.Second
 	s:=httptest.NewUnstartedServer(nil);s.Config=hs;s.Start();t.Cleanup(s.Close)
 	go func(){time.Sleep(3*time.Second);close(a.release)}()
-	got:=mustAsk(t,mcpClient(t,s.URL),map[string]any{"target":"worker","text":"long task"})
+	got:=mustAsk(t,mcpClient(t,s.URL),map[string]any{"target":"worker","text":"long task","idempotencyKey":"timeout-key"})
 	if !got.Done||got.State!="completed"||got.WaitedSeconds<2{t.Fatalf("%+v",got)}
 }
 

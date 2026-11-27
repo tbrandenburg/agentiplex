@@ -9,28 +9,25 @@ import (
 	"log/slog"
 	"strings"
 	"time"
-
-	"github.com/a2aproject/a2a-go/v2/a2a"
 )
 
-func scopedID(prefix,key string)string{
-	if key==""{return prefix+a2a.NewMessageID()}
-	h:=sha256.Sum256([]byte(key))
+func scopedID(prefix,caller,key string)string{
+	h:=sha256.Sum256([]byte(scopedKey(caller,key)))
 	return prefix+hex.EncodeToString(h[:30])
 }
 
 func childID(parent,member string)string{
-	return scopedID("bc-",parent+"\x00"+member)
+	return scopedID("bc-","",parent+"\x00"+member)
 }
 
 func (b *Bus) Broadcast(ctx context.Context,group,text,key string)(Delivery,error){
-	if len(key)>256{return Delivery{},ErrInvalid}
-	return b.submitCollection(ctx,"broadcast",group,text,scopedID("bg-",key),"")
+	if !validKey(key){return Delivery{},ErrInvalid}
+	return b.submitCollection(ctx,"broadcast",group,text,scopedID("bg-",callerID(ctx),key),"")
 }
 
 func (b *Bus) Dispatch(ctx context.Context,pool,text,key string)(Delivery,error){
-	if len(key)>256{return Delivery{},ErrInvalid}
-	return b.submitCollection(ctx,"dispatch",pool,text,scopedID("dp-",key),"")
+	if !validKey(key){return Delivery{},ErrInvalid}
+	return b.submitCollection(ctx,"dispatch",pool,text,scopedID("dp-",callerID(ctx),key),"")
 }
 
 func (b *Bus) submitCollection(ctx context.Context,kind,target,text,id,messageID string)(Delivery,error){
@@ -39,13 +36,13 @@ func (b *Bus) submitCollection(ctx context.Context,kind,target,text,id,messageID
 	b.mu.Lock()
 	d,err:=b.rawDelivery(id)
 	if err==nil{
-		if d.Kind!=kind||d.Target!=target||d.Text!=text||d.IngressMessageID!=messageID{b.mu.Unlock();return Delivery{},ErrConflict}
+		if d.Kind!=kind||d.Caller!=callerID(ctx)||d.Target!=target||d.Text!=text||d.IngressMessageID!=messageID{b.mu.Unlock();return Delivery{},ErrConflict}
 	}else if errors.Is(err,ErrNotFound){
 		collectionKind:="group"
 		if kind=="dispatch"{collectionKind="pool"}
 		c,e:=b.Collection(collectionKind,target)
 		if e!=nil{b.mu.Unlock();return Delivery{},e}
-		d=Delivery{ID:id,Kind:kind,Target:target,Text:text,Members:c.Members,IngressMessageID:messageID,State:"preparing",UpdatedAt:time.Now().UTC()}
+		d=Delivery{ID:id,Caller:callerID(ctx),Kind:kind,Target:target,Text:text,Members:c.Members,IngressMessageID:messageID,State:"preparing",UpdatedAt:time.Now().UTC()}
 		if kind=="broadcast"{d.State="fanout"}
 		raw,e:=json.Marshal(d);if e!=nil{b.mu.Unlock();return Delivery{},e}
 		_,err=b.store.Deliveries.Create(id,raw)
@@ -69,7 +66,7 @@ func (b *Bus) reconcileBroadcast(ctx context.Context,d Delivery){
 	all:=true
 	for _,member:=range d.Members{
 		if ctx.Err()!=nil{return}
-		_,err:=b.sendChild(ctx,member,d.Text,childID(d.ID,member),"",d.ID)
+		_,err:=b.sendChild(ctx,member,d.Text,childID(d.ID,member),"",d.ID,d.Caller)
 		if err!=nil{all=false;slog.Warn("broadcast child admission pending","broadcast",d.ID,"member",member)}
 	}
 	if !all{return}
@@ -89,7 +86,7 @@ func (b *Bus) recoverFanouts(ctx context.Context){
 		if ctx.Err()!=nil{return}
 		if now:=time.Now();now.Sub(swept)>=time.Minute{
 			swept=now
-			if _,err:=b.sweepRetention(ctx,now,b.cfg.Retention,b.cfg.UnreturnedRetention);err!=nil{slog.Warn("retention sweep failed")}
+			if _,err:=b.sweepRetention(ctx,now,b.cfg.Retention);err!=nil{slog.Warn("retention sweep failed")}
 		}
 		ks,err:=keys(b.store.Deliveries)
 		if err==nil{

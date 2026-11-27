@@ -72,8 +72,8 @@ func (b *Bus) observe(ctx context.Context,id string,refresh bool)(Agent,bool,err
 		if errors.Is(err,nats.ErrKeyRevisionMismatch){return Agent{},false,ErrConflict}
 		return Agent{},false,err
 	}
-	if old!=a.Reachability{b.emit("agent.reachability",id,a.Reachability)}
-	if refresh&&ok{b.emit("agent.refreshed",id,"")}
+	if old!=a.Reachability{b.emit("agent.reachability",id,a.Reachability,"")}
+	if refresh&&ok{b.emit("agent.refreshed",id,"","")}
 	return a,ok,nil
 }
 
@@ -119,6 +119,6 @@ func (b *Bus) RemoveAgent(ctx context.Context,id string)error{
 		if errors.Is(err,nats.ErrKeyRevisionMismatch){return ErrConflict}
 		return err
 	}
-	b.emit("agent.removed",id,"")
+	b.emit("agent.removed",id,"","")
 	return nil
 }

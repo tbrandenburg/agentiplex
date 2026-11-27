@@ -45,7 +45,7 @@ func TestAskSIGKILLDuringBlockedAskThenReattach(t *testing.T){
 	start,a:=askDaemon(t)
 	api,cmd:=start()
 	if c:=call(t,"POST",api+"/api/v1/agents",map[string]string{"id":"worker","url":a.srv.URL},nil);c!=201{t.Fatalf("register: %d",c)}
-	args:=map[string]any{"target":"worker","text":"long task"}
+	args:=map[string]any{"target":"worker","text":"long task","idempotencyKey":"kill-key"}
 	blocked:=make(chan error,1)
 	go func(){_,err:=askTool(mcpClient(t,api),args);blocked<-err}()
 	waitSends(t,a,1);time.Sleep(1500*time.Millisecond)
@@ -58,16 +58,16 @@ func TestAskSIGKILLDuringBlockedAskThenReattach(t *testing.T){
 	if !got.Done||got.State!="completed"||a.sends.Load()!=1{t.Fatalf("re-attach: %+v sends=%d",got,a.sends.Load())}
 	var d agentiplex.Delivery
 	call(t,"GET",api2+"/api/v1/deliveries/"+got.ID,nil,&d)
-	if d.ID!=got.ID||d.ReturnedAt==nil{t.Fatalf("delivery %+v",d)}
+	if d.ID!=got.ID||d.State!="completed"{t.Fatalf("delivery %+v",d)}
 }
 
-// The task finishes while the daemon is down: the repeated keyless ask
-// collects the finished result once; an identical ask afterwards is new work.
-func TestAskFinishedWhileDownThenNewDeliveryAfterReturned(t *testing.T){
+// The task finishes while the daemon is down: the repeated ask with
+// the same key collects the finished result; a new key is new work.
+func TestAskFinishedWhileDownThenNewKeyIsNewWork(t *testing.T){
 	start,a:=askDaemon(t)
 	api,cmd:=start()
 	if c:=call(t,"POST",api+"/api/v1/agents",map[string]string{"id":"worker","url":a.srv.URL},nil);c!=201{t.Fatalf("register: %d",c)}
-	args:=map[string]any{"target":"worker","text":"long task"}
+	args:=map[string]any{"target":"worker","text":"long task","idempotencyKey":"kill-key"}
 	blocked:=make(chan error,1)
 	go func(){_,err:=askTool(mcpClient(t,api),args);blocked<-err}()
 	waitSends(t,a,1);time.Sleep(1500*time.Millisecond)
@@ -78,6 +78,7 @@ func TestAskFinishedWhileDownThenNewDeliveryAfterReturned(t *testing.T){
 	api2,_:=start()
 	got:=mustAsk(t,mcpClient(t,api2),args)
 	if !got.Done||got.State!="completed"||a.sends.Load()!=1{t.Fatalf("collect: %+v sends=%d",got,a.sends.Load())}
+	args["idempotencyKey"]="kill-key-2"
 	next:=mustAsk(t,mcpClient(t,api2),args)
 	if next.ID==got.ID||!next.Done||a.sends.Load()!=2{t.Fatalf("new delivery expected: %+v sends=%d",next,a.sends.Load())}
 }

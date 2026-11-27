@@ -31,6 +31,7 @@ type Delivery struct {
 	AssignedAgent string `json:"assignedAgent,omitempty"`
 	Children []ChildDelivery `json:"children,omitempty"`
 	ID string `json:"id"`
+	Caller string `json:"caller,omitempty"` // immutable authenticated agent ID; empty for operator/local submissions
 	IngressMessageID string `json:"ingressMessageId,omitempty"`
 	Target string `json:"target"`
 	Text string `json:"text"`
@@ -46,7 +47,6 @@ type Delivery struct {
 	Result json.RawMessage `json:"result,omitempty"`
 	Detail string `json:"detail,omitempty"`
 	UpdatedAt time.Time `json:"updatedAt"`
-	ReturnedAt *time.Time `json:"returnedAt,omitempty"` // set when an ask handed this terminal result back to a caller
 }
 
 type Event struct {
@@ -54,6 +54,7 @@ type Event struct {
 	Kind string `json:"kind"`
 	ID string `json:"id"`
 	State string `json:"state,omitempty"`
+	Caller string `json:"caller,omitempty"`
 	At time.Time `json:"at"`
 }
 

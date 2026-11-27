@@ -16,14 +16,27 @@ broker:
 registry:
   namespace: engineering
   health_interval: 30s # zero disables periodic observations
+  # Optional static provisioning, applied additively at startup (see docs/DEPLOYMENT.md).
+  # Agent descriptions and skills come from native A2A cards. Config file only (no env override).
+  # agents:
+  #   pm:
+  #     url: https://pm.example.org # A2A base URL or Agent Card URL
+  #     token_file: /run/secrets/agent-pm # inbound credential bound to ID "pm" (required in secure mode)
+  #   architect:
+  #     url: https://architect.example.org
+  #     token_file: /run/secrets/agent-architect
+  #     outbound_token_file: /run/secrets/architect-recipient # sent to this HTTPS origin only
+  # groups:
+  #   engineering: [pm, architect]
+  # pools:
+  #   reviewers: [architect]
 delivery:
   workers: 4 # bounded outbound HTTP concurrency; one restores serial mode
   timeout: 120s # per HTTP operation, not task execution lifetime
   retry_delay: 5s
   max_attempts: 10 # pre-submission reachability attempts only
   task_poll_interval: 0s # inherit retry_delay; successful active tasks monitored indefinitely
-  retention: 168h # terminal deliveries (completed, failed, uncertain, input-required, auth-required) are removed this long after their last update; range 1h–3650d
-  unreturned_retention: 720h # longer limit for terminal records no ask handed back (all send_message results too); must be >= retention
+  retention: 168h # terminal deliveries are removed this long after their last update; also the idempotency-key/messageId retry window (a key is a new operation afterwards); range 5m–3650d
   allowed_origins: [] # loopback allowed; explicit non-loopback HTTP(S) origins
   ca_file: ""
   token_files: {} # map approved HTTPS origins to mounted bearer credential files
@@ -42,5 +55,10 @@ protocols:
 # server.tls_cert_file and server.tls_key_file plus HTTPS public_url required.
 security:
   operator_token_file: ""
-  collaborator_token_file: ""
+  # Credential files for agent IDs NOT declared under registry.agents (declared agents use
+  # registry.agents.<id>.token_file; an ID may be set in only one place). Each token must be
+  # unique across all principals. Rotate or revoke by editing files and restarting.
+  agent_token_files: {}
+  #  pm: /run/secrets/agent-pm
+  #  architect: /run/secrets/agent-architect
   viewer_token_file: "" # required when authenticated dashboard enabled

@@ -6,6 +6,8 @@ A group is an explicitly configured collection of registered logical agent IDs. 
 
 Definitions persist in JetStream KV. Each operation snapshots membership on admission; updates affect only subsequent submissions. IDs are unique within the collection kind. Up to 32 groups, 32 pools and 32 distinct registered members per collection in this demo. No deletion or dynamic skill-based membership yet.
 
+Groups and pools can also be declared statically under `registry.groups`/`registry.pools`; the declared membership is applied at startup when it differs and replaces runtime edits on restart (see deployment guide).
+
 ## CLI
 
 Register two independently running simulator endpoints as tester-1 and tester-2. Then:
@@ -23,7 +25,7 @@ agentiplex events --follow
 agentiplex events --follow --after 12 --kind delivery.state
 ```
 
-Groups/pools set is an upsert. Members must already be registered. Use a fresh key for each new operation; repeating the same key and payload returns the same receipt. A conflicting payload is rejected. Admin idempotency is operation-scoped; A2A message IDs are namespace-global across operations.
+Groups/pools set is an upsert. Members must already be registered. The idempotency key is required; use a fresh key for each new operation; repeating the same key and payload returns the same receipt while the record is retained (7 days after it finishes by default). A conflicting payload is rejected. Keys are scoped to the caller and operation.
 
 ## HTTP / A2A
 

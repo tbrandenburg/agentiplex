@@ -45,7 +45,9 @@ spec:
             - {name: AGENTIPLEX_SERVER_TLS_CERT_FILE, value: /tls/tls.crt}
             - {name: AGENTIPLEX_SERVER_TLS_KEY_FILE, value: /tls/tls.key}
             - {name: AGENTIPLEX_SECURITY_OPERATOR_TOKEN_FILE, value: /auth/operator}
-            - {name: AGENTIPLEX_SECURITY_COLLABORATOR_TOKEN_FILE, value: /auth/collaborator}
+            {{- $files := dict }}{{- range .Values.agents }}{{- $_ := set $files . (printf "/auth/agent-%s" .) }}{{- end }}
+            - name: AGENTIPLEX_SECURITY_AGENT_TOKEN_FILES
+              value: {{ toJson $files | quote }}
             {{- if .Values.dashboard }}
             - {name: AGENTIPLEX_SECURITY_VIEWER_TOKEN_FILE, value: /auth/viewer}
             {{- end }}

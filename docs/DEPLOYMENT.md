@@ -9,6 +9,55 @@
 
 These are single-daemon deployments, not HA. Never run a second daemon in the same JetStream namespace. Network policies/firewalls, resource sizing, backup, broker accounts/ACLs, certificate issuance, secret rotation and operational hardening remain operator responsibilities.
 
+## Distributed deployment (agents on other hosts)
+
+```
+ agent host A..N                               daemon host
+ +-----------------------+   HTTPS  MCP/A2A   +---------------------------+
+ | independent A2A agent | -----------------> | agentiplexd (one)         |
+ | + MCP/A2A client      | <----------------- |  - public_url, TLS        |
+ +-----------------------+  HTTPS  A2A send   |  - embedded or external   |
+                            (+ GetTask polls)  |    JetStream (private)    |
+                                               +---------------------------+
+```
+
+- One daemon per namespace, one JetStream (embedded, or external on a private network). Agents never connect to the broker; the embedded broker listens on a loopback ephemeral port only.
+- Two HTTPS paths are required and independent: caller to daemon (`/mcp`, `/a2a`, REST; the agent's own bearer token) and daemon to every recipient (card fetch, SendMessage, GetTask; per-origin outbound bearer token). One administrative trust domain; shared state is shared (see principal model).
+- While the daemon is down nothing is admitted and callers must retry; there is no HA, failover or second daemon. Accepted work continues on the recipients and is observed again after restart.
+
+**Prerequisites**
+1. `server.public_url`: the HTTPS origin the agents resolve, with a certificate whose SAN matches it. Agents trust the issuing CA explicitly (`--ca-file`, MCP client `--ca-file`, curl `--cacert`; system roots such as `SSL_CERT_FILE` work for Go clients that use the default pool).
+2. Recipients: each agent's card must advertise an origin the daemon can reach (`https://agent-a.internal:8443/...`, never `localhost`, `127.0.0.1` or a laptop-only address: on the daemon host that is the daemon itself). Add each origin to `delivery.allowed_origins` (explicit; no wildcard; loopback origins are always allowed, so an allowlist is only exercised with non-loopback origins), trust the agents' CA with `delivery.ca_file`, and give each origin one bearer token (`registry.agents.<id>.outbound_token_file` or `delivery.token_files`). TLS skip-verify does not exist; do not put credentials in URLs, cards or logs.
+3. Callers: one `registry.agents.<id>.token_file` per agent, distinct from every other credential. Example (all values are files, nothing secret appears in YAML):
+
+```yaml
+server: {listen: "0.0.0.0:8443", public_url: "https://agentiplex.internal:8443", tls_cert_file: /run/secrets/tls.crt, tls_key_file: /run/secrets/tls.key}
+protocols: {mcp: {enabled: true}}
+security: {operator_token_file: /run/secrets/operator}
+registry:
+  agents:
+    pm:      {url: "https://pm.internal:8443",      token_file: /run/secrets/pm,      outbound_token_file: /run/secrets/pm-recipient}
+    builder: {url: "https://builder.internal:8443", token_file: /run/secrets/builder, outbound_token_file: /run/secrets/builder-recipient}
+  groups: {team: [pm, builder]}
+delivery:
+  allowed_origins: ["https://pm.internal:8443", "https://builder.internal:8443"]
+  ca_file: /run/secrets/agent-ca.crt
+```
+
+4. Reachability checks, run **from the daemon host/network** before registering: `curl --cacert agent-ca.crt https://pm.internal:8443/.well-known/agent-card.json` and the same card URL must list a `supportedInterfaces` URL on the same origin. From each agent host: `agentiplex --server https://agentiplex.internal:8443 --ca-file ca.crt --token-file <own token> agents list`. A startup failure for an unresolvable declared agent is deliberate (start the agents first).
+5. VPN, tunnel or routing is the operator's: it must provide **both directions**. A tunnel that only lets agents reach the daemon is not enough, because the daemon opens the connection to each recipient. A target behind NAT with no permitted inbound path (even through the tunnel/VPN) cannot be a recipient with today's protocol; it can still be a caller. No pull connector or reverse delivery exists.
+6. Retry contract: every submission needs an `idempotencyKey` (MCP/REST) or a stable `messageId` (A2A). After a dropped connection, timeout, daemon restart or SIGKILL, repeat the same key with the same target and text; an accepted task is observed again and never sent twice.
+
+**Constraints and decision**
+- Latency adds one round trip per daemon-to-agent HTTP operation; `delivery.timeout` is per HTTP operation, not per task. Pre-submission failures are retried `delivery.max_attempts` times at `delivery.retry_delay`; accepted tasks are polled indefinitely.
+- Proxies and load balancers between hosts: nginx `proxy_read_timeout` defaults to 60 s between reads and AWS ALB idle timeout to 60 s (1-4000 s). Blocking MCP `ask` and blocking A2A SendMessage hold one response open without bytes; a shorter proxy limit drops that connection (the work is not cancelled). Raise the idle timeouts on the path, or prefer `send_message`/`returnImmediately` plus polling.
+- Not claimed: HA, host or storage failure survival with embedded storage on a non-durable volume, tenant isolation, OAuth, mTLS.
+- Decision: the current architecture is sufficient for routed or tunneled networks with bidirectional HTTPS reachability. Nothing in this validation justified a new transport.
+
+**Client support** (verified): the `agentiplex` CLI, `examples/mcp-client` and curl set the bearer header and CA trust; the daemon's own outbound client uses the official A2A Go SDK with origin-scoped tokens. Hosts that cannot send a static `Authorization` header or trust a private CA cannot be callers; no real model gateway was exercised (simulator only), so none is claimed.
+
+**Validated scenarios and limitations.** Run on a single machine, not on multiple hosts: one daemon, three independent HTTPS recipient processes on distinct loopback addresses (127.0.0.x), verified private CA, per-agent tokens and the YAML above (embedded broker on tmpfs because the host disk was nearly full, so host-crash durability was not tested). Passed: discovery, direct work by MCP and A2A, group and pool operations, a recipient killed before delivery and restarted (delivery queued, 5 attempts, executed once), healthy agents progressing meanwhile, a slow task surviving daemon SIGKILL and restart and collected with the original key/messageId with exactly one execution, no admission while the daemon was down, broker bound to loopback with only the daemon connected, an unapproved non-loopback origin rejected, a certificate from an untrusted CA rejected (x509 unknown authority), a wrong token 401. Not covered: real network partitions, NAT, proxies, latency, real gateways, multi-host routing.
+
 ## Static credentials and TLS
 
 Generate distinct high-entropy URL-safe secrets (32–512 characters; e.g. openssl rand -hex 32). Mount one file per role and configure paths, not values:
@@ -21,29 +70,80 @@ server:
   tls_key_file: /run/secrets/tls.key
 security:
   operator_token_file: /run/secrets/operator
-  collaborator_token_file: /run/secrets/collaborator
+  agent_token_files:          # logical agent ID -> its own credential file
+    pm: /run/secrets/agent-pm
+    architect: /run/secrets/agent-architect
   viewer_token_file: /run/secrets/viewer
 protocols:
   mcp:
     enabled: true
 ```
 
-Both operator and collaborator files are required in secure mode; viewer is required if the dashboard is enabled. Roles must use distinct secrets. TLS and explicit HTTPS origin are mandatory when authentication is enabled; no forwarded-header trust or plaintext authenticated proxy hop. Use native TLS, a TLS-passthrough gateway or a gateway that re-encrypts/verifies the backend connection. The legacy trusted-network flag remains for isolated unauthenticated demonstrations only; never expose it publicly. The OCI image now defaults to loopback inside the container, so simply publishing its port does not expose an unauthenticated listener. Use the secure Compose/Helm deployment or explicitly configure an isolated demo listener.
+The operator file is required in secure mode; viewer is required if the dashboard is enabled; each named agent gets its own file in `registry.agents.<id>.token_file` or `security.agent_token_files` (environment: a JSON object in `AGENTIPLEX_SECURITY_AGENT_TOKEN_FILES`). Every token (operator, viewer, each agent) must be distinct, 32-512 URL-safe characters, in a bounded file; agent IDs must be valid logical IDs (not `operator`/`viewer`). Only SHA-256 digests are held in memory; raw tokens are never stored in cards, KV, events, logs or responses. TLS and explicit HTTPS origin are mandatory when authentication is enabled; no forwarded-header trust or plaintext authenticated proxy hop. Use native TLS, a TLS-passthrough gateway or a gateway that re-encrypts/verifies the backend connection. The trusted-network flag remains for isolated unauthenticated demonstrations only; it is not a secure-mode fallback and never to be exposed publicly. The OCI image defaults to loopback inside the container.
 
-| Role | Access |
+### Static registry (declarative provisioning)
+
+A static team can start from configuration alone. Optional maps under `registry` (config file only, no environment override):
+
+```yaml
+registry:
+  namespace: engineering
+  agents:
+    pm:        {url: https://pm.example.org,        token_file: /run/secrets/pm}
+    architect: {url: https://architect.example.org, token_file: /run/secrets/architect,
+                outbound_token_file: /run/secrets/architect-recipient}
+  groups: {engineering: [pm, architect]}
+  pools:  {reviewers: [architect]}
+```
+
+- `url` (required): A2A base URL or Agent Card URL. Descriptions and skills come from the native card, never from YAML.
+- `token_file`: inbound bearer credential bound to that agent ID through the same principal model as `security.agent_token_files`; required in secure mode. Use `security.agent_token_files` only for credential IDs that are not declared here; an ID credentialed in both places is rejected.
+- `outbound_token_file`: Agentiplex-to-recipient bearer credential, merged into the `delivery.token_files` mechanism by the agent's HTTPS origin (the origin must be allowed as usual). Agents sharing an origin must use the same secret; different secrets for one origin, or a conflict with `delivery.token_files`, are rejected. Allowlist, same-origin card validation, TLS verification and no-redirect rules are unchanged.
+- `groups` / `pools`: ID to member agent IDs (declared here or already registered).
+
+Unknown fields, duplicate YAML keys, invalid IDs, missing URLs, repeated or unknown members and inconsistent credentials fail startup before any write.
+
+**Startup order:** open storage, auth and transport; validate and apply the registry (agents sorted by ID, then groups, then pools); only then listen. `/readyz` and the "ready" log line therefore imply the whole declaration was applied; any failure exits non-zero.
+
+**Semantics (additive, not authoritative):**
+- An identical existing registration is a no-op (no new record or event); if that endpoint is temporarily offline its stored card snapshot is reused.
+- A different URL for an already registered ID fails with an explicit error; work is never silently retargeted.
+- A new agent whose card cannot be resolved within `delivery.timeout` fails startup ("start the endpoint first, then restart"); no placeholder record or background retry exists. Agents registered before the failure remain; restart reapplies idempotently (there is no cross-record transaction).
+- Collections are written only when membership differs and affect new admissions only; queued or accepted deliveries keep their snapshots.
+- Omitted agents, groups and pools stay untouched; nothing is deleted. Runtime CLI/API edits to a declared collection are replaced by the declared membership on the next restart. Dynamic registration through the CLI/API stays available.
+
+### Principal model and access matrix
+
+The bearer token is resolved once, at the HTTP boundary, to a principal (`operator`, `viewer`, or `agent` plus its agent ID). A2A, MCP and REST share it; `sender`/`author` fields and MCP client names are ignored or rejected. Unknown, missing or removed tokens get 401; a valid token without permission gets 403.
+
+| Principal | Access |
 |---|---|
-| Operator (bearer) | All API operations including registry/collection administration and state deletion |
-| Collaborator (bearer) | Discovery and collection reads, delegation, A2A/MCP, results/events, read and revision-checked write state; no registry/collection mutation or state deletion |
-| Viewer (browser Basic user viewer / separate secret, or bearer) | Read-only dashboard, including explicit stored delivery detail; no collaboration, raw state reads or admin mutations |
-| Anonymous | Health/readiness and Agentiplex's public Agent Card only |
+| Operator | Everything: registry/collection administration, state deletion, abandon, all deliveries, global delivery list and event feed |
+| Agent `<id>` | Discovery/catalog and collection reads; send/broadcast/dispatch/ask via REST, A2A, MCP; read **only its own** deliveries, broadcast children and results (others look "not found"); read and revision-checked write of shared state; append notes (author = its ID). No registry/collection mutation, state deletion, abandon, global delivery list or event feed |
+| Viewer (browser Basic user `viewer`, or bearer) | Read-only dashboard incl. explicit delivery detail; no collaboration, raw state or mutations |
+| Anonymous | Health/readiness and the public Agent Card only |
+
+Team state and notes are intentionally shared inside the namespace. This is one trust domain, not tenant isolation: a malicious but authenticated agent can overwrite shared state.
+
+Each delivery, broadcast child, event and note records the immutable authenticated caller ID (operator submissions record none). Idempotency keys and A2A `messageId`s are scoped by caller: the same key and text from two agents are two independent deliveries; a retry by the same agent resolves to its existing delivery.
+
+### Provisioning, rotation, revocation
+
+1. Create one random token file per agent (for example `openssl rand -hex 32`), mode 0400/0440, and list it under `registry.agents.<id>.token_file` (or `security.agent_token_files` for an undeclared ID). Give the agent only its own file.
+2. Start (or restart) the daemon. The operator registers the agent's A2A endpoint as before; credential identity and registry registration are independent (a caller need not be a registered recipient).
+3. Rotate by replacing the file content and restarting; the old token is rejected immediately and the new token reads the agent's existing records (ownership follows the agent ID). Revoke by removing the entry and restarting; the agent's records stay readable by the operator.
+
+### Breaking changes and upgrade boundary
+
+The shared collaborator role (`security.collaborator_token_file`, `AGENTIPLEX_SECURITY_COLLABORATOR_TOKEN_FILE`, the `collaborator` Compose secret and Helm key) is removed with no fallback; the daemon refuses to start unless an operator token is configured. Delivery IDs derived from idempotency keys/messageIds changed (caller scope), and records written before this change have no caller: named agents cannot read them, the operator still can. Drain or reconcile outstanding work first (operator: list deliveries until all are terminal, abandon the rest), then reset only disposable data. Never replay old work under a new identity.
 
 Use the CLI without placing credentials in arguments:
 
 ```sh
-agentiplex --server https://agentiplex.example:8080 --ca-file /path/ca.crt --token-file /path/collaborator agents list
+agentiplex --server https://agentiplex.example:8080 --ca-file /path/ca.crt --token-file /path/agent-pm agents list
 ```
 
-Environment AGENTIPLEX_TOKEN_FILE and AGENTIPLEX_CA_FILE are equivalent. Browser users open /ui/ and authenticate as viewer. Secure requests use TLS 1.2 or newer; client trust uses system roots plus optional custom CA. No insecure skip-verify option. Static tokens are read on startup; restart after rotation. They authorize roles, not specific agents, and all collaborators share delivery/state and idempotency namespaces. Browser-origin mutations and MCP browser Origins are rejected. Public probes disclose only readiness/aliveness.
+Environment AGENTIPLEX_TOKEN_FILE and AGENTIPLEX_CA_FILE are equivalent. Browser users open /ui/ and authenticate as viewer. Secure requests use TLS 1.2 or newer; client trust uses system roots plus optional custom CA. No insecure skip-verify option. Static tokens are read on startup; restart after rotation. Browser-origin mutations and MCP browser Origins are rejected. Public probes disclose only readiness/aliveness.
 
 Outbound A2A uses the existing origin allowlist. For secured recipients:
 
@@ -55,7 +155,7 @@ delivery:
     "https://architect.example:8443": /run/secrets/architect-token
 ```
 
-Tokens are attached only to the approved HTTPS origin (card resolution, send and task polling); redirects are not followed, and the interface must match the card's origin. URLs containing credentials are rejected. The public Agentiplex card advertises bearer auth when secured. MCP hosts may supply a static bearer header if supported; OAuth discovery, individual agent identity, fine-grained authorization, cross-tenant boundaries, mTLS client authentication and enterprise SSO are not implemented.
+Tokens are attached only to the approved HTTPS origin (card resolution, send and task polling); redirects are not followed, and the interface must match the card's origin. URLs containing credentials are rejected. The public Agentiplex card advertises bearer auth when secured. MCP hosts may supply a static bearer header if supported; OAuth discovery, cross-tenant boundaries, mTLS client authentication and enterprise SSO are not implemented.
 
 Embedded broker durability: `broker.sync` (default `always`) fsyncs every acknowledged JetStream write, so a host crash or power loss does not roll back accepted work; `kill -9` of the daemon is covered by `tests/integration/kill_restart_test.go`. A duration such as `2m` selects the nats-server background fsync interval instead: faster, but a host crash may lose up to that window of acknowledged writes (a process kill still loses nothing). Valid values are `always` or 1s–1h. Indicative cost on a low-end 2-core Celeron under concurrent load (`go test ./tests/integration -run xxx -bench BrokerSync -benchtime 30x`, local simulated agent): Send latency 16.8 ms with `always` vs 4.5 ms with `2m`; end-to-end delivery throughput 21 vs 68 deliveries/s. Agent traffic is low, so this is accepted; re-measure on your storage. For external or replicated NATS, `broker.sync` is ignored and durability follows the cluster configuration (server `sync_interval`, JetStream replication and storage).
 
@@ -70,7 +170,7 @@ broker:
   replicas: 1
 ```
 
-The native NATS client performs TLS verification and credential authentication. Credentials in broker URLs are rejected. Credentialed NATS connections require tls://; unauthenticated nats:// is only suitable for isolated trusted local testing. Provide a dedicated broker account with necessary JetStream provisioning and subject permissions, not a shared administrator credential. No secrets in Agent Cards, persistent state, source control or default logs. Credential paths and cert files are operator-controlled. Agent-produced content itself can contain sensitive data; dashboard detail and collaborators can read it.
+The native NATS client performs TLS verification and credential authentication. Credentials in broker URLs are rejected. Credentialed NATS connections require tls://; unauthenticated nats:// is only suitable for isolated trusted local testing. Provide a dedicated broker account with necessary JetStream provisioning and subject permissions, not a shared administrator credential. No secrets in Agent Cards, persistent state, source control or default logs. Credential paths and cert files are operator-controlled. Agent-produced content itself can contain sensitive data; dashboard detail and agents and viewers can read it.
 
 ## Compose
 
@@ -84,25 +184,21 @@ docker compose up -d --build --wait
 
 The development script creates unique role and broker credentials plus a seven-day demo CA and separate daemon/broker certificates under ignored .demo-secrets. The directory is 0700; mounted files are read-only and readable by service UIDs. Never reuse these demo certificates in production. Trust the CA explicitly in curl/CLI or your browser (only in a disposable profile). The simulators use unauthenticated HTTP **only** within the demo bridge network; no simulator or broker ports are published. Do not attach untrusted containers.
 
-Register the team using the operator credential:
+The team (agents, per-agent credentials, group `engineering`, pool `testers`) is declared in [examples/engineering-team/compose-registry.yaml](../examples/engineering-team/compose-registry.yaml) and applied at daemon startup; no registration commands are needed. Use the operator credential to try it:
 
 ```sh
 export AGENTIPLEX_SERVER=https://localhost:18443
 export AGENTIPLEX_CA_FILE=.demo-secrets/ca.crt
 export AGENTIPLEX_TOKEN_FILE=.demo-secrets/operator
-for agent in pm architect developer tester-1 tester-2 quality; do
-  agentiplex register "$agent" "http://$agent:8001"
-done
-agentiplex groups set engineering pm architect developer tester-1 tester-2 quality
-agentiplex pools set testers tester-1 tester-2
-agentiplex broadcast engineering "Contract update"
+agentiplex agents list
+agentiplex broadcast engineering "Contract update" --idempotency-key release-1
 ```
 
-Use the CLI built from the checkout (or docker compose exec agentiplex agentiplex with mounted credential paths). Dashboard: https://localhost:18443/ui/. The operator may use the separate collaborator credential for agent tasks. `make compose-down` (Compose down) preserves JetStream volume and existing credentials; down -v **deletes all stored data**. Stop/start Quality and restart the daemon without deleting volumes to observe durable recovery. CI's isolated scripts/compose-check.sh generates its own credentials and destroys its test project and volume; refuses to run if .demo-secrets already exists.
+Use the CLI built from the checkout (or docker compose exec agentiplex agentiplex with mounted credential paths). Dashboard: https://localhost:18443/ui/. Agent tasks use the separate `agent-demo` credential (agent ID `demo`). `make compose-down` (Compose down) preserves JetStream volume and existing credentials; down -v **deletes all stored data**. Stop/start Quality and restart the daemon without deleting volumes to observe durable recovery. CI's isolated scripts/compose-check.sh generates its own credentials and destroys its test project and volume; refuses to run if .demo-secrets already exists.
 
 ## Helm
 
-Use a supported Kubernetes cluster, Helm and the [official NATS Helm chart](https://github.com/nats-io/k8s). Create Secrets in the chosen namespace: agentiplex-auth (operator, collaborator, viewer), agentiplex-tls (tls.crt, tls.key), nats-tls (broker TLS keypair) and agentiplex-broker (token or credentials, ca.crt). Provision certificates with DNS SANs matching the broker service and daemon advertised hostname. The test script illustrates creation from disposable development secrets.
+Use a supported Kubernetes cluster, Helm and the [official NATS Helm chart](https://github.com/nats-io/k8s). Create Secrets in the chosen namespace: agentiplex-auth (operator, viewer, and `agent-<id>` per entry of the chart value `agents`), agentiplex-tls (tls.crt, tls.key), nats-tls (broker TLS keypair) and agentiplex-broker (token or credentials, ca.crt). Provision certificates with DNS SANs matching the broker service and daemon advertised hostname. The test script illustrates creation from disposable development secrets.
 
 ```sh
 helm repo add nats https://nats-io.github.io/k8s/helm/charts/
@@ -120,7 +216,7 @@ The Release workflow runs only on vMAJOR.MINOR.PATCH[-prerelease] tags whose com
 
 ## Security limits
 
-This is a first network deployment boundary, not production multi-tenant security. The static role model does not scope a caller to specific deliveries, agents, or state keys. No identity provider, automatic credential rotation, HA, external policy engine or audit certification. Dashboard schema execution remains trusted operator configuration; the AMIS bundled dependency review remains open. Do not expose the old unauthenticated demo to untrusted networks. See [STATE.md](STATE.md), [MCP.md](MCP.md) and [DASHBOARD.md](DASHBOARD.md).
+This is a first network deployment boundary, not production multi-tenant security. Agents read only their own deliveries, but shared state and notes are writable by every agent and there are no per-key policies. No identity provider, automatic credential rotation, HA, external policy engine or audit certification. Dashboard schema execution remains trusted operator configuration; the AMIS bundled dependency review remains open. Do not expose the old unauthenticated demo to untrusted networks. See [STATE.md](STATE.md), [MCP.md](MCP.md) and [DASHBOARD.md](DASHBOARD.md).
 
 ## MVP operational limits
 
@@ -141,9 +237,14 @@ Downtime assumption: one daemon per namespace, no HA. While the daemon is down i
 
 The `DELIVERIES` bucket is capped at 128 MiB and rejects writes when full, so terminal records are removed by an age-based sweep that runs once a minute in the existing reconciliation loop.
 
-- `delivery.retention` (default `168h`): a terminal record (completed, failed, uncertain, input-required, auth-required) is removed once its `updatedAt` is older than this (age is measured from the last update, not from `returnedAt`).
-- `delivery.unreturned_retention` (default `720h`, must be at least `retention`): a terminal record that has no returned mark (no `ask` handed its result back) is kept this long instead, so a re-ask after a crash can still collect it. Agentiplex cannot tell never-asked records (`send_message`, `get_delivery`) from uncollected asks, so this longer limit applies to every unreturned terminal record.
-- Nonterminal records are never removed. A broadcast group (parent plus children) is removed only when its derived state is terminal (completed, failed or partial) and the newest child update is older than `retention`; children of a live parent are never removed individually. Broadcasts use the normal limit.
+- `delivery.retention` (default `168h`, range 5m–3650d): a terminal record (completed, failed, uncertain, input-required, auth-required) is removed once its `updatedAt` is older than this. This single window is also the retry window for idempotency keys and A2A `messageId`s: after the purge the same key starts a new operation. The default (7 days) covers unattended work over a weekend and is far below the bucket cap at typical record sizes. The minimum (5 minutes) exceeds the broker's 2-minute publish de-duplication window.
+- Nonterminal records are never removed. A broadcast group (parent plus children) is removed only when its derived state is terminal (completed, failed or partial) and the newest child update is older than `retention`; children of a live parent are never removed individually. 
 - Removal is a compare-and-swap purge: a concurrent update wins and the record is retried on the next sweep. Purging frees the stored bytes (verified by test); only a small marker remains until it is cleaned up.
-- `GET /readyz` stays public and returns only `{"ready":true}`. The authenticated `GET /api/v1/usage` (viewer role or higher) reports `deliveries`: `bytes`, `maxBytes`, `records`, and `unreturnedTerminal` (terminal records kept past `retention` by the last sweep). The sweep logs the same count.
+- `GET /readyz` stays public and returns only `{"ready":true}`. The authenticated `GET /api/v1/usage` (viewer role or higher) reports `deliveries`: `bytes`, `maxBytes`, `records`.
 <!-- retention:end -->
+
+### Breaking change: required idempotency keys and single retention
+
+- MCP and REST submissions (`ask`, `send_message`, `broadcast`, `dispatch`, `POST /api/v1/messages|broadcasts|dispatches`, CLI `--idempotency-key`) now require a nonempty `idempotencyKey`; keyless calls are rejected with 400/invalid arguments. The prompt-derived `ask` identity, the `returnedAt` delivery field, the `delivery.unreturned_retention` setting (remove it from configs; unknown keys are ignored) and the `unreturnedTerminal` usage counter are removed. Clients must create a key once per intended operation and reuse it only to retry.
+- Records written by earlier versions keep their IDs; `returnedAt` in stored JSON is ignored and they now follow the single `delivery.retention` window (a previous 30-day unreturned record may be purged earlier). Drain or reconcile outstanding work before upgrading if that matters; no migration is provided.
+- Keys are not a permanent replay guard: after retention expiry the same key is a new operation. Uncertain outcomes are never replayed automatically and remote exactly-once execution is not claimed.

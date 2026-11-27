@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/http"
 	"net/netip"
+	"os"
 	"strings"
 	"time"
 
@@ -29,21 +30,29 @@ func Command() *cobra.Command {
 	d:=agentiplex.DefaultConfig()
 	defaults:=map[string]any{
 		"server.listen":"127.0.0.1:8080","server.public_url":"","server.trusted_network":false,"protocols.mcp.enabled":false,"observability.dashboard":true,"observability.dashboard_schema":"","observability.dashboard_theme":"cxd","observability.dashboard_refresh_interval":2*time.Second,
-		"security.operator_token_file":"","security.collaborator_token_file":"","security.viewer_token_file":"","server.tls_cert_file":"","server.tls_key_file":"","broker.token_file":"","broker.credentials_file":"","broker.ca_file":"","delivery.token_files":map[string]string{},"delivery.ca_file":"",
+		"security.operator_token_file":"","security.agent_token_files":map[string]string{},"security.viewer_token_file":"","server.tls_cert_file":"","server.tls_key_file":"","broker.token_file":"","broker.credentials_file":"","broker.ca_file":"","delivery.token_files":map[string]string{},"delivery.ca_file":"",
 		"broker.mode":d.BrokerMode,"broker.url":"","broker.storage":d.Storage,"broker.replicas":d.Replicas,"broker.sync":"always",
 		"registry.namespace":d.Namespace,"registry.health_interval":d.HealthInterval,"delivery.allowed_origins":[]string{},"delivery.timeout":d.Timeout,
-		"delivery.workers":d.Workers,"delivery.retry_delay":d.RetryDelay,"delivery.max_attempts":d.MaxAttempts,"delivery.task_poll_interval":d.TaskPollInterval,"delivery.retention":7*24*time.Hour,"delivery.unreturned_retention":30*24*time.Hour,
+		"delivery.workers":d.Workers,"delivery.retry_delay":d.RetryDelay,"delivery.max_attempts":d.MaxAttempts,"delivery.task_poll_interval":d.TaskPollInterval,"delivery.retention":7*24*time.Hour,
 	}
 	for k,value:=range defaults{v.SetDefault(k,value)}
 	var config string
 	cmd:=&cobra.Command{Use:"agentiplexd",Short:"Agentiplex collaboration daemon",SilenceUsage:true,Args:cobra.NoArgs,RunE:func(cmd *cobra.Command,args []string)error{
 		if config!=""{v.SetConfigFile(config);if err:=v.ReadInConfig();err!=nil{return err}}
-		cfg:=agentiplex.Config{BrokerMode:v.GetString("broker.mode"),BrokerURL:v.GetString("broker.url"),BrokerTokenFile:v.GetString("broker.token_file"),BrokerCredentialsFile:v.GetString("broker.credentials_file"),BrokerCAFile:v.GetString("broker.ca_file"),OutboundTokenFiles:v.GetStringMapString("delivery.token_files"),OutboundCAFile:v.GetString("delivery.ca_file"),Storage:v.GetString("broker.storage"),Replicas:v.GetInt("broker.replicas"),Namespace:v.GetString("registry.namespace"),AllowedOrigins:v.GetStringSlice("delivery.allowed_origins"),Timeout:v.GetDuration("delivery.timeout"),RetryDelay:v.GetDuration("delivery.retry_delay"),Workers:v.GetInt("delivery.workers"),MaxAttempts:v.GetInt("delivery.max_attempts"),TaskPollInterval:v.GetDuration("delivery.task_poll_interval"),HealthInterval:v.GetDuration("registry.health_interval"),Retention:v.GetDuration("delivery.retention"),UnreturnedRetention:v.GetDuration("delivery.unreturned_retention")}
+		cfg:=agentiplex.Config{BrokerMode:v.GetString("broker.mode"),BrokerURL:v.GetString("broker.url"),BrokerTokenFile:v.GetString("broker.token_file"),BrokerCredentialsFile:v.GetString("broker.credentials_file"),BrokerCAFile:v.GetString("broker.ca_file"),OutboundTokenFiles:v.GetStringMapString("delivery.token_files"),OutboundCAFile:v.GetString("delivery.ca_file"),Storage:v.GetString("broker.storage"),Replicas:v.GetInt("broker.replicas"),Namespace:v.GetString("registry.namespace"),AllowedOrigins:v.GetStringSlice("delivery.allowed_origins"),Timeout:v.GetDuration("delivery.timeout"),RetryDelay:v.GetDuration("delivery.retry_delay"),Workers:v.GetInt("delivery.workers"),MaxAttempts:v.GetInt("delivery.max_attempts"),TaskPollInterval:v.GetDuration("delivery.task_poll_interval"),HealthInterval:v.GetDuration("registry.health_interval"),Retention:v.GetDuration("delivery.retention")}
+		var reg agentiplex.Registry
+		if config!=""{
+			raw,err:=os.ReadFile(config);if err!=nil{return err}
+			if reg,err=agentiplex.ParseRegistry(raw);err!=nil{return err}
+		}
+		secure:=v.GetString("security.operator_token_file")!=""
+		agentFiles,err:=reg.AgentTokenFiles(v.GetStringMapString("security.agent_token_files"),secure);if err!=nil{return err}
+		if cfg.OutboundTokenFiles,err=reg.OutboundTokenFiles(cfg.OutboundTokenFiles);err!=nil{return err}
 		sync,err:=parseSync(v.GetString("broker.sync"));if err!=nil{return err}
 		cfg.BrokerSync=sync
 		if cfg.BrokerMode=="external"&&v.GetString("broker.sync")!="always"{slog.Warn("broker.sync is ignored with broker.mode=external")}
-		auth,err:=security.New(security.Config{OperatorFile:v.GetString("security.operator_token_file"),CollaboratorFile:v.GetString("security.collaborator_token_file"),ViewerFile:v.GetString("security.viewer_token_file")});if err!=nil{return err}
-		return run(cmd.Context(),cfg,v.GetString("server.listen"),v.GetString("server.public_url"),v.GetBool("server.trusted_network"),v.GetBool("observability.dashboard"),v.GetBool("protocols.mcp.enabled"),dashboard.Config{Schema:v.GetString("observability.dashboard_schema"),Theme:v.GetString("observability.dashboard_theme"),Refresh:v.GetDuration("observability.dashboard_refresh_interval")},auth,v.GetString("server.tls_cert_file"),v.GetString("server.tls_key_file"))
+		auth,err:=security.New(security.Config{OperatorFile:v.GetString("security.operator_token_file"),AgentFiles:agentFiles,ViewerFile:v.GetString("security.viewer_token_file")});if err!=nil{return err}
+		return run(cmd.Context(),cfg,v.GetString("server.listen"),v.GetString("server.public_url"),v.GetBool("server.trusted_network"),v.GetBool("observability.dashboard"),v.GetBool("protocols.mcp.enabled"),dashboard.Config{Schema:v.GetString("observability.dashboard_schema"),Theme:v.GetString("observability.dashboard_theme"),Refresh:v.GetDuration("observability.dashboard_refresh_interval")},reg,auth,v.GetString("server.tls_cert_file"),v.GetString("server.tls_key_file"))
 	}}
 	f:=cmd.Flags()
 	f.StringVar(&config,"config","","configuration YAML file")
@@ -68,7 +77,7 @@ func Command() *cobra.Command {
 	return cmd
 }
 
-func run(ctx context.Context,cfg agentiplex.Config,listen,publicURL string,trusted,dashboardEnabled,mcpEnabled bool,dashboardConfig dashboard.Config,auth *security.Auth,certFile,keyFile string)error{
+func run(ctx context.Context,cfg agentiplex.Config,listen,publicURL string,trusted,dashboardEnabled,mcpEnabled bool,dashboardConfig dashboard.Config,reg agentiplex.Registry,auth *security.Auth,certFile,keyFile string)error{
 	var ui *dashboard.UI
 	if dashboardEnabled{var err error;ui,err=dashboard.New(dashboardConfig);if err!=nil{return err}}
 	host,_,err:=net.SplitHostPort(listen)
@@ -85,6 +94,7 @@ func run(ctx context.Context,cfg agentiplex.Config,listen,publicURL string,trust
 	var tlsConfig *tls.Config
 	if certFile!=""{pair,e:=tls.LoadX509KeyPair(certFile,keyFile);if e!=nil{return errors.New("cannot load TLS certificate/key")};tlsConfig=&tls.Config{MinVersion:tls.VersionTLS12,Certificates:[]tls.Certificate{pair}}}
 	b,err:=agentiplex.Open(ctx,cfg);if err!=nil{return err};defer b.Close()
+	if err=b.ApplyRegistry(ctx,reg);err!=nil{return err}
 	srv:=NewServer(api.HandlerSecure(b,ui,publicURL,mcpEnabled,auth),tlsConfig,cfg.Timeout)
 	result:=make(chan error,1)
 	go func(){if tlsConfig!=nil{result<-srv.ServeTLS(ln,"","")}else{result<-srv.Serve(ln)}}()

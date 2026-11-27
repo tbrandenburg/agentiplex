@@ -36,7 +36,7 @@ func (b *Bus) SetCollection(ctx context.Context, kind,id string,members []string
 	c:=Collection{ID:id,Kind:kind,Members:members,UpdatedAt:time.Now().UTC()}
 	raw,err:=json.Marshal(c);if err!=nil{return Collection{},err}
 	if _,err=b.store.Collections.Put(kind+"."+id,raw);err!=nil{return Collection{},err}
-	b.emit(kind+".configured",id,"")
+	b.emit(kind+".configured",id,"","")
 	return c,nil
 }
 

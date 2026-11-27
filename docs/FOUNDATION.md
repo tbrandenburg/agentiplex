@@ -7,14 +7,14 @@ This draft implements the first outbound vertical slice of [PRD](PRD.md) and [AR
 - Separate native daemon and remote CLI, one active daemon per namespace.
 - Embedded or external JetStream, registry and delivery KV, work stream and event log.
 - Registration of A2A 1.0 JSON-RPC same-origin endpoints, lookup by skill/tag, structurally validated AI Catalog publication.
-- Direct text delivery with durable enqueue receipts, optional caller idempotency key, pre-send offline retries and downstream task tracking.
+- Direct text delivery with durable enqueue receipts, required caller idempotency key, pre-send offline retries and downstream task tracking.
 - Deterministic real A2A SDK server, provider-free tests, image packaging and CI.
 
 Deliberately deferred: inbound A2A server, registry refresh/delete, group filters, non-text payloads, health history, dashboard, persistent application memory, broadcasting, pooling, SSE, live real-agent acceptance, Helm, multi-replica daemon and production security.
 
 The initial work stream uses a **single serial durable consumer** for direct messages rather than separate per-agent consumers. This establishes crash semantics first; parallel per-agent workers are a follow-up. An unavailable/long-running agent may reduce throughput. Events are a bounded best-effort audit view; delivery KV is authoritative. Idempotency keys are global to this trusted single-daemon namespace, not authenticated principal-scoped. Use caller keys for retry of an enqueue whose response was lost. Once a send might have executed, it becomes uncertain rather than automatically replaying it. Input-required/auth-required results are exposed but not resumed by the bus.
 
-Local-only demo: authentication is not implemented. Never expose publicly. Non-loopback listener requires explicit trusted-network opt-in; non-loopback target origins require operator configuration. Registered card and supported interface must share origin. Only JSON-RPC A2A 1.0 is supported in this slice. A2A cards are parsed using the SDK and checked for required fields; this is not full protocol conformance or signature verification. Catalog validation is structural, not trust verification.
+Historical note: this slice had no authentication; per-agent credentials now exist (see DEPLOYMENT.md). Without credentials it is a local-only demo, never expose publicly. Non-loopback listener requires explicit trusted-network opt-in; non-loopback target origins require operator configuration. Registered card and supported interface must share origin. Only JSON-RPC A2A 1.0 is supported in this slice. A2A cards are parsed using the SDK and checked for required fields; this is not full protocol conformance or signature verification. Catalog validation is structural, not trust verification.
 
 ## Run (proposed; verify after CI)
 

@@ -13,7 +13,7 @@
 | Native A2A 1.0 HTTP at the boundaries | Interoperate with existing agents and clients using official SDKs; NATS is internal, not a new claimed A2A binding. |
 | AI Catalog as publication/discovery representation | Use existing catalog types and validation. JetStream KV implements the local mutable registry; no custom discovery standard. |
 | No workflow orchestration | Supply communication primitives; applications own contracts, routing intent and reasoning. |
-| Deployment via configuration | Same daemon for native, OCI and Kubernetes; platform packaging outside the Go core. |
+| Deployment via configuration | Same daemon for native, OCI and Kubernetes; platform packaging outside the Go core. Agents on other hosts need bidirectional HTTPS only: see [distributed deployment](DEPLOYMENT.md#distributed-deployment-agents-on-other-hosts). |
 
 These are proposed initial decisions, not evidence of a working implementation.
 
@@ -63,6 +63,8 @@ Registration input: stable local ID, base URL or card URL, optional group/pool m
 Use KV revision checks for updates. Registration is not a heartbeat. Keep an unavailable agent registered and catalogued unless explicitly removed. Show reachability as observed reachable/unreachable/unknown with a timestamp. Removing a registration prevents new delivery; existing queued work must be explicitly handled, not silently discarded.
 
 Publish the AI Catalog at `/.well-known/ai-catalog.json` with `application/ai-catalog+json`. Entries reference native A2A Agent Cards using the specification's artifact media type. Use SDK validation; do not invent catalog fields for local groups, health or queue status. For the local demo use URLs resolvable by the consumer; do not silently publish container-internal or unreachable addresses. Discovery filters are local application behavior, not a claim to implement an ARD registry API or federated discovery.
+
+Optional static provisioning (`registry.agents/groups/pools` in the YAML) runs once at startup through the same `Register` and `SetCollection` paths, after storage/auth/transport init and before listening; it is additive, restart-idempotent and never edits queued or accepted delivery snapshots (see `docs/DEPLOYMENT.md`).
 
 ## 5. Messaging and storage
 
@@ -146,12 +148,12 @@ Agent networks may run for days: work outlives connections, agent turns, daemon 
 |---|---|
 | The durable record is the only source of truth | Delivery state lives in the DELIVERIES KV; nothing authoritative is held in memory, goroutines or a connection. |
 | No wall-clock lifetime on accepted work | Only a single network operation is bounded (`delivery.timeout`). Accepted tasks are monitored until terminal (see "Accepted-task monitoring"); the runtime or operator owns execution deadlines. |
-| Connections are disposable views | A blocking call (MCP `ask`, A2A `SendMessage`) only observes a durable record. A dropped connection, client timeout or daemon restart loses nothing; the caller re-attaches with the same deterministic key (derived from target and text when not supplied) and never causes a second downstream execution. |
+| Connections are disposable views | A blocking call (MCP `ask`, A2A `SendMessage`) only observes a durable record. A dropped connection, client timeout or daemon restart loses nothing; the caller re-attaches with the same required caller-created key (MCP/REST `idempotencyKey`, A2A `messageId`) and never causes a second downstream execution while the record is retained (`delivery.retention`, default 7 days; after that the same key is a new operation). |
 | Unbounded waits are allowed | A wait ends on a terminal state, an explicit caller budget, or cancellation of the caller's own context. No server-side maximum, no extra configuration. |
 | Waiting is event-driven with a safety net | Waiters use KV watch on the delivery key (current value first, then updates), not per-waiter polling. On watch error or reconnect they re-read the record, so a missed update cannot hang a wait. |
 | Events record changes, not heartbeats | `delivery.state` is emitted only on a real state change so retention covers days of work. |
 | Bounded retention never evicts pending work | Limits apply to events and terminal records; pending work is rejected at admission when full, never silently dropped. |
-| Idempotent re-entry everywhere | Deterministic IDs and create-only writes make admission, reconciliation, recovery and re-attach safe to repeat. |
+| Idempotent re-entry everywhere | Deterministic key-derived IDs and create-only writes make admission, reconciliation, recovery and re-attach safe to repeat. |
 | Time-dependent behaviour is tested | Restart, reconnect and long-wait paths are tested with real JetStream and failure injection, using short intervals to stand in for days. |
 
 **Crash and restart promise.** After any daemon exit, clean or not (SIGKILL, OOM, panic, host power loss), restarting `agentiplexd` resumes the team where it stopped: queued work is redelivered, `preparing` records are republished, accepted tasks keep their reservations and are monitored again, and waiters re-attach. The only state that does not resume automatically is a send that was in flight at the crash: it becomes `uncertain` and is never replayed (5.3). Agents see this as a failed tool call and continue by repeating the same call; the middleware does not resume an agent's own LLM turn.
@@ -199,12 +201,12 @@ agentiplex --server http://127.0.0.1:8080 register architect http://127.0.0.1:41
 agentiplex agents list
 agentiplex discover --skill testing
 agentiplex catalog get
-agentiplex send architect "Review the requirements"
+agentiplex send architect "Review the requirements" --idempotency-key req-review-1
 agentiplex messages status <delivery-id>
 agentiplex events --follow
 # P1:
-agentiplex broadcast engineering "Contract updated"
-agentiplex dispatch testers "Verify requirement 42"
+agentiplex broadcast engineering "Contract updated" --idempotency-key release-1
+agentiplex dispatch testers "Verify requirement 42" --idempotency-key verify-42
 ```
 
 Commands and schemas are proposed; implement and document only the supported subset.
@@ -256,7 +258,7 @@ Use the same runtime code in all modes. No Docker/Kubernetes imports in the core
 
 The first demonstrator is trusted local infrastructure, not a production network service. Bind loopback by default; if using a private container network, restrict access and do not publish unauthenticated ports publicly. Allow only explicitly operator-approved outbound hosts/ports (including card-resolved interfaces); bound HTTP requests, redirects, response sizes and deadlines. Reject unapproved redirects, link-local/metadata services and endpoint changes; production SSRF/DNS-rebinding protections remain required. Treat cards/messages as untrusted data. Do not execute commands from cards.
 
-Do not treat declared sender names as authenticated principals. Production deployment needs authenticated agent/operator identity, authorization, TLS, broker ACLs and credential isolation. Do not store or log provider credentials; protect persistent state and avoid raw prompt/response bodies in default logs or metrics. Document that agent read-only policies (e.g. the example gateway's) are not an OS sandbox; use trusted disposable workspace, minimal credentials and no unrestricted shell for the demo.
+Never treat declared sender names as principals: the server resolves the bearer credential to a principal (see below). Production deployment needs per-agent identity, authorization, TLS, broker ACLs and credential isolation. Do not store or log provider credentials; protect persistent state and avoid raw prompt/response bodies in default logs or metrics. Document that agent read-only policies (e.g. the example gateway's) are not an OS sandbox; use trusted disposable workspace, minimal credentials and no unrestricted shell for the demo.
 
 ## 9. Repository layout
 
@@ -373,7 +375,7 @@ The official MCP Go SDK supplies an optional stateless Streamable HTTP adapter a
 
 ### PR #7 implementation refinement
 
-An optional static role-credential boundary (operator, collaborator, dashboard viewer) requires native TLS, explicit HTTPS advertised origin and mounted credentials. The public probes and bus Agent Card contain no credentials; all other routes are authenticated in secure mode. Outbound A2A uses approved HTTPS origin-scoped bearer credentials and verified CA roots; external NATS uses native token/credentials and TLS options. No individual identities, tenant isolation or distributed ownership. Compose uses official NATS and isolated simulator endpoints; Helm deploys one daemon with Recreate strategy and external official NATS. See [DEPLOYMENT.md](DEPLOYMENT.md).
+An optional static credential boundary (operator, dashboard viewer and one credential per named agent) requires native TLS, explicit HTTPS advertised origin and mounted credentials. The public probes and bus Agent Card contain no credentials; all other routes are authenticated in secure mode. Outbound A2A uses approved HTTPS origin-scoped bearer credentials and verified CA roots; external NATS uses native token/credentials and TLS options. Each named agent has its own credential; Auth resolves a bearer token once to a `security.Principal{Role,AgentID}` stored in the request context for A2A, MCP and REST, and the core reads only that principal (never request-supplied sender/author/client name). Deliveries, broadcast children, events and notes persist the immutable caller ID; idempotency keys and A2A messageIds are hashed together with the caller; named agents read only their own deliveries and results; the global delivery list and event feed are operator-only. State is shared team context, not tenant isolation; there is no distributed ownership. Provisioning, rotation, the access matrix and the upgrade boundary are in [DEPLOYMENT.md](DEPLOYMENT.md). Compose uses official NATS and isolated simulator endpoints; Helm deploys one daemon with Recreate strategy and external official NATS. See [DEPLOYMENT.md](DEPLOYMENT.md).
 
 ### PR #8 autonomous example
 

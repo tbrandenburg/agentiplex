@@ -17,7 +17,7 @@ HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
 sys.path.insert(0, str(HERE.parent))
 import teamlib
-from teamlib import (DELEGATE_TOOLS, ID, READ_TOOLS, TERMINAL, call_evidence, clean_environment,
+from teamlib import (DELEGATE_TOOLS, resolve_gateway, ID, READ_TOOLS, TERMINAL, call_evidence, clean_environment,
                      get, opencode_supported, policy, valid_prompt_timeout)
 
 
@@ -64,14 +64,15 @@ def workspace(root, agent, endpoint, model, smoke=False):
     shutil.copytree(HERE / "fixture", project / "fixture")
     tools = READ_TOOLS + (DELEGATE_TOOLS if agent["id"] == "pm" else ())
     if smoke and agent["id"] == "pm":
-        tools = ("discover_agents", "send_message", "get_delivery", "put_state")
+        tools = ("discover_agents", "ask", "put_state")
     elif smoke and agent["role"] == "architect":
         tools = ("put_state",)
     role_path = HERE / "roles" / (agent["role"] + ".md")
     if smoke and agent["role"] in ("pm", "architect"):
         role_path = HERE / "roles" / (agent["role"] + "-smoke.md")
-    role = role_path.read_text()
-    system = "Logical agent ID: " + agent["id"] + ". " + role
+    role = role_path.read_text().strip()
+    common = "" if smoke and agent["role"] in ("pm", "architect") else (HERE / "roles" / "common.md").read_text().strip() + " "
+    system = "Logical agent ID: " + agent["id"] + ". " + common + role
     permissions = [{"action": "*", "resource": "*", "effect": "deny"}]
     permissions += [{"action": name, "resource": "*", "effect": "allow"} for name in ("read", "glob", "grep")]
     permissions += [{"action": "agentiplex_" + tool, "resource": "*", "effect": "allow"} for tool in tools]
@@ -97,7 +98,8 @@ def workspace(root, agent, endpoint, model, smoke=False):
 
 class Team(teamlib.Team):
     def start(self):
-        self.start_daemon("autonomous-demo", not self.args.headless)
+        """Start every endpoint first; the daemon then registers them and the collections from generated config."""
+        urls = {}
         for i, a in enumerate(self.team["agents"]):
             name, skill = a["id"], a["skill"]
             if a["runtime"] == "simulated":
@@ -111,7 +113,7 @@ class Team(teamlib.Team):
                            A2A_TAGS=skill + ",real-opencode")
                 for key in self.args.pass_env:
                     env[key] = os.environ[key]
-                cmd = [self.args.gateway, "--workspace", str(project), "--port", "0",
+                cmd = [*self.args.gateway, "--workspace", str(project), "--port", "0",
                        "--access", "read", "--policy-file", str(policy),
                        "--prompt-timeout", self.args.prompt_timeout]
                 for key in self.args.pass_env:
@@ -122,11 +124,9 @@ class Team(teamlib.Team):
             tags = {t for s in card.get("skills", []) for t in s.get("tags", [])}
             if ("simulated" in tags) != (a["runtime"] == "simulated"):
                 raise RuntimeError("agent runtime label mismatch: " + name)
-            self.cli("register", name, url)
-            print("Registered", name, a["runtime"], url, flush=True)
-        for kind in ("groups", "pools"):
-            for name, members in self.team[kind].items():
-                self.cli(kind, "set", name, *members)
+            urls[name] = url
+            print("Started", name, a["runtime"], url, flush=True)
+        self.start_daemon("autonomous-demo", not self.args.headless, urls, self.team["groups"], self.team["pools"])
         agents = self.cli("agents", "list")
         if {a["id"] for a in agents} != {a["id"] for a in self.team["agents"]}:
             raise RuntimeError("registry mismatch")
@@ -291,9 +291,10 @@ def main():
         elif args.model and not (args.model == "opencode/big-pickle" or
                                  re.fullmatch(r"opencode/[a-z0-9][a-z0-9.-]*-free", args.model)):
             p.error("credential-free mode requires OpenCode default, opencode/big-pickle or an opencode/*-free model")
-        args.gateway = shutil.which(args.gateway)
-        if not args.gateway or subprocess.check_output([args.gateway, "--version"], env=clean_environment(), timeout=15, text=True).strip() != "0.9.0":
-            p.error("install pinned opencode-a2a-lite 0.9.0")
+        try:
+            args.gateway = resolve_gateway(args.gateway)
+        except ValueError as err:
+            p.error(str(err))
         opencode_version = subprocess.check_output(["opencode", "--version"], env=clean_environment(), timeout=15, text=True).strip()
         if not opencode_supported(opencode_version):
             p.error("install stable OpenCode 2.3.2 or newer")
@@ -307,7 +308,7 @@ def main():
     # Private standalone root outside the checkout. Retain artifacts for
     # operator review; never automatically publish model content or logs.
     os.umask(0o077)
-    root = Path(tempfile.mkdtemp(prefix="agentiplex-autonomous-", dir="/tmp")).resolve()
+    root = Path(tempfile.mkdtemp(prefix="agentiplex-autonomous-")).resolve()
     print("Private run directory:", root, flush=True)
     if real:
         print("Requested model:", args.model or "OpenCode default",

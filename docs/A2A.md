@@ -12,7 +12,7 @@ The input is one native A2A data part with exactly these fields:
 
 Use a fresh user-role A2A message with a unique messageId. A2A 1.0 JSON-RPC is the supported binding. The structured payload is Agentiplex's application skill contract, not an A2A routing extension or transport standard.
 
-The returned A2A task belongs to Agentiplex; its ID also identifies the durable delivery. Downstream task and context IDs are separate correlation fields. On retry, reuse the original messageId and identical target/text. A changed payload with the same messageId is rejected. Message IDs are namespace-global until authenticated identities are introduced.
+The returned A2A task belongs to Agentiplex; its ID also identifies the durable delivery. Downstream task and context IDs are separate correlation fields. On retry, reuse the original messageId and identical target/text. A changed payload with the same messageId is rejected. Message IDs are scoped to the authenticated caller and remembered for the delivery retention window (default 7 days); after that the same messageId starts a new operation. A retry of an accepted task resumes observation of the saved downstream task and never sends it again. MCP/REST idempotency keys are a separate, required, per-caller namespace.
 
 SendMessage with returnImmediately=true returns after durable enqueue. The default blocking mode waits for a terminal/intervention state, bounded by the configured delivery timeout and request cancellation. If that wait times out, work is not canceled; retry the same messageId with returnImmediately=true to obtain the existing task and poll GetTask. GetTask works across daemon restart and never exposes CLI-only delivery records as A2A tasks.
 
@@ -54,7 +54,7 @@ The official independent A2A Go client is exercised in the integration tests. Us
 
 `server.public_url` / `--public-url` / `AGENTIPLEX_SERVER_PUBLIC_URL` sets the advertised origin; loopback listeners default to the actual bound address. Non-loopback listeners require an explicit advertised origin and the existing trusted-network opt-in. Docker defaults to an internal loopback listener; use the secure deployment or explicitly configure an isolated demo listener and matching advertised origin. No Host header inference.
 
-The service is **trusted-local only**, including task lookups. No authentication, permission isolation or production network exposure. Do not put sensitive work into an unauthenticated network-accessible instance.
+Without the secured configuration below the service is trusted-local only (loopback, no authentication); never expose it. For remote agents use the secured topology in [DEPLOYMENT.md](DEPLOYMENT.md#distributed-deployment-agents-on-other-hosts).
 
 ## Merge gates
 
@@ -70,7 +70,7 @@ The same structured data contract accepts operation=broadcast (target is a group
 
 ## Authenticated deployment (PR #7)
 
-With secure server configuration, the public Agent Card advertises bearer authentication and A2A requests require the operator or collaborator token over verified HTTPS. Outbound A2A bearer credentials are configured by explicitly allowed HTTPS origin and mounted file; they are not accepted from registered cards or stored in JetStream. See [DEPLOYMENT.md](DEPLOYMENT.md).
+With secure server configuration, the public Agent Card advertises bearer authentication and A2A requests require the caller's own agent token (or the operator token) over verified HTTPS. The server resolves it to the caller ID; `messageId` identity is scoped by caller (two agents may use the same `messageId` independently, a retry by the same agent returns its existing task) and `GetTask` returns only the caller's own tasks (others are TaskNotFound). Outbound A2A bearer credentials are configured by explicitly allowed HTTPS origin and mounted file; they are not accepted from registered cards or stored in JetStream. See [DEPLOYMENT.md](DEPLOYMENT.md).
 
 ## Long-running accepted tasks
 

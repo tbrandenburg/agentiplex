@@ -27,14 +27,14 @@ def summarize(index, code, seconds, output):
         data = json.loads(evidence.read_text())
         calls = data["toolCalls"]
         workers = {d.get("assignedAgent") or d["target"] for d in data["deliveries"] if d["state"] == "completed" and d.get("result")}
-        row.update(pmTurns=calls["coordinatorTurns"], pmAskCalls=calls["askCalls"],
+        row.update(pmTurns=calls["coordinatorTurns"], pmDelegationCalls=calls["delegationCalls"],
                    pmDelegations=sum(calls["delegations"].values()), qualityRan="quality" in workers,
                    daemonRestarts=data.get("daemonRestarts", 0))
     return row
 
 
 def table(rows):
-    cols = ["run", "result", "phase", "wallSeconds", "pmTurns", "pmAskCalls", "pmDelegations", "qualityRan", "startupAttempts", "reason"]
+    cols = ["run", "result", "phase", "wallSeconds", "pmTurns", "pmDelegationCalls", "pmDelegations", "qualityRan", "startupAttempts", "reason"]
     lines = ["| " + " | ".join(cols) + " |", "|" + "---|" * len(cols)]
     lines += ["| " + " | ".join(str(r.get(c, "")) if r.get(c) is not None else "" for c in cols) + " |" for r in rows]
     passed = sum(r["result"] == "PASS" for r in rows)
@@ -52,7 +52,7 @@ def main():
     p.add_argument("team_args", nargs=argparse.REMAINDER)
     args = p.parse_args()
     team_args = args.team_args[1:] if args.team_args[:1] == ["--"] else args.team_args
-    out = Path(args.out) if args.out else Path(tempfile.mkdtemp(prefix="agentiplex-repository-measure-", dir="/tmp"))
+    out = Path(args.out) if args.out else Path(tempfile.mkdtemp(prefix="agentiplex-repository-measure-"))
     out.mkdir(parents=True, exist_ok=True)
     rows = []
     for i in range(1, args.n + 1):
