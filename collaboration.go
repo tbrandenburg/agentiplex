@@ -9,12 +9,9 @@ import (
 	"log/slog"
 	"strings"
 	"time"
-
-	"github.com/a2aproject/a2a-go/v2/a2a"
 )
 
 func scopedID(prefix,caller,key string)string{
-	if key==""{return prefix+a2a.NewMessageID()}
 	h:=sha256.Sum256([]byte(scopedKey(caller,key)))
 	return prefix+hex.EncodeToString(h[:30])
 }
@@ -24,12 +21,12 @@ func childID(parent,member string)string{
 }
 
 func (b *Bus) Broadcast(ctx context.Context,group,text,key string)(Delivery,error){
-	if len(key)>256{return Delivery{},ErrInvalid}
+	if !validKey(key){return Delivery{},ErrInvalid}
 	return b.submitCollection(ctx,"broadcast",group,text,scopedID("bg-",callerID(ctx),key),"")
 }
 
 func (b *Bus) Dispatch(ctx context.Context,pool,text,key string)(Delivery,error){
-	if len(key)>256{return Delivery{},ErrInvalid}
+	if !validKey(key){return Delivery{},ErrInvalid}
 	return b.submitCollection(ctx,"dispatch",pool,text,scopedID("dp-",callerID(ctx),key),"")
 }
 
@@ -89,7 +86,7 @@ func (b *Bus) recoverFanouts(ctx context.Context){
 		if ctx.Err()!=nil{return}
 		if now:=time.Now();now.Sub(swept)>=time.Minute{
 			swept=now
-			if _,err:=b.sweepRetention(ctx,now,b.cfg.Retention,b.cfg.UnreturnedRetention);err!=nil{slog.Warn("retention sweep failed")}
+			if _,err:=b.sweepRetention(ctx,now,b.cfg.Retention);err!=nil{slog.Warn("retention sweep failed")}
 		}
 		ks,err:=keys(b.store.Deliveries)
 		if err==nil{

@@ -115,7 +115,7 @@ for agent in pm architect developer tester-1 tester-2 quality; do
 done
 agentiplex groups set engineering pm architect developer tester-1 tester-2 quality
 agentiplex pools set testers tester-1 tester-2
-agentiplex broadcast engineering "Contract update"
+agentiplex broadcast engineering "Contract update" --idempotency-key release-1
 ```
 
 Use the CLI built from the checkout (or docker compose exec agentiplex agentiplex with mounted credential paths). Dashboard: https://localhost:18443/ui/. Agent tasks use the separate `agent-demo` credential (agent ID `demo`). `make compose-down` (Compose down) preserves JetStream volume and existing credentials; down -v **deletes all stored data**. Stop/start Quality and restart the daemon without deleting volumes to observe durable recovery. CI's isolated scripts/compose-check.sh generates its own credentials and destroys its test project and volume; refuses to run if .demo-secrets already exists.
@@ -161,9 +161,14 @@ Downtime assumption: one daemon per namespace, no HA. While the daemon is down i
 
 The `DELIVERIES` bucket is capped at 128 MiB and rejects writes when full, so terminal records are removed by an age-based sweep that runs once a minute in the existing reconciliation loop.
 
-- `delivery.retention` (default `168h`): a terminal record (completed, failed, uncertain, input-required, auth-required) is removed once its `updatedAt` is older than this (age is measured from the last update, not from `returnedAt`).
-- `delivery.unreturned_retention` (default `720h`, must be at least `retention`): a terminal record that has no returned mark (no `ask` handed its result back) is kept this long instead, so a re-ask after a crash can still collect it. Agentiplex cannot tell never-asked records (`send_message`, `get_delivery`) from uncollected asks, so this longer limit applies to every unreturned terminal record.
-- Nonterminal records are never removed. A broadcast group (parent plus children) is removed only when its derived state is terminal (completed, failed or partial) and the newest child update is older than `retention`; children of a live parent are never removed individually. Broadcasts use the normal limit.
+- `delivery.retention` (default `168h`, range 5m–3650d): a terminal record (completed, failed, uncertain, input-required, auth-required) is removed once its `updatedAt` is older than this. This single window is also the retry window for idempotency keys and A2A `messageId`s: after the purge the same key starts a new operation. The default (7 days) covers unattended work over a weekend and is far below the bucket cap at typical record sizes. The minimum (5 minutes) exceeds the broker's 2-minute publish de-duplication window.
+- Nonterminal records are never removed. A broadcast group (parent plus children) is removed only when its derived state is terminal (completed, failed or partial) and the newest child update is older than `retention`; children of a live parent are never removed individually. 
 - Removal is a compare-and-swap purge: a concurrent update wins and the record is retried on the next sweep. Purging frees the stored bytes (verified by test); only a small marker remains until it is cleaned up.
-- `GET /readyz` stays public and returns only `{"ready":true}`. The authenticated `GET /api/v1/usage` (viewer role or higher) reports `deliveries`: `bytes`, `maxBytes`, `records`, and `unreturnedTerminal` (terminal records kept past `retention` by the last sweep). The sweep logs the same count.
+- `GET /readyz` stays public and returns only `{"ready":true}`. The authenticated `GET /api/v1/usage` (viewer role or higher) reports `deliveries`: `bytes`, `maxBytes`, `records`.
 <!-- retention:end -->
+
+### Breaking change: required idempotency keys and single retention
+
+- MCP and REST submissions (`ask`, `send_message`, `broadcast`, `dispatch`, `POST /api/v1/messages|broadcasts|dispatches`, CLI `--idempotency-key`) now require a nonempty `idempotencyKey`; keyless calls are rejected with 400/invalid arguments. The prompt-derived `ask` identity, the `returnedAt` delivery field, the `delivery.unreturned_retention` setting (remove it from configs; unknown keys are ignored) and the `unreturnedTerminal` usage counter are removed. Clients must create a key once per intended operation and reuse it only to retry.
+- Records written by earlier versions keep their IDs; `returnedAt` in stored JSON is ignored and they now follow the single `delivery.retention` window (a previous 30-day unreturned record may be purged earlier). Drain or reconcile outstanding work before upgrading if that matters; no migration is provided.
+- Keys are not a permanent replay guard: after retention expiry the same key is a new operation. Uncertain outcomes are never replayed automatically and remote exactly-once execution is not claimed.

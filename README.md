@@ -73,7 +73,7 @@ Register that endpoint and send a task from another terminal:
 ```sh
 ./bin/agentiplex register architect http://127.0.0.1:8001
 ./bin/agentiplex discover --skill architecture
-./bin/agentiplex send architect "Review requirement 42"
+./bin/agentiplex send architect "Review requirement 42" --idempotency-key demo-42
 ./bin/agentiplex messages status DELIVERY_ID
 ```
 
@@ -92,7 +92,7 @@ See the [A2A contract](docs/A2A.md) and [MCP tools](docs/MCP.md).
 > **Agent identity:** in secure mode every agent has its own bearer credential
 > (`security.agent_token_files`); the server resolves it to the caller across A2A,
 > MCP and REST. Agents see only their own deliveries and results, idempotency
-> keys are per agent, and note authors are set by the server. The former shared
+> keys (required on every MCP/REST submission) are per agent, and note authors are set by the server. The former shared
 > collaborator credential is removed (breaking change; see the principal model,
 > access matrix, rotation and upgrade notes in [deployment](docs/DEPLOYMENT.md)).
 > Shared team state is not tenant isolation.

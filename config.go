@@ -25,8 +25,7 @@ type Config struct {
 	MaxAttempts int // pre-submission reachability attempts only
 	TaskPollInterval time.Duration // zero inherits RetryDelay; no accepted-task lifetime limit
 	HealthInterval time.Duration // zero disables periodic observation
-	Retention time.Duration // age after which terminal deliveries are removed; zero selects 7d
-	UnreturnedRetention time.Duration // longer limit for terminal deliveries no ask handed back; zero selects 30d
+	Retention time.Duration // age after which terminal deliveries are removed (the request-key retry window); zero selects 7d
 }
 
 var validID = regexp.MustCompile("^[a-z0-9][a-z0-9_-]{0,63}$")
@@ -56,11 +55,6 @@ func (c Config) validate() error {
 	if c.Workers<0||c.Workers>16{return fmt.Errorf("invalid delivery worker count (0–16)")}
 	if c.TaskPollInterval!=0&&(c.TaskPollInterval<time.Second||c.TaskPollInterval>time.Minute){return fmt.Errorf("invalid task poll interval")}
 	if c.HealthInterval!=0&&(c.HealthInterval<time.Second||c.HealthInterval>time.Hour){return fmt.Errorf("invalid health interval")}
-	if c.Retention!=0&&(c.Retention<time.Hour||c.Retention>3650*24*time.Hour){return fmt.Errorf("invalid delivery retention (1h–3650d)")}
-	if c.UnreturnedRetention!=0&&(c.UnreturnedRetention<time.Hour||c.UnreturnedRetention>3650*24*time.Hour){return fmt.Errorf("invalid unreturned retention (1h–3650d)")}
-	r,u:=c.Retention,c.UnreturnedRetention
-	if r==0{r=defaultRetention}
-	if u==0{u=defaultUnreturnedRetention}
-	if u<r{return fmt.Errorf("unreturned retention must not be shorter than retention")}
+	if c.Retention!=0&&(c.Retention<5*time.Minute||c.Retention>3650*24*time.Hour){return fmt.Errorf("invalid delivery retention (5m–3650d)")}
 	return nil
 }

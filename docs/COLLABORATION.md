@@ -23,7 +23,7 @@ agentiplex events --follow
 agentiplex events --follow --after 12 --kind delivery.state
 ```
 
-Groups/pools set is an upsert. Members must already be registered. Use a fresh key for each new operation; repeating the same key and payload returns the same receipt. A conflicting payload is rejected. Admin idempotency is operation-scoped; A2A message IDs are namespace-global across operations.
+Groups/pools set is an upsert. Members must already be registered. The idempotency key is required; use a fresh key for each new operation; repeating the same key and payload returns the same receipt while the record is retained (7 days after it finishes by default). A conflicting payload is rejected. Keys are scoped to the caller and operation.
 
 ## HTTP / A2A
 

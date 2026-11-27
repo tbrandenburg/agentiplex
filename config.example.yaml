@@ -22,8 +22,7 @@ delivery:
   retry_delay: 5s
   max_attempts: 10 # pre-submission reachability attempts only
   task_poll_interval: 0s # inherit retry_delay; successful active tasks monitored indefinitely
-  retention: 168h # terminal deliveries (completed, failed, uncertain, input-required, auth-required) are removed this long after their last update; range 1h–3650d
-  unreturned_retention: 720h # longer limit for terminal records no ask handed back (all send_message results too); must be >= retention
+  retention: 168h # terminal deliveries are removed this long after their last update; also the idempotency-key/messageId retry window (a key is a new operation afterwards); range 5m–3650d
   allowed_origins: [] # loopback allowed; explicit non-loopback HTTP(S) origins
   ca_file: ""
   token_files: {} # map approved HTTPS origins to mounted bearer credential files

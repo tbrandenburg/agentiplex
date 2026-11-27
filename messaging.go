@@ -36,14 +36,16 @@ func(b *Bus) save(d *Delivery,state,detail string)error{
 }
 
 // Send accepts text in the foundation. The caller gets a receipt only after
-// JetStream confirms publication. A caller retry can reuse its idempotency key.
+// JetStream confirms publication. The idempotency key is required: it names one
+// logical operation per caller, and the same key with the same target and text
+// returns the same delivery while the record is retained.
 func(b *Bus) Send(ctx context.Context,target,text,key string)(Delivery,error){
-	if len(key)>256{return Delivery{},ErrInvalid}
-	caller:=callerID(ctx)
-	id:=a2a.NewMessageID()
-	if key!=""{h:=sha256.Sum256([]byte(scopedKey(caller,key)));id=hex.EncodeToString(h[:])}
-	return b.sendWithID(ctx,target,text,id,"")
+	if !validKey(key){return Delivery{},ErrInvalid}
+	h:=sha256.Sum256([]byte(scopedKey(callerID(ctx),key)))
+	return b.sendWithID(ctx,target,text,hex.EncodeToString(h[:]),"")
 }
+
+func validKey(key string)bool{return strings.TrimSpace(key)!=""&&len(key)<=256}
 
 // sendWithID shares the durable admission path with native A2A ingress.
 func(b *Bus) sendWithID(ctx context.Context,target,text,id,ingressMessageID string)(Delivery,error){

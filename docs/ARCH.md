@@ -146,12 +146,12 @@ Agent networks may run for days: work outlives connections, agent turns, daemon 
 |---|---|
 | The durable record is the only source of truth | Delivery state lives in the DELIVERIES KV; nothing authoritative is held in memory, goroutines or a connection. |
 | No wall-clock lifetime on accepted work | Only a single network operation is bounded (`delivery.timeout`). Accepted tasks are monitored until terminal (see "Accepted-task monitoring"); the runtime or operator owns execution deadlines. |
-| Connections are disposable views | A blocking call (MCP `ask`, A2A `SendMessage`) only observes a durable record. A dropped connection, client timeout or daemon restart loses nothing; the caller re-attaches with the same deterministic key (derived from target and text when not supplied) and never causes a second downstream execution. |
+| Connections are disposable views | A blocking call (MCP `ask`, A2A `SendMessage`) only observes a durable record. A dropped connection, client timeout or daemon restart loses nothing; the caller re-attaches with the same required caller-created key (MCP/REST `idempotencyKey`, A2A `messageId`) and never causes a second downstream execution while the record is retained (`delivery.retention`, default 7 days; after that the same key is a new operation). |
 | Unbounded waits are allowed | A wait ends on a terminal state, an explicit caller budget, or cancellation of the caller's own context. No server-side maximum, no extra configuration. |
 | Waiting is event-driven with a safety net | Waiters use KV watch on the delivery key (current value first, then updates), not per-waiter polling. On watch error or reconnect they re-read the record, so a missed update cannot hang a wait. |
 | Events record changes, not heartbeats | `delivery.state` is emitted only on a real state change so retention covers days of work. |
 | Bounded retention never evicts pending work | Limits apply to events and terminal records; pending work is rejected at admission when full, never silently dropped. |
-| Idempotent re-entry everywhere | Deterministic IDs and create-only writes make admission, reconciliation, recovery and re-attach safe to repeat. |
+| Idempotent re-entry everywhere | Deterministic key-derived IDs and create-only writes make admission, reconciliation, recovery and re-attach safe to repeat. |
 | Time-dependent behaviour is tested | Restart, reconnect and long-wait paths are tested with real JetStream and failure injection, using short intervals to stand in for days. |
 
 **Crash and restart promise.** After any daemon exit, clean or not (SIGKILL, OOM, panic, host power loss), restarting `agentiplexd` resumes the team where it stopped: queued work is redelivered, `preparing` records are republished, accepted tasks keep their reservations and are monitored again, and waiters re-attach. The only state that does not resume automatically is a send that was in flight at the crash: it becomes `uncertain` and is never replayed (5.3). Agents see this as a failed tool call and continue by repeating the same call; the middleware does not resume an agent's own LLM turn.
@@ -199,12 +199,12 @@ agentiplex --server http://127.0.0.1:8080 register architect http://127.0.0.1:41
 agentiplex agents list
 agentiplex discover --skill testing
 agentiplex catalog get
-agentiplex send architect "Review the requirements"
+agentiplex send architect "Review the requirements" --idempotency-key req-review-1
 agentiplex messages status <delivery-id>
 agentiplex events --follow
 # P1:
-agentiplex broadcast engineering "Contract updated"
-agentiplex dispatch testers "Verify requirement 42"
+agentiplex broadcast engineering "Contract updated" --idempotency-key release-1
+agentiplex dispatch testers "Verify requirement 42" --idempotency-key verify-42
 ```
 
 Commands and schemas are proposed; implement and document only the supported subset.

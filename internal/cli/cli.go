@@ -80,7 +80,8 @@ func Command()*cobra.Command{
 	send:=&cobra.Command{Use:"send TARGET TEXT",Args:cobra.ExactArgs(2),RunE:func(c *cobra.Command,a []string)error{
 		return print(c,"POST","/api/v1/messages",map[string]string{"target":a[0],"text":a[1],"idempotencyKey":key})
 	}}
-	send.Flags().StringVar(&key,"idempotency-key","","stable caller-generated key for safe resubmission")
+	send.Flags().StringVar(&key,"idempotency-key","","required stable caller-generated key, created once per intended operation and reused only to retry")
+	_ = send.MarkFlagRequired("idempotency-key")
 	root.AddCommand(send)
 	for _,kind:=range []string{"group","pool"}{
 		path:="/api/v1/"+kind+"s"
@@ -98,7 +99,8 @@ func Command()*cobra.Command{
 		cmd:=&cobra.Command{Use:kind+" TARGET TEXT",Args:cobra.ExactArgs(2),RunE:func(c *cobra.Command,a []string)error{
 			return print(c,"POST",path,map[string]string{"target":a[0],"text":a[1],"idempotencyKey":key})
 		}}
-		cmd.Flags().StringVar(&key,"idempotency-key","","stable caller-generated key for safe resubmission")
+		cmd.Flags().StringVar(&key,"idempotency-key","","required stable caller-generated key, created once per intended operation and reused only to retry")
+		_ = cmd.MarkFlagRequired("idempotency-key")
 		root.AddCommand(cmd)
 	}
 	messages:=&cobra.Command{Use:"messages"}

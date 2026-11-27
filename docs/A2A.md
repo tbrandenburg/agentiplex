@@ -12,7 +12,7 @@ The input is one native A2A data part with exactly these fields:
 
 Use a fresh user-role A2A message with a unique messageId. A2A 1.0 JSON-RPC is the supported binding. The structured payload is Agentiplex's application skill contract, not an A2A routing extension or transport standard.
 
-The returned A2A task belongs to Agentiplex; its ID also identifies the durable delivery. Downstream task and context IDs are separate correlation fields. On retry, reuse the original messageId and identical target/text. A changed payload with the same messageId is rejected. Message IDs are namespace-global until authenticated identities are introduced.
+The returned A2A task belongs to Agentiplex; its ID also identifies the durable delivery. Downstream task and context IDs are separate correlation fields. On retry, reuse the original messageId and identical target/text. A changed payload with the same messageId is rejected. Message IDs are scoped to the authenticated caller and remembered for the delivery retention window (default 7 days); after that the same messageId starts a new operation. A retry of an accepted task resumes observation of the saved downstream task and never sends it again. MCP/REST idempotency keys are a separate, required, per-caller namespace.
 
 SendMessage with returnImmediately=true returns after durable enqueue. The default blocking mode waits for a terminal/intervention state, bounded by the configured delivery timeout and request cancellation. If that wait times out, work is not canceled; retry the same messageId with returnImmediately=true to obtain the existing task and poll GetTask. GetTask works across daemon restart and never exposes CLI-only delivery records as A2A tasks.
 
