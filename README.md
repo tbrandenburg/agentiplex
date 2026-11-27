@@ -88,6 +88,14 @@ See the [A2A contract](docs/A2A.md) and [MCP tools](docs/MCP.md).
 > Local examples are unauthenticated. Keep them on loopback in a trusted
 > environment. For network deployment, configure authenticated TLS and
 > approved outbound agent origins using the [deployment guide](docs/DEPLOYMENT.md).
+>
+> **Agent identity:** in secure mode every agent has its own bearer credential
+> (`security.agent_token_files`); the server resolves it to the caller across A2A,
+> MCP and REST. Agents see only their own deliveries and results, idempotency
+> keys are per agent, and note authors are set by the server. The former shared
+> collaborator credential is removed (breaking change; see the principal model,
+> access matrix, rotation and upgrade notes in [deployment](docs/DEPLOYMENT.md)).
+> Shared team state is not tenant isolation.
 
 ## Examples
 

@@ -9,7 +9,7 @@ if [[ -d .demo-secrets ]]; then
 fi
 mkdir -m 700 .demo-secrets
 cd .demo-secrets
-for name in operator collaborator viewer nats-token; do openssl rand -hex 32 > "$name"; done
+for name in operator agent-demo viewer nats-token; do openssl rand -hex 32 > "$name"; done
 openssl req -x509 -newkey rsa:2048 -nodes -sha256 -days 7 -subj /CN=Agentiplex-demo-CA -addext basicConstraints=critical,CA:TRUE -addext keyUsage=critical,keyCertSign,cRLSign -keyout ca.key -out ca.crt 2>/dev/null
 for name in server nats; do
   openssl req -newkey rsa:2048 -nodes -subj "/CN=$name" -keyout "$name.key" -out "$name.csr" 2>/dev/null
@@ -27,6 +27,6 @@ tls { cert_file: "/run/secrets/nats.crt", key_file: "/run/secrets/nats.key" }
 EOF
 # Bind-mounted files must be readable by the non-root service user. The
 # containing directory remains 0700; never publish or copy it into images.
-chmod 0444 operator collaborator viewer nats-token nats.conf server.crt server.key ca.crt nats.crt nats.key
+chmod 0444 operator agent-demo viewer nats-token nats.conf server.crt server.key ca.crt nats.crt nats.key
 rm -f ca.key ca.srl server.csr server.ext nats.csr nats.ext
 echo "Development secrets generated; trust .demo-secrets/ca.crt explicitly. Certificates expire in 7 days."

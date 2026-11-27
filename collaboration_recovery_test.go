@@ -30,14 +30,14 @@ func TestRecoverPartiallyPublishedBroadcast(t *testing.T){
 	b.cancel();b.wg.Wait()
 	// Inject a durable parent and only one child, representing an
 	// interrupted fan-out before publication of the second recipient.
-	id:=scopedID("bg-","interrupted")
+	id:=scopedID("bg-","","interrupted")
 	d:=Delivery{ID:id,Kind:"broadcast",Target:"engineering",Text:"review",Members:[]string{"first","second"},State:"fanout",UpdatedAt:time.Now().UTC()}
 	b.mu.Lock()
 	raw,_:=json.Marshal(d)
 	_,err=b.store.Deliveries.Create(id,raw)
 	b.mu.Unlock()
 	if err!=nil{t.Fatal(err)}
-	firstChild,err:=b.sendChild(ctx,"first",d.Text,childID(id,"first"),"",id)
+	firstChild,err:=b.sendChild(ctx,"first",d.Text,childID(id,"first"),"",id,"")
 	if err!=nil{t.Fatal(err)}
 	if _,err=b.rawDelivery(childID(id,"second"));!errors.Is(err,ErrNotFound){t.Fatalf("second child unexpectedly admitted: %v",err)}
 	b.Close()

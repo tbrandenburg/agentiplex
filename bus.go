@@ -77,8 +77,8 @@ func keys(kv nats.KeyValue)([]string,error){
 	return k,err
 }
 
-func (b *Bus) emit(kind,id,state string){
-	data,err:=json.Marshal(Event{Kind:kind,ID:id,State:state,At:time.Now().UTC()})
+func (b *Bus) emit(kind,id,state,caller string){
+	data,err:=json.Marshal(Event{Kind:kind,ID:id,State:state,Caller:caller,At:time.Now().UTC()})
 	if err==nil{_,err=b.store.JS.Publish(b.store.EventSubject,data)}
 	if err!=nil{slog.Warn("event publication failed","kind",kind,"id",id)}
 }

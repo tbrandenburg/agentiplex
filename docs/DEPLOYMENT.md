@@ -21,29 +21,49 @@ server:
   tls_key_file: /run/secrets/tls.key
 security:
   operator_token_file: /run/secrets/operator
-  collaborator_token_file: /run/secrets/collaborator
+  agent_token_files:          # logical agent ID -> its own credential file
+    pm: /run/secrets/agent-pm
+    architect: /run/secrets/agent-architect
   viewer_token_file: /run/secrets/viewer
 protocols:
   mcp:
     enabled: true
 ```
 
-Both operator and collaborator files are required in secure mode; viewer is required if the dashboard is enabled. Roles must use distinct secrets. TLS and explicit HTTPS origin are mandatory when authentication is enabled; no forwarded-header trust or plaintext authenticated proxy hop. Use native TLS, a TLS-passthrough gateway or a gateway that re-encrypts/verifies the backend connection. The legacy trusted-network flag remains for isolated unauthenticated demonstrations only; never expose it publicly. The OCI image now defaults to loopback inside the container, so simply publishing its port does not expose an unauthenticated listener. Use the secure Compose/Helm deployment or explicitly configure an isolated demo listener.
+The operator file is required in secure mode; viewer is required if the dashboard is enabled; each named agent gets its own file in `security.agent_token_files` (environment: a JSON object in `AGENTIPLEX_SECURITY_AGENT_TOKEN_FILES`). Every token (operator, viewer, each agent) must be distinct, 32-512 URL-safe characters, in a bounded file; agent IDs must be valid logical IDs (not `operator`/`viewer`). Only SHA-256 digests are held in memory; raw tokens are never stored in cards, KV, events, logs or responses. TLS and explicit HTTPS origin are mandatory when authentication is enabled; no forwarded-header trust or plaintext authenticated proxy hop. Use native TLS, a TLS-passthrough gateway or a gateway that re-encrypts/verifies the backend connection. The trusted-network flag remains for isolated unauthenticated demonstrations only; it is not a secure-mode fallback and never to be exposed publicly. The OCI image defaults to loopback inside the container.
 
-| Role | Access |
+### Principal model and access matrix
+
+The bearer token is resolved once, at the HTTP boundary, to a principal (`operator`, `viewer`, or `agent` plus its agent ID). A2A, MCP and REST share it; `sender`/`author` fields and MCP client names are ignored or rejected. Unknown, missing or removed tokens get 401; a valid token without permission gets 403.
+
+| Principal | Access |
 |---|---|
-| Operator (bearer) | All API operations including registry/collection administration and state deletion |
-| Collaborator (bearer) | Discovery and collection reads, delegation, A2A/MCP, results/events, read and revision-checked write state; no registry/collection mutation or state deletion |
-| Viewer (browser Basic user viewer / separate secret, or bearer) | Read-only dashboard, including explicit stored delivery detail; no collaboration, raw state reads or admin mutations |
-| Anonymous | Health/readiness and Agentiplex's public Agent Card only |
+| Operator | Everything: registry/collection administration, state deletion, abandon, all deliveries, global delivery list and event feed |
+| Agent `<id>` | Discovery/catalog and collection reads; send/broadcast/dispatch/ask via REST, A2A, MCP; read **only its own** deliveries, broadcast children and results (others look "not found"); read and revision-checked write of shared state; append notes (author = its ID). No registry/collection mutation, state deletion, abandon, global delivery list or event feed |
+| Viewer (browser Basic user `viewer`, or bearer) | Read-only dashboard incl. explicit delivery detail; no collaboration, raw state or mutations |
+| Anonymous | Health/readiness and the public Agent Card only |
+
+Team state and notes are intentionally shared inside the namespace. This is one trust domain, not tenant isolation: a malicious but authenticated agent can overwrite shared state.
+
+Each delivery, broadcast child, event and note records the immutable authenticated caller ID (operator submissions record none). Idempotency keys and A2A `messageId`s are scoped by caller: the same key and text from two agents are two independent deliveries; a retry by the same agent resolves to its existing delivery.
+
+### Provisioning, rotation, revocation
+
+1. Create one random token file per agent (for example `openssl rand -hex 32`), mode 0400/0440, and list it under `security.agent_token_files`. Give the agent only its own file.
+2. Start (or restart) the daemon. The operator registers the agent's A2A endpoint as before; credential identity and registry registration are independent (a caller need not be a registered recipient).
+3. Rotate by replacing the file content and restarting; the old token is rejected immediately and the new token reads the agent's existing records (ownership follows the agent ID). Revoke by removing the entry and restarting; the agent's records stay readable by the operator.
+
+### Breaking changes and upgrade boundary
+
+The shared collaborator role (`security.collaborator_token_file`, `AGENTIPLEX_SECURITY_COLLABORATOR_TOKEN_FILE`, the `collaborator` Compose secret and Helm key) is removed with no fallback; the daemon refuses to start unless an operator token is configured. Delivery IDs derived from idempotency keys/messageIds changed (caller scope), and records written before this change have no caller: named agents cannot read them, the operator still can. Drain or reconcile outstanding work first (operator: list deliveries until all are terminal, abandon the rest), then reset only disposable data. Never replay old work under a new identity.
 
 Use the CLI without placing credentials in arguments:
 
 ```sh
-agentiplex --server https://agentiplex.example:8080 --ca-file /path/ca.crt --token-file /path/collaborator agents list
+agentiplex --server https://agentiplex.example:8080 --ca-file /path/ca.crt --token-file /path/agent-pm agents list
 ```
 
-Environment AGENTIPLEX_TOKEN_FILE and AGENTIPLEX_CA_FILE are equivalent. Browser users open /ui/ and authenticate as viewer. Secure requests use TLS 1.2 or newer; client trust uses system roots plus optional custom CA. No insecure skip-verify option. Static tokens are read on startup; restart after rotation. They authorize roles, not specific agents, and all collaborators share delivery/state and idempotency namespaces. Browser-origin mutations and MCP browser Origins are rejected. Public probes disclose only readiness/aliveness.
+Environment AGENTIPLEX_TOKEN_FILE and AGENTIPLEX_CA_FILE are equivalent. Browser users open /ui/ and authenticate as viewer. Secure requests use TLS 1.2 or newer; client trust uses system roots plus optional custom CA. No insecure skip-verify option. Static tokens are read on startup; restart after rotation. Browser-origin mutations and MCP browser Origins are rejected. Public probes disclose only readiness/aliveness.
 
 Outbound A2A uses the existing origin allowlist. For secured recipients:
 
@@ -98,11 +118,11 @@ agentiplex pools set testers tester-1 tester-2
 agentiplex broadcast engineering "Contract update"
 ```
 
-Use the CLI built from the checkout (or docker compose exec agentiplex agentiplex with mounted credential paths). Dashboard: https://localhost:18443/ui/. The operator may use the separate collaborator credential for agent tasks. `make compose-down` (Compose down) preserves JetStream volume and existing credentials; down -v **deletes all stored data**. Stop/start Quality and restart the daemon without deleting volumes to observe durable recovery. CI's isolated scripts/compose-check.sh generates its own credentials and destroys its test project and volume; refuses to run if .demo-secrets already exists.
+Use the CLI built from the checkout (or docker compose exec agentiplex agentiplex with mounted credential paths). Dashboard: https://localhost:18443/ui/. Agent tasks use the separate `agent-demo` credential (agent ID `demo`). `make compose-down` (Compose down) preserves JetStream volume and existing credentials; down -v **deletes all stored data**. Stop/start Quality and restart the daemon without deleting volumes to observe durable recovery. CI's isolated scripts/compose-check.sh generates its own credentials and destroys its test project and volume; refuses to run if .demo-secrets already exists.
 
 ## Helm
 
-Use a supported Kubernetes cluster, Helm and the [official NATS Helm chart](https://github.com/nats-io/k8s). Create Secrets in the chosen namespace: agentiplex-auth (operator, collaborator, viewer), agentiplex-tls (tls.crt, tls.key), nats-tls (broker TLS keypair) and agentiplex-broker (token or credentials, ca.crt). Provision certificates with DNS SANs matching the broker service and daemon advertised hostname. The test script illustrates creation from disposable development secrets.
+Use a supported Kubernetes cluster, Helm and the [official NATS Helm chart](https://github.com/nats-io/k8s). Create Secrets in the chosen namespace: agentiplex-auth (operator, viewer, and `agent-<id>` per entry of the chart value `agents`), agentiplex-tls (tls.crt, tls.key), nats-tls (broker TLS keypair) and agentiplex-broker (token or credentials, ca.crt). Provision certificates with DNS SANs matching the broker service and daemon advertised hostname. The test script illustrates creation from disposable development secrets.
 
 ```sh
 helm repo add nats https://nats-io.github.io/k8s/helm/charts/

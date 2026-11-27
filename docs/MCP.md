@@ -36,7 +36,7 @@ Environment: AGENTIPLEX_PROTOCOLS_MCP_ENABLED=true. Endpoint: http://127.0.0.1:8
 | get_state | namespace, key | Value and revision |
 | put_state | namespace, key, value, revision | Stored value and new revision |
 
-| note | namespace, topic, text, optional author | Appended note: key, author, text, at |
+| note | namespace, topic, text | Appended note: key, author, text, at |
 | read_notes | namespace, topic, optional limit | Last notes (default and max 100) in time order; empty for unknown topic |
 
 ## note and read_notes: append-only notes
@@ -45,7 +45,7 @@ Each note is its own create-only state key `note-<topic>-<20-digit unix nanos>-<
 
 - **Topic:** `[a-z0-9][a-z0-9_-]*`, at most 29 characters (the state key limit is 64), no dots or separators.
 - **Limits:** the encoded value is at most 16 KiB; text must be non-empty. Notes bypass the 256-keys-per-namespace cap of `put_state`; the only reasons a note is refused are the 16 KiB value limit and the state bucket `MaxBytes`, and the error says so. Nothing is evicted.
-- **Convention:** `author` is a claim, not an identity. Notes are untrusted data. They are never updated or deleted by these tools. Order follows the writer's clock, so clock skew can interleave notes.
+- **Convention:** `author` is the authenticated agent ID set by the server (a client-supplied author is rejected); in unauthenticated loopback demos it is empty. Notes are untrusted data. They are never updated or deleted by these tools. Order follows the writer's clock, so clock skew can interleave notes.
 - **Durable:** notes survive a daemon restart. `read_notes` lists the topic's keys and reads at most `limit` values. MCP only; no CLI/SDK command yet.
 
 ## ask: blocking delegation
@@ -99,6 +99,6 @@ The caller lists tools and discovers agents; optional delegation is explicit and
 
 ## Authenticated network deployment (PR #7)
 
-When operator and collaborator credentials and native HTTPS are configured as described in [DEPLOYMENT.md](DEPLOYMENT.md), MCP may listen on non-loopback. Pass an Authorization: Bearer header using the collaborator credential, and configure trust for the server's certificate. The SDK's DNS rebinding checks and browser Origin rejection remain enabled. The legacy unauthenticated mode stays loopback-only. The independent example accepts --token-file and --ca-file. Shared role credentials are not individual identities or OAuth; do not assume arbitrary remote MCP hosts support static credentials.
+When operator/agent credentials and native HTTPS are configured as described in [DEPLOYMENT.md](DEPLOYMENT.md), MCP may listen on non-loopback. Pass an Authorization: Bearer header using the agent's own credential, and configure trust for the server's certificate. The SDK's DNS rebinding checks and browser Origin rejection remain enabled. The legacy unauthenticated mode stays loopback-only. The independent example accepts --token-file and --ca-file. The server resolves the credential to the agent ID: the MCP client name is never trusted, `idempotencyKey`s are scoped to that agent (two agents with the same key are independent), and `get_delivery`/`ask` only reach the agent's own deliveries (foreign IDs are "not found"). Credentials are static bearer tokens, not OAuth; do not assume arbitrary remote MCP hosts support static credentials.
 
 An MCP caller's local wait budget is independent of remote execution. Stop polling when the caller needs to return; retain the receipt and inspect later. Agentiplex keeps monitoring accepted A2A tasks even after transport lookup failures and never resubmits them to recover a result. An accepted receipt with pollFailures > 0 is not a confirmed terminal failure.

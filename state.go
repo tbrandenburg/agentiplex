@@ -78,7 +78,7 @@ func (b *Bus) PutState(ctx context.Context,namespace,key,value string,revision u
 	if err!=nil{return StateEntry{},stateError(err)}
 	e,err:=b.store.State.GetRevision(k,next)
 	if err!=nil{return StateEntry{},stateError(err)}
-	b.emit("state.updated",k,"")
+	b.emit("state.updated",k,"",authorAs(ctx))
 	return stateEntry(e,true),nil
 }
 
@@ -90,7 +90,7 @@ func (b *Bus) DeleteState(ctx context.Context,namespace,key string,revision uint
 	e,err:=b.store.State.Get(k);if err!=nil{return stateError(err)}
 	if e.Revision()!=revision{return ErrConflict}
 	if err=b.store.State.Delete(k,nats.LastRevision(revision));err!=nil{return stateError(err)}
-	b.emit("state.deleted",k,"")
+	b.emit("state.deleted",k,"",authorAs(ctx))
 	return nil
 }
 

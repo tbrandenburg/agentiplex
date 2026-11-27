@@ -29,7 +29,7 @@ func Command() *cobra.Command {
 	d:=agentiplex.DefaultConfig()
 	defaults:=map[string]any{
 		"server.listen":"127.0.0.1:8080","server.public_url":"","server.trusted_network":false,"protocols.mcp.enabled":false,"observability.dashboard":true,"observability.dashboard_schema":"","observability.dashboard_theme":"cxd","observability.dashboard_refresh_interval":2*time.Second,
-		"security.operator_token_file":"","security.collaborator_token_file":"","security.viewer_token_file":"","server.tls_cert_file":"","server.tls_key_file":"","broker.token_file":"","broker.credentials_file":"","broker.ca_file":"","delivery.token_files":map[string]string{},"delivery.ca_file":"",
+		"security.operator_token_file":"","security.agent_token_files":map[string]string{},"security.viewer_token_file":"","server.tls_cert_file":"","server.tls_key_file":"","broker.token_file":"","broker.credentials_file":"","broker.ca_file":"","delivery.token_files":map[string]string{},"delivery.ca_file":"",
 		"broker.mode":d.BrokerMode,"broker.url":"","broker.storage":d.Storage,"broker.replicas":d.Replicas,"broker.sync":"always",
 		"registry.namespace":d.Namespace,"registry.health_interval":d.HealthInterval,"delivery.allowed_origins":[]string{},"delivery.timeout":d.Timeout,
 		"delivery.workers":d.Workers,"delivery.retry_delay":d.RetryDelay,"delivery.max_attempts":d.MaxAttempts,"delivery.task_poll_interval":d.TaskPollInterval,"delivery.retention":7*24*time.Hour,"delivery.unreturned_retention":30*24*time.Hour,
@@ -42,7 +42,7 @@ func Command() *cobra.Command {
 		sync,err:=parseSync(v.GetString("broker.sync"));if err!=nil{return err}
 		cfg.BrokerSync=sync
 		if cfg.BrokerMode=="external"&&v.GetString("broker.sync")!="always"{slog.Warn("broker.sync is ignored with broker.mode=external")}
-		auth,err:=security.New(security.Config{OperatorFile:v.GetString("security.operator_token_file"),CollaboratorFile:v.GetString("security.collaborator_token_file"),ViewerFile:v.GetString("security.viewer_token_file")});if err!=nil{return err}
+		auth,err:=security.New(security.Config{OperatorFile:v.GetString("security.operator_token_file"),AgentFiles:v.GetStringMapString("security.agent_token_files"),ViewerFile:v.GetString("security.viewer_token_file")});if err!=nil{return err}
 		return run(cmd.Context(),cfg,v.GetString("server.listen"),v.GetString("server.public_url"),v.GetBool("server.trusted_network"),v.GetBool("observability.dashboard"),v.GetBool("protocols.mcp.enabled"),dashboard.Config{Schema:v.GetString("observability.dashboard_schema"),Theme:v.GetString("observability.dashboard_theme"),Refresh:v.GetDuration("observability.dashboard_refresh_interval")},auth,v.GetString("server.tls_cert_file"),v.GetString("server.tls_key_file"))
 	}}
 	f:=cmd.Flags()

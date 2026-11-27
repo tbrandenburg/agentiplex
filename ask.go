@@ -30,7 +30,7 @@ func(b *Bus) Ask(ctx context.Context,target,text,key string,timeout time.Duratio
 		d,err=b.Send(ctx,target,text,key)
 	}else{
 		var id string
-		if id,err=b.askID(target,text);err!=nil{return Delivery{},false,err}
+		if id,err=b.askID(callerID(ctx),target,text);err!=nil{return Delivery{},false,err}
 		d,err=b.sendWithID(ctx,target,text,id,"")
 	}
 	if err!=nil{return Delivery{},false,err}
@@ -51,11 +51,11 @@ func(b *Bus) Ask(ctx context.Context,target,text,key string,timeout time.Duratio
 
 // askID picks the first derived delivery that does not exist, is nonterminal,
 // or whose result was not returned yet.
-func(b *Bus) askID(target,text string)(string,error){
+func(b *Bus) askID(caller,target,text string)(string,error){
 	const gap=8
 	next,missing:="",0
 	for n:=0;missing<gap;n++{
-		h:=sha256.Sum256([]byte("ask\x00"+target+"\x00"+text+"\x00"+strconv.Itoa(n)))
+		h:=sha256.Sum256([]byte("ask\x00"+caller+"\x00"+target+"\x00"+text+"\x00"+strconv.Itoa(n)))
 		id:=hex.EncodeToString(h[:])
 		d,err:=b.rawDelivery(id)
 		if errors.Is(err,ErrNotFound){

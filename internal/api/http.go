@@ -87,7 +87,7 @@ func handlerMode(b *agentiplex.Bus,u *dashboard.UI,secured bool,publicURL ...str
 		d,err:=b.RecentDeliveries(limit);respond(w,200,d,err)
 	})
 	mux.HandleFunc("GET /api/v1/deliveries/{id}",func(w http.ResponseWriter,r *http.Request){
-		d,err:=b.Delivery(r.PathValue("id"));respond(w,200,d,err)
+		d,err:=b.DeliveryFor(r.Context(),r.PathValue("id"));respond(w,200,d,err)
 	})
 	mux.HandleFunc("POST /api/v1/deliveries/{id}/abandon",func(w http.ResponseWriter,r *http.Request){
 		var in struct{TaskID string `json:"taskId"`;RemoteStopped bool `json:"remoteStopped"`}

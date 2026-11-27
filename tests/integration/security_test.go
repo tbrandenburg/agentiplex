@@ -39,10 +39,12 @@ func TestSecureHTTPRolesA2AAndMCP(t *testing.T){
 	b:=open(t,config(t));a,_:=registerPair(t,b)
 	dir:=t.TempDir()
 	operator,collaborator,viewer:=strings.Repeat("o",48),strings.Repeat("c",48),strings.Repeat("v",48)
+	beta:=strings.Repeat("b",48)
 	opFile:=secretFile(t,dir,"operator",operator)
-	coFile:=secretFile(t,dir,"collaborator",collaborator)
+	coFile:=secretFile(t,dir,"alpha",collaborator)
+	betaFile:=secretFile(t,dir,"beta",beta)
 	viFile:=secretFile(t,dir,"viewer",viewer)
-	auth,err:=security.New(security.Config{OperatorFile:opFile,CollaboratorFile:coFile,ViewerFile:viFile})
+	auth,err:=security.New(security.Config{OperatorFile:opFile,AgentFiles:map[string]string{"alpha":coFile,"beta":betaFile},ViewerFile:viFile})
 	if err!=nil{t.Fatal(err)}
 	ui,err:=dashboard.New(dashboard.DefaultConfig());if err!=nil{t.Fatal(err)}
 	s:=httptest.NewUnstartedServer(nil)
@@ -58,7 +60,7 @@ func TestSecureHTTPRolesA2AAndMCP(t *testing.T){
 		resp,err:=s.Client().Do(req);if err!=nil{t.Fatal(err)};defer resp.Body.Close()
 		raw,err:=io.ReadAll(resp.Body);if err!=nil{t.Fatal(err)}
 		if resp.StatusCode!=want{t.Fatalf("%s %s returned %d want %d: %s",method,path,resp.StatusCode,want,raw)}
-		for _,secret:=range []string{operator,collaborator,viewer}{if strings.Contains(string(raw),secret){t.Fatal("credential disclosed in response")}}
+		for _,secret:=range []string{operator,collaborator,beta,viewer}{if strings.Contains(string(raw),secret){t.Fatal("credential disclosed in response")}}
 		return string(raw)
 	}
 	if body:=call("GET","/readyz","","","",200);strings.TrimSpace(body)!=`{"ready":true}`{t.Fatalf("public readyz body %q",body)}

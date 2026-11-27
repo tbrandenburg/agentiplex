@@ -31,6 +31,7 @@ type Delivery struct {
 	AssignedAgent string `json:"assignedAgent,omitempty"`
 	Children []ChildDelivery `json:"children,omitempty"`
 	ID string `json:"id"`
+	Caller string `json:"caller,omitempty"` // immutable authenticated agent ID; empty for operator/local submissions
 	IngressMessageID string `json:"ingressMessageId,omitempty"`
 	Target string `json:"target"`
 	Text string `json:"text"`
@@ -54,6 +55,7 @@ type Event struct {
 	Kind string `json:"kind"`
 	ID string `json:"id"`
 	State string `json:"state,omitempty"`
+	Caller string `json:"caller,omitempty"`
 	At time.Time `json:"at"`
 }
 

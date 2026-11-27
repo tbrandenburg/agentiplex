@@ -70,7 +70,7 @@ The same structured data contract accepts operation=broadcast (target is a group
 
 ## Authenticated deployment (PR #7)
 
-With secure server configuration, the public Agent Card advertises bearer authentication and A2A requests require the operator or collaborator token over verified HTTPS. Outbound A2A bearer credentials are configured by explicitly allowed HTTPS origin and mounted file; they are not accepted from registered cards or stored in JetStream. See [DEPLOYMENT.md](DEPLOYMENT.md).
+With secure server configuration, the public Agent Card advertises bearer authentication and A2A requests require the caller's own agent token (or the operator token) over verified HTTPS. The server resolves it to the caller ID; `messageId` identity is scoped by caller (two agents may use the same `messageId` independently, a retry by the same agent returns its existing task) and `GetTask` returns only the caller's own tasks (others are TaskNotFound). Outbound A2A bearer credentials are configured by explicitly allowed HTTPS origin and mounted file; they are not accepted from registered cards or stored in JetStream. See [DEPLOYMENT.md](DEPLOYMENT.md).
 
 ## Long-running accepted tasks
 

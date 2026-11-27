@@ -24,7 +24,7 @@ func(b *Bus) Register(ctx context.Context,id,url string)(Agent,error){
 	_,err=b.store.Registry.Create(id,raw)
 	if errors.Is(err,nats.ErrKeyExists){return Agent{},ErrConflict}
 	if err!=nil{return Agent{},err}
-	b.emit("agent.registered",id,"")
+	b.emit("agent.registered",id,"","")
 	return a,nil
 }
 

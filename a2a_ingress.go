@@ -67,7 +67,7 @@ func (b *Bus) SendMessage(ctx context.Context, req *a2a.SendMessageRequest) (a2a
 	}
 
 	// The reserved prefix cannot collide with UUIDs or hex-only CLI hashes.
-	hash := sha256.Sum256([]byte(msg.ID))
+	hash := sha256.Sum256([]byte(scopedKey(callerID(ctx), msg.ID)))
 	id := ingressPrefix + hex.EncodeToString(hash[:30])
 	var d Delivery
 	var err error
@@ -126,7 +126,7 @@ func (b *Bus) GetTask(ctx context.Context, req *a2a.GetTaskRequest) (*a2a.Task, 
 	if !strings.HasPrefix(string(req.ID), ingressPrefix) || !validID.MatchString(string(req.ID)) {
 		return nil, a2a.ErrTaskNotFound
 	}
-	d, err := b.Delivery(string(req.ID))
+	d, err := b.DeliveryFor(ctx, string(req.ID))
 	if errors.Is(err, ErrNotFound) {
 		return nil, a2a.ErrTaskNotFound
 	}

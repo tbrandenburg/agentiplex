@@ -19,6 +19,6 @@ func (b *Bus) AbandonTask(ctx context.Context,id,taskID string,remoteStopped boo
 	if d.State!="accepted"||d.Kind=="broadcast"||string(d.TaskID)!=taskID{return Delivery{},fmt.Errorf("%w: expected accepted downstream task",ErrConflict)}
 	if err=b.save(&d,"uncertain","operator abandoned monitoring after confirming remote stopped; outcome unknown; no automatic replay");err!=nil{return Delivery{},err}
 	// The next broker redelivery sees the terminal record and acknowledges it.
-	b.emit("delivery.abandoned",id,d.State)
+	b.emit("delivery.abandoned",id,d.State,d.Caller)
 	return d,nil
 }
