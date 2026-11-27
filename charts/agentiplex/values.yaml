@@ -8,7 +8,7 @@ mcp: true
 dashboard: true
 # Pre-existing secrets; never pass secret values as Helm values.
 authSecret: agentiplex-auth # operator, viewer and one agent-<id> key per entry of agents
-agents: [demo] # logical agent IDs that receive their own credential
+agents: [] # logical agent IDs that receive their own credential
 tlsSecret: agentiplex-tls # tls.crt, tls.key
 broker:
   url: tls://nats:4222

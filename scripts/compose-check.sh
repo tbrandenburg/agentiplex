@@ -3,6 +3,7 @@ set -Eeuo pipefail
 cd "$(dirname "$0")/.."
 # Run only against the isolated, disposable test project.
 export COMPOSE_PROJECT_NAME=agentiplex-check
+export COMPOSE_FILE=examples/engineering-team/compose.yaml
 test ! -e .demo-secrets || { echo "Refusing to modify existing .demo-secrets"; exit 1; }
 bash scripts/demo-secrets.sh
 cleanup(){
