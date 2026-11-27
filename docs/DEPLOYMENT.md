@@ -9,6 +9,55 @@
 
 These are single-daemon deployments, not HA. Never run a second daemon in the same JetStream namespace. Network policies/firewalls, resource sizing, backup, broker accounts/ACLs, certificate issuance, secret rotation and operational hardening remain operator responsibilities.
 
+## Distributed deployment (agents on other hosts)
+
+```
+ agent host A..N                               daemon host
+ +-----------------------+   HTTPS  MCP/A2A   +---------------------------+
+ | independent A2A agent | -----------------> | agentiplexd (one)         |
+ | + MCP/A2A client      | <----------------- |  - public_url, TLS        |
+ +-----------------------+  HTTPS  A2A send   |  - embedded or external   |
+                            (+ GetTask polls)  |    JetStream (private)    |
+                                               +---------------------------+
+```
+
+- One daemon per namespace, one JetStream (embedded, or external on a private network). Agents never connect to the broker; the embedded broker listens on a loopback ephemeral port only.
+- Two HTTPS paths are required and independent: caller to daemon (`/mcp`, `/a2a`, REST; the agent's own bearer token) and daemon to every recipient (card fetch, SendMessage, GetTask; per-origin outbound bearer token). One administrative trust domain; shared state is shared (see principal model).
+- While the daemon is down nothing is admitted and callers must retry; there is no HA, failover or second daemon. Accepted work continues on the recipients and is observed again after restart.
+
+**Prerequisites**
+1. `server.public_url`: the HTTPS origin the agents resolve, with a certificate whose SAN matches it. Agents trust the issuing CA explicitly (`--ca-file`, MCP client `--ca-file`, curl `--cacert`; system roots such as `SSL_CERT_FILE` work for Go clients that use the default pool).
+2. Recipients: each agent's card must advertise an origin the daemon can reach (`https://agent-a.internal:8443/...`, never `localhost`, `127.0.0.1` or a laptop-only address: on the daemon host that is the daemon itself). Add each origin to `delivery.allowed_origins` (explicit; no wildcard; loopback origins are always allowed, so an allowlist is only exercised with non-loopback origins), trust the agents' CA with `delivery.ca_file`, and give each origin one bearer token (`registry.agents.<id>.outbound_token_file` or `delivery.token_files`). TLS skip-verify does not exist; do not put credentials in URLs, cards or logs.
+3. Callers: one `registry.agents.<id>.token_file` per agent, distinct from every other credential. Example (all values are files, nothing secret appears in YAML):
+
+```yaml
+server: {listen: "0.0.0.0:8443", public_url: "https://agentiplex.internal:8443", tls_cert_file: /run/secrets/tls.crt, tls_key_file: /run/secrets/tls.key}
+protocols: {mcp: {enabled: true}}
+security: {operator_token_file: /run/secrets/operator}
+registry:
+  agents:
+    pm:      {url: "https://pm.internal:8443",      token_file: /run/secrets/pm,      outbound_token_file: /run/secrets/pm-recipient}
+    builder: {url: "https://builder.internal:8443", token_file: /run/secrets/builder, outbound_token_file: /run/secrets/builder-recipient}
+  groups: {team: [pm, builder]}
+delivery:
+  allowed_origins: ["https://pm.internal:8443", "https://builder.internal:8443"]
+  ca_file: /run/secrets/agent-ca.crt
+```
+
+4. Reachability checks, run **from the daemon host/network** before registering: `curl --cacert agent-ca.crt https://pm.internal:8443/.well-known/agent-card.json` and the same card URL must list a `supportedInterfaces` URL on the same origin. From each agent host: `agentiplex --server https://agentiplex.internal:8443 --ca-file ca.crt --token-file <own token> agents list`. A startup failure for an unresolvable declared agent is deliberate (start the agents first).
+5. VPN, tunnel or routing is the operator's: it must provide **both directions**. A tunnel that only lets agents reach the daemon is not enough, because the daemon opens the connection to each recipient. A target behind NAT with no permitted inbound path (even through the tunnel/VPN) cannot be a recipient with today's protocol; it can still be a caller. No pull connector or reverse delivery exists.
+6. Retry contract: every submission needs an `idempotencyKey` (MCP/REST) or a stable `messageId` (A2A). After a dropped connection, timeout, daemon restart or SIGKILL, repeat the same key with the same target and text; an accepted task is observed again and never sent twice.
+
+**Constraints and decision**
+- Latency adds one round trip per daemon-to-agent HTTP operation; `delivery.timeout` is per HTTP operation, not per task. Pre-submission failures are retried `delivery.max_attempts` times at `delivery.retry_delay`; accepted tasks are polled indefinitely.
+- Proxies and load balancers between hosts: nginx `proxy_read_timeout` defaults to 60 s between reads and AWS ALB idle timeout to 60 s (1-4000 s). Blocking MCP `ask` and blocking A2A SendMessage hold one response open without bytes; a shorter proxy limit drops that connection (the work is not cancelled). Raise the idle timeouts on the path, or prefer `send_message`/`returnImmediately` plus polling.
+- Not claimed: HA, host or storage failure survival with embedded storage on a non-durable volume, tenant isolation, OAuth, mTLS.
+- Decision: the current architecture is sufficient for routed or tunneled networks with bidirectional HTTPS reachability. Nothing in this validation justified a new transport.
+
+**Client support** (verified): the `agentiplex` CLI, `examples/mcp-client` and curl set the bearer header and CA trust; the daemon's own outbound client uses the official A2A Go SDK with origin-scoped tokens. Hosts that cannot send a static `Authorization` header or trust a private CA cannot be callers; no real model gateway was exercised (simulator only), so none is claimed.
+
+**Validated scenarios and limitations.** Run on a single machine, not on multiple hosts: one daemon, three independent HTTPS recipient processes on distinct loopback addresses (127.0.0.x), verified private CA, per-agent tokens and the YAML above (embedded broker on tmpfs because the host disk was nearly full, so host-crash durability was not tested). Passed: discovery, direct work by MCP and A2A, group and pool operations, a recipient killed before delivery and restarted (delivery queued, 5 attempts, executed once), healthy agents progressing meanwhile, a slow task surviving daemon SIGKILL and restart and collected with the original key/messageId with exactly one execution, no admission while the daemon was down, broker bound to loopback with only the daemon connected, an unapproved non-loopback origin rejected, a certificate from an untrusted CA rejected (x509 unknown authority), a wrong token 401. Not covered: real network partitions, NAT, proxies, latency, real gateways, multi-host routing.
+
 ## Static credentials and TLS
 
 Generate distinct high-entropy URL-safe secrets (32–512 characters; e.g. openssl rand -hex 32). Mount one file per role and configure paths, not values:
@@ -106,7 +155,7 @@ delivery:
     "https://architect.example:8443": /run/secrets/architect-token
 ```
 
-Tokens are attached only to the approved HTTPS origin (card resolution, send and task polling); redirects are not followed, and the interface must match the card's origin. URLs containing credentials are rejected. The public Agentiplex card advertises bearer auth when secured. MCP hosts may supply a static bearer header if supported; OAuth discovery, individual agent identity, fine-grained authorization, cross-tenant boundaries, mTLS client authentication and enterprise SSO are not implemented.
+Tokens are attached only to the approved HTTPS origin (card resolution, send and task polling); redirects are not followed, and the interface must match the card's origin. URLs containing credentials are rejected. The public Agentiplex card advertises bearer auth when secured. MCP hosts may supply a static bearer header if supported; OAuth discovery, cross-tenant boundaries, mTLS client authentication and enterprise SSO are not implemented.
 
 Embedded broker durability: `broker.sync` (default `always`) fsyncs every acknowledged JetStream write, so a host crash or power loss does not roll back accepted work; `kill -9` of the daemon is covered by `tests/integration/kill_restart_test.go`. A duration such as `2m` selects the nats-server background fsync interval instead: faster, but a host crash may lose up to that window of acknowledged writes (a process kill still loses nothing). Valid values are `always` or 1s–1h. Indicative cost on a low-end 2-core Celeron under concurrent load (`go test ./tests/integration -run xxx -bench BrokerSync -benchtime 30x`, local simulated agent): Send latency 16.8 ms with `always` vs 4.5 ms with `2m`; end-to-end delivery throughput 21 vs 68 deliveries/s. Agent traffic is low, so this is accepted; re-measure on your storage. For external or replicated NATS, `broker.sync` is ignored and durability follows the cluster configuration (server `sync_interval`, JetStream replication and storage).
 
@@ -171,7 +220,7 @@ The Release workflow runs only on vMAJOR.MINOR.PATCH[-prerelease] tags whose com
 
 ## Security limits
 
-This is a first network deployment boundary, not production multi-tenant security. The static role model does not scope a caller to specific deliveries, agents, or state keys. No identity provider, automatic credential rotation, HA, external policy engine or audit certification. Dashboard schema execution remains trusted operator configuration; the AMIS bundled dependency review remains open. Do not expose the old unauthenticated demo to untrusted networks. See [STATE.md](STATE.md), [MCP.md](MCP.md) and [DASHBOARD.md](DASHBOARD.md).
+This is a first network deployment boundary, not production multi-tenant security. Agents read only their own deliveries, but shared state and notes are writable by every agent and there are no per-key policies. No identity provider, automatic credential rotation, HA, external policy engine or audit certification. Dashboard schema execution remains trusted operator configuration; the AMIS bundled dependency review remains open. Do not expose the old unauthenticated demo to untrusted networks. See [STATE.md](STATE.md), [MCP.md](MCP.md) and [DASHBOARD.md](DASHBOARD.md).
 
 ## MVP operational limits
 

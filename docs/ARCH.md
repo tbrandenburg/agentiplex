@@ -13,7 +13,7 @@
 | Native A2A 1.0 HTTP at the boundaries | Interoperate with existing agents and clients using official SDKs; NATS is internal, not a new claimed A2A binding. |
 | AI Catalog as publication/discovery representation | Use existing catalog types and validation. JetStream KV implements the local mutable registry; no custom discovery standard. |
 | No workflow orchestration | Supply communication primitives; applications own contracts, routing intent and reasoning. |
-| Deployment via configuration | Same daemon for native, OCI and Kubernetes; platform packaging outside the Go core. |
+| Deployment via configuration | Same daemon for native, OCI and Kubernetes; platform packaging outside the Go core. Agents on other hosts need bidirectional HTTPS only: see [distributed deployment](DEPLOYMENT.md#distributed-deployment-agents-on-other-hosts). |
 
 These are proposed initial decisions, not evidence of a working implementation.
 
