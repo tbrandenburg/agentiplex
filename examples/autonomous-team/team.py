@@ -239,7 +239,7 @@ def verify_evidence(e):
     if not any(s["key"] == "pm" and s.get("revision", 0) > 0 and s.get("value") for s in e["state"]):
         raise RuntimeError("missing PM shared-state evidence")
     workers = {d.get("assignedAgent") or d["target"] for d in worker}
-    if not any(s["key"] in workers and s.get("revision", 0) > 0 and s.get("value") for s in e["state"]):
+    if not any(s.get("revision", 0) > 0 and s.get("value") and (s["key"] in workers or any(s["key"].startswith("note-%s-" % w) for w in workers)) for s in e["state"]):
         raise RuntimeError("missing real worker shared-state evidence")
 
     # Infrastructure acceptance is based on the authoritative delivery and

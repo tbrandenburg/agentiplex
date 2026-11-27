@@ -149,6 +149,12 @@ class TeamTests(unittest.TestCase):
         assessment = team.verify_evidence(e)
         self.assertEqual(["worker-1"], assessment["completedRealWorkerReceipts"])
         self.assertTrue(assessment["exactReceiptCitation"])
+        e["state"][1]["key"] = "note-architect-01795757362334294238-70f9e1f3"
+        self.assertEqual(["worker-1"], team.verify_evidence(e)["completedRealWorkerReceipts"])
+        e["state"][1]["key"] = "note-tester-1-01795757362334294238-70f9e1f3"
+        with self.assertRaisesRegex(RuntimeError, "worker shared-state"):
+            team.verify_evidence(e)
+        e["state"][1]["key"] = "architect"
         e["agents"][1]["runtime"] = "simulated"
         with self.assertRaises(RuntimeError):
             team.verify_evidence(e)
