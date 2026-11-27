@@ -2,7 +2,7 @@ name: agentiplex-demo
 x-simulator: &simulator
   image: agentiplex-simulator:demo
   build:
-    context: .
+    context: ../..
     target: simulator
   restart: "no"
   security_opt: [no-new-privileges:true]
@@ -30,7 +30,7 @@ services:
     image: agentiplex:demo
     restart: unless-stopped
     build:
-      context: .
+      context: ../..
       target: release
     depends_on:
       nats:
@@ -95,20 +95,20 @@ networks:
 volumes:
   jetstream: {}
 configs:
-  registry: {file: examples/engineering-team/compose-registry.yaml}
+  registry: {file: compose-registry.yaml}
 secrets:
-  server.crt: {file: .demo-secrets/server.crt}
-  server.key: {file: .demo-secrets/server.key}
-  ca.crt: {file: .demo-secrets/ca.crt}
-  operator: {file: .demo-secrets/operator}
-  agent-pm: {file: .demo-secrets/agent-pm}
-  agent-architect: {file: .demo-secrets/agent-architect}
-  agent-developer: {file: .demo-secrets/agent-developer}
-  agent-tester-1: {file: .demo-secrets/agent-tester-1}
-  agent-tester-2: {file: .demo-secrets/agent-tester-2}
-  agent-quality: {file: .demo-secrets/agent-quality}
-  viewer: {file: .demo-secrets/viewer}
-  nats-token: {file: .demo-secrets/nats-token}
-  nats.conf: {file: .demo-secrets/nats.conf}
-  nats.crt: {file: .demo-secrets/nats.crt}
-  nats.key: {file: .demo-secrets/nats.key}
+  server.crt: {file: ../../.demo-secrets/server.crt}
+  server.key: {file: ../../.demo-secrets/server.key}
+  ca.crt: {file: ../../.demo-secrets/ca.crt}
+  operator: {file: ../../.demo-secrets/operator}
+  agent-pm: {file: ../../.demo-secrets/agent-pm}
+  agent-architect: {file: ../../.demo-secrets/agent-architect}
+  agent-developer: {file: ../../.demo-secrets/agent-developer}
+  agent-tester-1: {file: ../../.demo-secrets/agent-tester-1}
+  agent-tester-2: {file: ../../.demo-secrets/agent-tester-2}
+  agent-quality: {file: ../../.demo-secrets/agent-quality}
+  viewer: {file: ../../.demo-secrets/viewer}
+  nats-token: {file: ../../.demo-secrets/nats-token}
+  nats.conf: {file: ../../.demo-secrets/nats.conf}
+  nats.crt: {file: ../../.demo-secrets/nats.crt}
+  nats.key: {file: ../../.demo-secrets/nats.key}

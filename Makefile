@@ -87,10 +87,10 @@ docker:
 
 compose-up:
 	@test -d .demo-secrets || bash scripts/demo-secrets.sh
-	docker compose up -d --build --wait
+	docker compose -f examples/engineering-team/compose.yaml up -d --build --wait
 
 compose-down:
-	docker compose down
+	docker compose -f examples/engineering-team/compose.yaml down
 
 release-plan:
 	bash scripts/release.sh --dry-run
