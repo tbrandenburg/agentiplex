@@ -95,6 +95,14 @@ Delivery records show who was asked and whether it completed, not which MCP tool
 **Cleanup is yours:** stop only the processes you started (Ctrl+C in each terminal), review the diff, then delete `$RUN` and the
 storage directory.
 
+## Secure mode (verified HTTPS + per-agent tokens)
+Not complete on stock gateway 0.9.0 (private CA cannot reach OpenCode); prerequisites, blocker, edits and evidence are in
+[../README.md](../README.md#secure-mode-verified-https--per-agent-tokens). For this team: copy `team.yaml`, add the `server` TLS
+fields and `security` tokens, add `token_file` to the five `registry.agents` entries, point the MCP `url` and header of a copy of
+`opencode.json` at `https://localhost:19080/mcp`, start each of the five gateways with its own `AGENTIPLEX_TOKEN` and
+`--pass-env AGENTIPLEX_TOKEN` (the `gw` helper accepts extra flags; `--no-env` gateways need it removed for the token), start
+`bin/agentiplexd --config <your copy>` and use `bin/agentiplex --ca-file ... --token-file <operator>`. Existing policies are unchanged.
+
 ## Customize and restart
 - **Add a team member** (a second tester, a docs reviewer): add `name: {url: ...}` to `registry.agents` in `team.yaml`, start
   another gateway on that port with its `A2A_*` identity and the `reader`/`writer` policy, restart the daemon. Only

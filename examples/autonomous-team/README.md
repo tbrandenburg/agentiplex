@@ -85,6 +85,14 @@ and the storage directory. The gateway is not an OS sandbox; use a disposable ho
   read delivery status, use shared state and the append-only `note`/`read_notes`. Grants are least-privilege hygiene,
   not an OS boundary.
 
+## Secure mode (verified HTTPS + per-agent tokens)
+Not complete on stock gateway 0.9.0 (private CA cannot reach OpenCode); prerequisites, blocker, edits and evidence are in
+[../README.md](../README.md#secure-mode-verified-https--per-agent-tokens). For this team: copy `team.yaml`, add the `server` TLS
+fields and `security` tokens and a `token_file` for all six `registry.agents` entries (including the simulated ones; the
+simulated agents are plain loopback HTTP endpoints and need no token themselves), use `https://localhost:19080/mcp` plus the
+`oauth`/`headers` entries in the `mcp` block of both `$RUN/pm` and `$RUN/architect` copies of `opencode.json`, start the two gateways with their own
+`AGENTIPLEX_TOKEN` and `--pass-env AGENTIPLEX_TOKEN` instead of `--no-env`, start `bin/agentiplexd --config <your copy>` and use the operator CLI flags.
+
 ## Provider-free verification (no model)
 ```sh
 make examples-check                          # real daemon + simulated agents on each team.yaml, policy checks
