@@ -5,11 +5,12 @@ full-access OpenCode agents. The core middleware does not depend on any of this.
 
 ## Setup
 - Go 1.26+, Python 3.10+, Git, Make, Node/npm, and Bun 1.4.4 (the gateway needs `bun` on PATH).
-- Install the pinned tools (the gateway is the scoped package, not `opencode-a2a-lite`):
+- `opencode` (2.3.2 or newer) and `bun` must be on PATH. The gateway needs no installation: the launchers use an
+  installed `opencode-a2a-lite` (0.9.0 or newer) if one is on PATH, and otherwise fetch
+  `@tbrandenburg/opencode-a2a-lite@^0.9.0` with `npx` on first use (needs network). To install it yourself:
   ```sh
-  npm install --global @opencode/cli@2.3.2 @tbrandenburg/opencode-a2a-lite@0.9.0
+  npm install --global @tbrandenburg/opencode-a2a-lite
   ```
-  Or use `npm install --prefix <dir>` and prepend `<dir>/node_modules/.bin` to PATH.
   "OpenCode 2.3.2 or newer" is accepted, but 2.4.1 is no more reliable than 2.3.2 (see below).
 
 ## Private repositories

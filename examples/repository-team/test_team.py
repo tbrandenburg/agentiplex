@@ -1,6 +1,7 @@
 import json
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+import os
 import subprocess
 import sys
 import tempfile
@@ -131,7 +132,7 @@ class RepositoryTests(unittest.TestCase):
         agents = team.load_roster(path)
         self.assertLessEqual(len(path.read_text().splitlines()), 10)
         self.assertEqual("pm", agents[0]["id"])
-        args = SimpleNamespace(gateway="opencode-a2a-lite", prompt_timeout="10m", pass_env=["EXAMPLE_API_KEY"], accept_full_access=True)
+        args = SimpleNamespace(gateway=["opencode-a2a-lite"], prompt_timeout="10m", pass_env=["EXAMPLE_API_KEY"], accept_full_access=True)
         for a in agents:
             profile, rules = team.policy_for(agents, a)
             self.assertEqual(a["access"], profile)
@@ -167,7 +168,7 @@ class RepositoryTests(unittest.TestCase):
                 team.load_roster(path)
 
     def test_full_access_requires_acknowledgement(self):
-        args = SimpleNamespace(gateway="gateway", prompt_timeout="10m", pass_env=[], accept_full_access=False)
+        args = SimpleNamespace(gateway=["gateway"], prompt_timeout="10m", pass_env=[], accept_full_access=False)
         with self.assertRaisesRegex(ValueError, "--accept-full-access"):
             team.gateway_command(args, self.workspace, self.root / "policy.json", "full-access")
         # Entry point also fails before accessing a checkout or starting anything.
@@ -194,7 +195,7 @@ class RepositoryTests(unittest.TestCase):
             self.assertIn(message, result.stderr)
 
     def test_endpoints_start_first_then_daemon_registers_them_from_config(self):
-        args = SimpleNamespace(port=19080, headless=True, gateway="gateway", prompt_timeout="10m",
+        args = SimpleNamespace(port=19080, headless=True, gateway=["gateway"], prompt_timeout="10m",
                                pass_env=[], workspace=self.workspace, accept_full_access=True)
         agents = team.load_roster(Path(team.__file__).with_name("team.json"))
         runner = team.RepositoryTeam(args, {"agents": agents}, self.root, float("inf"))
@@ -348,6 +349,41 @@ class RepositoryTests(unittest.TestCase):
         subprocess.run(["git", "-C", str(self.workspace), "add", "README.md"], check=True)
         with self.assertRaisesRegex(RuntimeError, "index"):
             repo.save_workspace_evidence(self.workspace, before, evidence, self.config["model"])
+
+
+class GatewayResolutionTests(unittest.TestCase):
+    def fake(self, directory, name, version):
+        path = Path(directory) / name
+        path.write_text("#!/bin/sh\necho " + version + "\n")
+        path.chmod(0o755)
+
+    def resolve(self, directory, name="opencode-a2a-lite"):
+        with patch.dict(os.environ, {"PATH": directory}):
+            return teamlib.resolve_gateway(name)
+
+    def test_installed_newer_gateway_is_accepted(self):
+        with tempfile.TemporaryDirectory() as d:
+            self.fake(d, "opencode-a2a-lite", "0.10.2")
+            self.assertEqual([str(Path(d) / "opencode-a2a-lite")], self.resolve(d))
+
+    def test_installed_old_gateway_is_rejected(self):
+        with tempfile.TemporaryDirectory() as d:
+            self.fake(d, "opencode-a2a-lite", "0.8.3")
+            with self.assertRaisesRegex(ValueError, "0.9.0 or newer"):
+                self.resolve(d)
+
+    def test_missing_gateway_uses_binary_located_by_npx(self):
+        with tempfile.TemporaryDirectory() as d, tempfile.TemporaryDirectory() as cache:
+            self.fake(cache, "opencode-a2a-lite", "0.9.1")
+            npx = Path(d) / "npx"
+            npx.write_text("#!/bin/sh\necho " + str(Path(cache) / "opencode-a2a-lite") + "\n")
+            npx.chmod(0o755)
+            self.assertEqual([str(Path(cache) / "opencode-a2a-lite")], self.resolve(d))
+
+    def test_missing_gateway_and_npx_is_actionable(self):
+        with tempfile.TemporaryDirectory() as d:
+            with self.assertRaisesRegex(ValueError, "npx"):
+                self.resolve(d)
 
 
 if __name__ == "__main__":

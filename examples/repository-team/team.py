@@ -5,7 +5,6 @@ import json
 import os
 from pathlib import Path
 import re
-import shutil
 import signal
 import socket
 import subprocess
@@ -68,7 +67,7 @@ def log_tail(path, lines=3, width=300):
 def gateway_command(args, workspace, policy_path, profile):
     if profile == "full-access" and not args.accept_full_access:
         raise ValueError("full access requires --accept-full-access")
-    command = [args.gateway, "--workspace", str(workspace), "--port", "0", "--access", ACCESS[profile],
+    command = [*args.gateway, "--workspace", str(workspace), "--port", "0", "--access", ACCESS[profile],
                "--policy-file", str(policy_path), "--prompt-timeout", args.prompt_timeout]
     for key in args.pass_env:
         command += ["--pass-env", key]
@@ -230,9 +229,10 @@ def main():
         (model["model"] == "big-pickle" or model["model"].endswith("-free"))
     ):
         p.error("credential-free runs require the OpenCode default or an explicitly selected OpenCode free model")
-    args.gateway = shutil.which(args.gateway)
-    if not args.gateway or subprocess.check_output([args.gateway, "--version"], env=teamlib.clean_environment(), timeout=15, text=True).strip() != "0.9.0":
-        p.error("install pinned opencode-a2a-lite 0.9.0")
+    try:
+        args.gateway = teamlib.resolve_gateway(args.gateway)
+    except ValueError as err:
+        p.error(str(err))
     if not teamlib.opencode_supported(subprocess.check_output(["opencode", "--version"], env=teamlib.clean_environment(), timeout=15, text=True).strip()):
         p.error("install stable OpenCode 2.3.2 or newer")
     if args.port:

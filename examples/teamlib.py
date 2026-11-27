@@ -7,6 +7,7 @@ import json
 import os
 from pathlib import Path
 import re
+import shutil
 import signal
 import socket
 import subprocess
@@ -33,6 +34,34 @@ def clean_environment():
     env = {k: os.environ[k] for k in keys if k in os.environ}
     env["NO_PROXY"] = "127.0.0.1,localhost"
     return env
+
+
+GATEWAY_PACKAGE = "@tbrandenburg/opencode-a2a-lite"
+
+
+def _version(text):
+    match = re.search(r"(\d+)\.(\d+)\.(\d+)", text)
+    return tuple(map(int, match.groups())) if match else ()
+
+
+def resolve_gateway(name):
+    """Gateway command as a list: an installed binary >= 0.9.0, else the cached binary fetched by npx.
+
+    npx only locates/caches the package; the binary is then run directly so the launcher owns
+    (and can stop) the real gateway process instead of an npx wrapper that would orphan it.
+    """
+    env = clean_environment()
+    found = shutil.which(name)
+    if not found and shutil.which("npx"):
+        out = subprocess.check_output(["npx", "--yes", "--package=" + GATEWAY_PACKAGE + "@^0.9.0", "-c", "command -v " + name],
+                                      env=env, timeout=180, text=True)
+        found = out.strip().splitlines()[-1] if out.strip() else None
+    if not found:
+        raise ValueError("opencode-a2a-lite not found: install it or install Node/npm so npx can fetch " + GATEWAY_PACKAGE)
+    version = subprocess.check_output([found, "--version"], env=env, timeout=30, text=True)
+    if _version(version) < (0, 9, 0):
+        raise ValueError("opencode-a2a-lite 0.9.0 or newer required, found " + (version.strip() or "unknown"))
+    return [found]
 
 
 def opencode_supported(version):

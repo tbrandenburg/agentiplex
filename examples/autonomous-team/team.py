@@ -17,7 +17,7 @@ HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
 sys.path.insert(0, str(HERE.parent))
 import teamlib
-from teamlib import (DELEGATE_TOOLS, ID, READ_TOOLS, TERMINAL, call_evidence, clean_environment,
+from teamlib import (DELEGATE_TOOLS, resolve_gateway, ID, READ_TOOLS, TERMINAL, call_evidence, clean_environment,
                      get, opencode_supported, policy, valid_prompt_timeout)
 
 
@@ -113,7 +113,7 @@ class Team(teamlib.Team):
                            A2A_TAGS=skill + ",real-opencode")
                 for key in self.args.pass_env:
                     env[key] = os.environ[key]
-                cmd = [self.args.gateway, "--workspace", str(project), "--port", "0",
+                cmd = [*self.args.gateway, "--workspace", str(project), "--port", "0",
                        "--access", "read", "--policy-file", str(policy),
                        "--prompt-timeout", self.args.prompt_timeout]
                 for key in self.args.pass_env:
@@ -291,9 +291,10 @@ def main():
         elif args.model and not (args.model == "opencode/big-pickle" or
                                  re.fullmatch(r"opencode/[a-z0-9][a-z0-9.-]*-free", args.model)):
             p.error("credential-free mode requires OpenCode default, opencode/big-pickle or an opencode/*-free model")
-        args.gateway = shutil.which(args.gateway)
-        if not args.gateway or subprocess.check_output([args.gateway, "--version"], env=clean_environment(), timeout=15, text=True).strip() != "0.9.0":
-            p.error("install pinned opencode-a2a-lite 0.9.0")
+        try:
+            args.gateway = resolve_gateway(args.gateway)
+        except ValueError as err:
+            p.error(str(err))
         opencode_version = subprocess.check_output(["opencode", "--version"], env=clean_environment(), timeout=15, text=True).strip()
         if not opencode_supported(opencode_version):
             p.error("install stable OpenCode 2.3.2 or newer")
