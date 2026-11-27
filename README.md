@@ -90,12 +90,16 @@ See the [A2A contract](docs/A2A.md) and [MCP tools](docs/MCP.md).
 > approved outbound agent origins using the [deployment guide](docs/DEPLOYMENT.md).
 >
 > **Agent identity:** in secure mode every agent has its own bearer credential
-> (`security.agent_token_files`); the server resolves it to the caller across A2A,
+> (`registry.agents.<id>.token_file` or `security.agent_token_files`); the server resolves it to the caller across A2A,
 > MCP and REST. Agents see only their own deliveries and results, idempotency
 > keys are per agent, and note authors are set by the server. The former shared
 > collaborator credential is removed (breaking change; see the principal model,
 > access matrix, rotation and upgrade notes in [deployment](docs/DEPLOYMENT.md)).
 > Shared team state is not tenant isolation.
+
+## Static registry
+
+Agents, groups and pools can be declared in the YAML `registry` block and are applied additively at startup before the daemon reports ready; see [deployment](docs/DEPLOYMENT.md#static-registry-declarative-provisioning) for schema, credentials and conflict/offline/omission semantics. Dynamic CLI/API registration remains available.
 
 ## Examples
 

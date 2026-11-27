@@ -30,7 +30,38 @@ protocols:
     enabled: true
 ```
 
-The operator file is required in secure mode; viewer is required if the dashboard is enabled; each named agent gets its own file in `security.agent_token_files` (environment: a JSON object in `AGENTIPLEX_SECURITY_AGENT_TOKEN_FILES`). Every token (operator, viewer, each agent) must be distinct, 32-512 URL-safe characters, in a bounded file; agent IDs must be valid logical IDs (not `operator`/`viewer`). Only SHA-256 digests are held in memory; raw tokens are never stored in cards, KV, events, logs or responses. TLS and explicit HTTPS origin are mandatory when authentication is enabled; no forwarded-header trust or plaintext authenticated proxy hop. Use native TLS, a TLS-passthrough gateway or a gateway that re-encrypts/verifies the backend connection. The trusted-network flag remains for isolated unauthenticated demonstrations only; it is not a secure-mode fallback and never to be exposed publicly. The OCI image defaults to loopback inside the container.
+The operator file is required in secure mode; viewer is required if the dashboard is enabled; each named agent gets its own file in `registry.agents.<id>.token_file` or `security.agent_token_files` (environment: a JSON object in `AGENTIPLEX_SECURITY_AGENT_TOKEN_FILES`). Every token (operator, viewer, each agent) must be distinct, 32-512 URL-safe characters, in a bounded file; agent IDs must be valid logical IDs (not `operator`/`viewer`). Only SHA-256 digests are held in memory; raw tokens are never stored in cards, KV, events, logs or responses. TLS and explicit HTTPS origin are mandatory when authentication is enabled; no forwarded-header trust or plaintext authenticated proxy hop. Use native TLS, a TLS-passthrough gateway or a gateway that re-encrypts/verifies the backend connection. The trusted-network flag remains for isolated unauthenticated demonstrations only; it is not a secure-mode fallback and never to be exposed publicly. The OCI image defaults to loopback inside the container.
+
+### Static registry (declarative provisioning)
+
+A static team can start from configuration alone. Optional maps under `registry` (config file only, no environment override):
+
+```yaml
+registry:
+  namespace: engineering
+  agents:
+    pm:        {url: https://pm.example.org,        token_file: /run/secrets/pm}
+    architect: {url: https://architect.example.org, token_file: /run/secrets/architect,
+                outbound_token_file: /run/secrets/architect-recipient}
+  groups: {engineering: [pm, architect]}
+  pools:  {reviewers: [architect]}
+```
+
+- `url` (required): A2A base URL or Agent Card URL. Descriptions and skills come from the native card, never from YAML.
+- `token_file`: inbound bearer credential bound to that agent ID through the same principal model as `security.agent_token_files`; required in secure mode. Use `security.agent_token_files` only for credential IDs that are not declared here; an ID credentialed in both places is rejected.
+- `outbound_token_file`: Agentiplex-to-recipient bearer credential, merged into the `delivery.token_files` mechanism by the agent's HTTPS origin (the origin must be allowed as usual). Agents sharing an origin must use the same secret; different secrets for one origin, or a conflict with `delivery.token_files`, are rejected. Allowlist, same-origin card validation, TLS verification and no-redirect rules are unchanged.
+- `groups` / `pools`: ID to member agent IDs (declared here or already registered).
+
+Unknown fields, duplicate YAML keys, invalid IDs, missing URLs, repeated or unknown members and inconsistent credentials fail startup before any write.
+
+**Startup order:** open storage, auth and transport; validate and apply the registry (agents sorted by ID, then groups, then pools); only then listen. `/readyz` and the "ready" log line therefore imply the whole declaration was applied; any failure exits non-zero.
+
+**Semantics (additive, not authoritative):**
+- An identical existing registration is a no-op (no new record or event); if that endpoint is temporarily offline its stored card snapshot is reused.
+- A different URL for an already registered ID fails with an explicit error; work is never silently retargeted.
+- A new agent whose card cannot be resolved within `delivery.timeout` fails startup ("start the endpoint first, then restart"); no placeholder record or background retry exists. Agents registered before the failure remain; restart reapplies idempotently (there is no cross-record transaction).
+- Collections are written only when membership differs and affect new admissions only; queued or accepted deliveries keep their snapshots.
+- Omitted agents, groups and pools stay untouched; nothing is deleted. Runtime CLI/API edits to a declared collection are replaced by the declared membership on the next restart. Dynamic registration through the CLI/API stays available.
 
 ### Principal model and access matrix
 
@@ -49,7 +80,7 @@ Each delivery, broadcast child, event and note records the immutable authenticat
 
 ### Provisioning, rotation, revocation
 
-1. Create one random token file per agent (for example `openssl rand -hex 32`), mode 0400/0440, and list it under `security.agent_token_files`. Give the agent only its own file.
+1. Create one random token file per agent (for example `openssl rand -hex 32`), mode 0400/0440, and list it under `registry.agents.<id>.token_file` (or `security.agent_token_files` for an undeclared ID). Give the agent only its own file.
 2. Start (or restart) the daemon. The operator registers the agent's A2A endpoint as before; credential identity and registry registration are independent (a caller need not be a registered recipient).
 3. Rotate by replacing the file content and restarting; the old token is rejected immediately and the new token reads the agent's existing records (ownership follows the agent ID). Revoke by removing the entry and restarting; the agent's records stay readable by the operator.
 

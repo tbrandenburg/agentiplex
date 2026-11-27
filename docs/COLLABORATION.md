@@ -6,6 +6,8 @@ A group is an explicitly configured collection of registered logical agent IDs. 
 
 Definitions persist in JetStream KV. Each operation snapshots membership on admission; updates affect only subsequent submissions. IDs are unique within the collection kind. Up to 32 groups, 32 pools and 32 distinct registered members per collection in this demo. No deletion or dynamic skill-based membership yet.
 
+Groups and pools can also be declared statically under `registry.groups`/`registry.pools`; the declared membership is applied at startup when it differs and replaces runtime edits on restart (see deployment guide).
+
 ## CLI
 
 Register two independently running simulator endpoints as tester-1 and tester-2. Then:
