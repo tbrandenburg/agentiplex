@@ -184,17 +184,13 @@ docker compose up -d --build --wait
 
 The development script creates unique role and broker credentials plus a seven-day demo CA and separate daemon/broker certificates under ignored .demo-secrets. The directory is 0700; mounted files are read-only and readable by service UIDs. Never reuse these demo certificates in production. Trust the CA explicitly in curl/CLI or your browser (only in a disposable profile). The simulators use unauthenticated HTTP **only** within the demo bridge network; no simulator or broker ports are published. Do not attach untrusted containers.
 
-Register the team using the operator credential:
+The team (agents, per-agent credentials, group `engineering`, pool `testers`) is declared in [examples/engineering-team/compose-registry.yaml](../examples/engineering-team/compose-registry.yaml) and applied at daemon startup; no registration commands are needed. Use the operator credential to try it:
 
 ```sh
 export AGENTIPLEX_SERVER=https://localhost:18443
 export AGENTIPLEX_CA_FILE=.demo-secrets/ca.crt
 export AGENTIPLEX_TOKEN_FILE=.demo-secrets/operator
-for agent in pm architect developer tester-1 tester-2 quality; do
-  agentiplex register "$agent" "http://$agent:8001"
-done
-agentiplex groups set engineering pm architect developer tester-1 tester-2 quality
-agentiplex pools set testers tester-1 tester-2
+agentiplex agents list
 agentiplex broadcast engineering "Contract update" --idempotency-key release-1
 ```
 
