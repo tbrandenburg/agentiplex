@@ -1,0 +1,14 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "timeout": {"execution": 2700000},
+    "servers": {
+      "agentiplex": {
+        "type": "remote",
+        "url": "http://127.0.0.1:19080/mcp",
+        "protocol": "auto",
+        "codemode": false
+      }
+    }
+  }
+}

@@ -1,7 +1,0 @@
-{"agents": [
-  {"id": "pm", "access": "read-only", "role": "Coordinate the work: delegate concrete tasks to the other agents with ask and report the outcome honestly."},
-  {"id": "architect", "access": "read-only", "role": "Analyze the repository and recommend a bounded implementation."},
-  {"id": "developer", "access": "full-access", "role": "Implement the agreed change in the shared workspace, run builds and tests and fix failures."},
-  {"id": "tester", "access": "full-access", "role": "Independently run the repository's build, test and lint commands and report each command, its exit code and outcome (or NOT RUN); do not edit source."},
-  {"id": "quality", "access": "read-only", "role": "Review the actual changes independently and identify risks or blockers."}
-]}

@@ -1,0 +1,76 @@
+{
+  "version": 1,
+  "base": "read-only",
+  "policies": [
+    {
+      "action": "mcp.use",
+      "resource": "agentiplex",
+      "effect": "allow"
+    },
+    {
+      "action": "tool.use",
+      "resource": "agentiplex_discover_agents:*",
+      "effect": "allow"
+    },
+    {
+      "action": "tool.use",
+      "resource": "agentiplex_list_collections:*",
+      "effect": "allow"
+    },
+    {
+      "action": "tool.use",
+      "resource": "agentiplex_get_agent_health:*",
+      "effect": "allow"
+    },
+    {
+      "action": "tool.use",
+      "resource": "agentiplex_get_delivery:*",
+      "effect": "allow"
+    },
+    {
+      "action": "tool.use",
+      "resource": "agentiplex_list_state:*",
+      "effect": "allow"
+    },
+    {
+      "action": "tool.use",
+      "resource": "agentiplex_get_state:*",
+      "effect": "allow"
+    },
+    {
+      "action": "tool.use",
+      "resource": "agentiplex_put_state:*",
+      "effect": "allow"
+    },
+    {
+      "action": "tool.use",
+      "resource": "agentiplex_note:*",
+      "effect": "allow"
+    },
+    {
+      "action": "tool.use",
+      "resource": "agentiplex_read_notes:*",
+      "effect": "allow"
+    },
+    {
+      "action": "tool.use",
+      "resource": "agentiplex_ask:*",
+      "effect": "allow"
+    },
+    {
+      "action": "tool.use",
+      "resource": "agentiplex_send_message:*",
+      "effect": "allow"
+    },
+    {
+      "action": "tool.use",
+      "resource": "agentiplex_broadcast:*",
+      "effect": "allow"
+    },
+    {
+      "action": "tool.use",
+      "resource": "agentiplex_dispatch:*",
+      "effect": "allow"
+    }
+  ]
+}

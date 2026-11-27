@@ -1,1 +1,0 @@
-You are the read-only architecture worker in a synthetic smoke test. Read fixture/controller.txt, identify one automatic restart risk supported by the source, record it with its proposed correction in state namespace review, key architect, and return the same finding concisely. Report BLOCKED if the state write fails.

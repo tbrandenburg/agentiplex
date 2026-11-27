@@ -1,14 +1,12 @@
-.PHONY: help fmt lint dashboard-assets build test check clean run demo-agent demo-team demo-check autonomous-check live-check repository-team repository-check repository-measure docker compose-up compose-down release release-plan
+.PHONY: help fmt lint dashboard-assets build test check clean run demo-agent demo-team demo-check examples-check live-check repository-provision-check docker compose-up compose-down release release-plan
 .DEFAULT_GOAL := help
-export bump WORKSPACE OBJECTIVE REPO REF MODEL
+export bump
 
 # Optional overrides; no secrets or environment files are created by make.
 GO_TEST_FLAGS ?= -race -count=1
 RUN_ARGS ?= --mcp
 DEMO_ARGS ?=
-AUTONOMOUS_ARGS ?= --seconds 90
-LIVE_ARGS ?= --accept-free-model --headless --summary-only --prompt-timeout 10m --seconds 900
-REPOSITORY_ARGS ?=
+LIVE_ARGS ?= --prompt-timeout 10m --seconds 900
 IMAGE ?= agentiplex:dev
 
 help:
@@ -26,11 +24,9 @@ help:
 		'  make demo-agent       Start a simulated agent' \
 		'  make demo-team        Run simulated engineering team' \
 		'  make demo-check       Noninteractive simulated demo' \
-		'  make autonomous-check Provider-free launcher check' \
-		'  make live-check       Real-agent hybrid review example (MODEL optional; Linux)' \
-		'  make repository-team REPO=... [MODEL=...] OBJECTIVE=... (or WORKSPACE=...)  Shared repository team (requires --accept-full-access in REPOSITORY_ARGS)' \
-		'  make repository-check Provider-free repository-team tests' \
-		'  make repository-measure N=10 MEASURE_ARGS="--repo ... --objective ... --accept-full-access ..."  Repeat the team, write a results table' \
+		'  make examples-check   Provider-free native example checks (real daemon, simulated agents)' \
+		'  make live-check       Verification: real PM+architect autonomous team (MODEL optional; Linux; see examples/README.md)' \
+		'  make repository-provision-check Verification: start the repository team gateways, no model task' \
 		'Deployment:' \
 		'  make docker           Build local image (IMAGE=agentiplex:dev)' \
 		'  make compose-up       Start TLS demo; generate missing demo secrets' \
@@ -57,8 +53,7 @@ test: dashboard-assets
 lint: dashboard-assets
 	go vet ./...
 
-check: test lint repository-check
-	python3 -B examples/autonomous-team/test_team.py
+check: test lint examples-check
 	bash scripts/test-release.sh
 
 clean:
@@ -76,29 +71,16 @@ demo-team:
 demo-check:
 	bash examples/engineering-team/demo.sh --check $(DEMO_ARGS)
 
-autonomous-check:
-	python3 -B examples/autonomous-team/test_team.py
-	python3 -B examples/autonomous-team/team.py --profile simulated --check --headless $(AUTONOMOUS_ARGS)
+examples-check: dashboard-assets
+	go test $(GO_TEST_FLAGS) ./tests/examples/
+	python3 -B tests/examples/repository-team/test_verify.py
+	python3 -B tests/examples/autonomous-team/test_live_check.py
 
 live-check:
-	python3 -B examples/autonomous-team/team.py $(if $(MODEL),--model $(MODEL)) $(LIVE_ARGS)
+	python3 -B tests/examples/autonomous-team/live_check.py $(if $(MODEL),--model $(MODEL)) $(LIVE_ARGS)
 
-repository-team:
-	@set -eu; \
-	if [ -n "$${REPO}" ] && [ -z "$${WORKSPACE}" ]; then \
-	  set -- --repo "$${REPO}"; \
-	  if [ -n "$${MODEL}" ]; then set -- "$$@" --model "$${MODEL}"; fi; \
-	  if [ -n "$${REF}" ]; then set -- "$$@" --ref "$${REF}"; fi; \
-	elif [ -n "$${WORKSPACE}" ] && [ -z "$${REPO}" ] && [ -z "$${REF}" ] && [ -z "$${MODEL}" ]; then \
-	  set -- --workspace "$${WORKSPACE}"; \
-	else echo "Specify REPO (optional MODEL, REF) or WORKSPACE alone" >&2; exit 2; fi; \
-	python3 -B examples/repository-team/team.py "$$@" --objective "$${OBJECTIVE}" $(REPOSITORY_ARGS)
-
-repository-check:
-	python3 -B examples/repository-team/test_team.py
-
-repository-measure:
-	python3 -B examples/repository-team/measure.py -n $(or $(N),10) -- $(MEASURE_ARGS)
+repository-provision-check:
+	python3 -B tests/examples/repository-team/provision_check.py
 
 docker:
 	docker build -t $(IMAGE) .
