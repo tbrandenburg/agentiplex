@@ -7,7 +7,7 @@ The agents collaborate themselves with the Agentiplex MCP tools. Agentiplex only
 shared state; no launcher, no generated configuration.
 
 > **WARNING - FULL ACCESS:** `developer` and `tester` run with `--access danger-full-access`: arbitrary shell commands without
-> per-command approval, edits to any file of your OS user, network access, forwarded provider credentials, Git operations,
+> per-command approval, edits to any file of your OS user, network access, any provider credentials you forward with `--pass-env`, Git operations,
 > and they bypass MCP tool grants. There is no OS sandbox or rollback. Use a disposable VM/container/user with minimal
 > credentials and a trusted checkout, never your everyday environment. All ports are loopback **without authentication
 > (trusted-local)**: any local client reaching an agent port can invoke it. Never expose them. For authenticated TLS
