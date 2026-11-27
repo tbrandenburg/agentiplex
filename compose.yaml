@@ -35,12 +35,11 @@ services:
     depends_on:
       nats:
         condition: service_healthy
-    command: ["--listen","0.0.0.0:8080","--public-url","https://localhost:18443","--broker-mode","external","--broker-url","tls://nats:4222","--namespace","compose-demo","--mcp"]
+    command: ["--listen","0.0.0.0:8080","--public-url","https://localhost:18443","--broker-mode","external","--broker-url","tls://nats:4222","--config","/etc/agentiplex/registry.yaml","--mcp"]
     environment:
       AGENTIPLEX_SERVER_TLS_CERT_FILE: /run/secrets/server.crt
       AGENTIPLEX_SERVER_TLS_KEY_FILE: /run/secrets/server.key
       AGENTIPLEX_SECURITY_OPERATOR_TOKEN_FILE: /run/secrets/operator
-      AGENTIPLEX_SECURITY_AGENT_TOKEN_FILES: '{"demo":"/run/secrets/agent-demo"}'
       AGENTIPLEX_SECURITY_VIEWER_TOKEN_FILE: /run/secrets/viewer
       AGENTIPLEX_BROKER_TOKEN_FILE: /run/secrets/nats-token
       AGENTIPLEX_BROKER_CA_FILE: /run/secrets/ca.crt
@@ -52,9 +51,17 @@ services:
       - server.key
       - ca.crt
       - operator
-      - agent-demo
       - viewer
       - nats-token
+      - agent-pm
+      - agent-architect
+      - agent-developer
+      - agent-tester-1
+      - agent-tester-2
+      - agent-quality
+    configs:
+      - source: registry
+        target: /etc/agentiplex/registry.yaml
     ports: ["127.0.0.1:18443:8080"]
     networks: [team]
     security_opt: [no-new-privileges:true]
@@ -87,12 +94,19 @@ networks:
   team: {}
 volumes:
   jetstream: {}
+configs:
+  registry: {file: examples/engineering-team/compose-registry.yaml}
 secrets:
   server.crt: {file: .demo-secrets/server.crt}
   server.key: {file: .demo-secrets/server.key}
   ca.crt: {file: .demo-secrets/ca.crt}
   operator: {file: .demo-secrets/operator}
-  agent-demo: {file: .demo-secrets/agent-demo}
+  agent-pm: {file: .demo-secrets/agent-pm}
+  agent-architect: {file: .demo-secrets/agent-architect}
+  agent-developer: {file: .demo-secrets/agent-developer}
+  agent-tester-1: {file: .demo-secrets/agent-tester-1}
+  agent-tester-2: {file: .demo-secrets/agent-tester-2}
+  agent-quality: {file: .demo-secrets/agent-quality}
   viewer: {file: .demo-secrets/viewer}
   nats-token: {file: .demo-secrets/nats-token}
   nats.conf: {file: .demo-secrets/nats.conf}

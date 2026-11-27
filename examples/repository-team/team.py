@@ -76,14 +76,13 @@ def gateway_command(args, workspace, policy_path, profile):
 
 
 def pm_prompt(agents, objective):
-    roles = "\n".join("- " + a["id"] + ": " + a["role"] for a in agents[1:])
     prompt = (
-        "You are " + agents[0]["id"] + " of a team working in one shared Git workspace. Reach the objective "
-        "by delegating to the team below; have the change implemented, independently tested and "
-        "reviewed before you finish. Share findings with the note and read_notes tools, namespace "
-        + NAMESPACE + ". Nobody commits, stages, pushes, merges, changes branches or touches credentials "
-        "or files outside the project; leave Git publication to the operator. Never invent results; "
-        "report failures and blockers honestly.\nTeam:\n" + roles + "\nObjective:\n" + objective)
+        "You are " + agents[0]["id"] + ", coordinating a team in one shared Git workspace. Discover the available "
+        "agents and delegate according to their capabilities. Have the change implemented, independently tested "
+        "and reviewed before you finish, and share findings with the team (notes, namespace " + NAMESPACE + "). "
+        "Nobody commits, stages, pushes, merges, changes branches or touches credentials or files outside the "
+        "project; leave Git publication to the operator. Never invent results; report failures and blockers "
+        "honestly.\nObjective:\n" + objective)
     if len(prompt.encode()) > 4096:
         raise ValueError("objective too long for the bounded A2A submission")
     return prompt
@@ -100,20 +99,17 @@ def verify_collaboration(evidence):
     missing = {family(a["id"]) for a in agents[1:]} - done
     if missing:
         raise RuntimeError("missing completed worker results: " + ", ".join(sorted(missing)))
-    if evidence["toolCalls"]["askCalls"] < 1:
-        raise RuntimeError("no evidence that the PM called ask (no delivery returned to an ask)")
+    if evidence["toolCalls"]["delegationCalls"] < 1:
+        raise RuntimeError("no durable evidence that the PM delegated anything")
     if not any(s["key"].startswith("note-") for s in evidence["state"]):
         raise RuntimeError("missing shared notes")
     return sorted(done)
 
 
 class RepositoryTeam(teamlib.Team):
-    def start(self):
-        self.start_daemon("repository-demo", not self.args.headless)
-        self.start_agents()
-
     def start_agents(self):
-        agents = self.team["agents"]
+        """Start every gateway first; the daemon then registers them from generated config."""
+        agents, urls = self.team["agents"], {}
         for agent in agents:
             name = agent["id"]
             profile, rules = policy_for(agents, agent)
@@ -127,15 +123,15 @@ class RepositoryTeam(teamlib.Team):
             proc = self.spawn(name, gateway_command(self.args, self.args.workspace, path, profile),
                               env, self.args.workspace)
             try:
-                url = self.gateway_ready(name, proc)
-                card = self.wait_card(url, proc, name, name)
+                urls[name] = self.gateway_ready(name, proc)
+                card = self.wait_card(urls[name], proc, name, name)
             except RuntimeError as exc:
                 raise RuntimeError(str(exc) + log_tail(self.root / (name + ".log"))) from exc
             tags = {t for s in card.get("skills", []) for t in s.get("tags", [])}
             if "simulated" in tags or "real-opencode" not in tags:
                 raise RuntimeError("unexpected agent runtime label")
-            self.cli("register", name, url)
-            print("Registered", name, profile, url, flush=True)
+            print("Started", name, profile, urls[name], flush=True)
+        self.start_daemon("repository-demo", not self.args.headless, urls)
         if {a["id"] for a in self.cli("agents", "list")} != {a["id"] for a in agents}:
             raise RuntimeError("registry mismatch")
         if teamlib.get(self.endpoint + "/api/v1/deliveries?limit=100"):
@@ -188,7 +184,7 @@ def main():
                    help="gateway deadline for one whole PM turn (all asks summed)")
     p.add_argument("--mcp-timeout", type=teamlib.valid_prompt_timeout, default="45m",
                    help="OpenCode mcp.timeout.execution: longest single tool call, e.g. one ask")
-    p.add_argument("--restart-daemon", action="store_true", help="restart the daemon on the same storage and port if it dies (needs --port)")
+    p.add_argument("--restart-daemon", action="store_true", help="restart the daemon on the same storage and port if it dies")
     p.add_argument("--gateway", default="opencode-a2a-lite")
     p.add_argument("--pass-env", action="append", default=[])
     p.add_argument("--accept-full-access", action="store_true",
@@ -211,8 +207,6 @@ def main():
     prompt_ms = teamlib.duration_ms(args.prompt_timeout)
     if not args.check and prompt_ms is not None and prompt_ms >= args.seconds * 1000:
         p.error("--seconds must exceed --prompt-timeout so a whole PM turn fits in the launcher deadline")
-    if args.restart_daemon and not args.port:
-        p.error("--restart-daemon needs a fixed --port (agents keep the original MCP URL)")
     if args.workspace and (args.ref or args.model):
         p.error("--ref and --model are for --repo; existing workspaces supply their own configuration")
     if args.pass_env and (len(set(args.pass_env)) != len(args.pass_env) or any(
@@ -244,8 +238,11 @@ def main():
     if args.port:
         with socket.socket() as sock:
             sock.bind(("127.0.0.1", args.port))
+    else:
+        # The workspace config must name the daemon URL before the daemon starts: pick a free port now.
+        args.port = teamlib.free_port()
     os.umask(0o077)
-    root = Path(tempfile.mkdtemp(prefix="agentiplex-repository-", dir="/tmp")).resolve()
+    root = Path(tempfile.mkdtemp(prefix="agentiplex-repository-")).resolve()
     if args.workspace and (root == args.workspace or args.workspace in root.parents):
         root.rmdir()
         p.error("private run directory must be outside the selected workspace")
@@ -262,7 +259,6 @@ def main():
             args.workspace, before, model = inspect_workspace(args.workspace, "http://127.0.0.1:" + str(args.port), args.execution_ms)
         runner = RepositoryTeam(args, {"agents": load_roster(args.team)}, root, time.monotonic() + args.seconds)
         try:
-            runner.start_daemon("repository-demo", not args.headless)
             if args.repo:
                 prepare_clone_config(args.workspace, runner.endpoint, model, args.execution_ms)
                 args.workspace, before, model = inspect_workspace(args.workspace, runner.endpoint, args.execution_ms)

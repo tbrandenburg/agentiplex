@@ -19,8 +19,8 @@ full-access OpenCode agents. The core middleware does not depend on any of this.
 - Clone first and pass the local path as `REPO=/abs/path`, because the launcher has no GitHub credentials.
 
 ## Collaboration model
-- Agents collaborate through the MCP tools of the daemon. The coordinator (PM) delegates with the blocking `ask`, which
-  returns the finished result; the model does not poll. Findings are shared with `note`/`read_notes`.
+- Agents collaborate through the MCP tools of the daemon. The coordinator (PM) discovers the team and delegates with the tools it is
+  granted (typically the blocking `ask`); mechanics such as idempotency keys and re-attaching are in the tool contract, not the prompt. Findings are shared with `note`/`read_notes`.
 - The repository team is configured by [repository-team/team.json](repository-team/team.json) (`id`, `access`, `role` per agent).
   Shared scaffolding is in [teamlib.py](teamlib.py). Timeouts (`--prompt-timeout`, `--mcp-timeout`, `--seconds`) are launcher options.
 - **Restart expectation:** if the daemon is killed (even SIGKILL) mid-run and restarted on the same storage and port, the run
@@ -42,7 +42,7 @@ often not a configuration problem. Retry the launch before changing configuratio
 - Startup takes several minutes (`go build ./examples/...`, then the preflight). Use a long
   timeout, run in the background and do not poll.
 - Agents are asked not to commit or push. Review the scratch workspace diff, then open the PR yourself.
-- Evidence is kept in `/tmp/agentiplex-repository-*`. Delete it after the processes have stopped.
+- Evidence is kept in `$TMPDIR/agentiplex-repository-*` (default `/tmp`; JetStream needs free disk, so point `TMPDIR` at a roomier or in-memory filesystem if needed). Delete it after the processes have stopped.
 - Stop only the processes you started, by PID.
 
 Guides: [repository-team](repository-team/README.md), [autonomous-team](autonomous-team/README.md).

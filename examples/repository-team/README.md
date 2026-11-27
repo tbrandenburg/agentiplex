@@ -49,7 +49,7 @@ no provider keys are forwarded to clone. Use a disposable user with minimal
 Git credentials: full-access agents may still reach credentials available to
 that user. The clone is bounded to 300 seconds and does not initialize submodules.
 
-Each run gets its own private `/tmp/agentiplex-repository-*` root, bare
+Each run gets its own private `$TMPDIR/agentiplex-repository-*` root (default `/tmp`), bare
 `repository.git` object database (no shared cache or hardlinks) and detached
 `workspace/` linked worktree at the exact cloned commit. Source working-tree
 changes are not copied. The launcher sets the scratch origin push URL to
@@ -57,8 +57,8 @@ changes are not copied. The launcher sets the scratch origin push URL to
 `opencode.json`, locally excluded via the scratch repository's `info/exclude`;
 existing tracked or untracked OpenCode config causes a visible refusal, not an
 overwrite. Use WORKSPACE with reviewed configuration for such projects.
-Clone runs default to a kernel-assigned daemon port; gateways also select their
-own ports. Concurrent runs of the same repository do not share Git storage,
+Clone runs pick a free daemon port when none is given (the daemon starts last, so the port is
+chosen up front and written into the workspace config); gateways select their own ports. Concurrent runs of the same repository do not share Git storage,
 JetStream or ports. The actual dashboard URL and workspace are printed.
 Explicit `--port` collisions fail rather than attach to another daemon.
 
@@ -171,9 +171,13 @@ To add an agent (a second tester, a docs reviewer) add a line; no Python changes
 - **Grants:** every agent gets the collaboration tools (discovery, delivery lookup, state, `note`, `read_notes`).
   `access` (`read-only` or `full-access`) is the only per-agent safety setting; it selects the gateway
   `--access` profile. MCP grants are least-privilege hygiene, not a boundary (see the warning).
-- **Prompt:** the PM gets one short generic prompt: the objective, the role list and the no-commit rules. Keys, receipts,
-  waiting and re-attaching are in the `ask` tool description, not in the prompt. Workers get no prompt of their own; they see
-  their `role` as their A2A description and the PM's `ask` text.
+- **Prompt:** the PM gets one short generic prompt (about 600 bytes): role, objective, "discover the available agents and
+  delegate according to their capabilities", the independent test/review requirement and the no-commit rules. There is no
+  roster, no keys, receipts, waiting or re-attach recipe: discovery and the MCP tool descriptions own those mechanics.
+  Workers get no prompt of their own; they see their `role` as their A2A description and the PM's delegated text.
+- **Registration:** the launcher starts every gateway first, then the daemon from a generated `daemon.yaml` whose `registry`
+  block lists the actual gateway URLs (generated from `team.json`); no `agentiplex register` calls. The gateway preflight does
+  not need the daemon (its MCP connection is lazy), which makes this order possible.
 - **Gate roles:** every non-coordinator agent (a trailing `-<n>` is ignored, so `tester-1`/`tester-2` count as one `tester`) must produce a
   completed result.
 
@@ -191,15 +195,15 @@ append-only `note`/`read_notes` tools (namespace `repository`). No custom shell 
 Restarting the daemon mid-run continues the team to the PASS gate. The PM's in-flight `ask` fails; the PM repeats it, and it
 re-attaches to the same delivery without a second downstream execution (see [MCP](../../docs/MCP.md) and
 [ARCH 5.5](../../docs/ARCH.md)). This relies on restarting the daemon on the same storage and port, which is what the
-[restart policy](../../docs/DEPLOYMENT.md) of #31 does in a deployment. For this launcher, pass `--port N --restart-daemon` and it
+[restart policy](../../docs/DEPLOYMENT.md) of #31 does in a deployment. For this launcher, pass `--restart-daemon` and it
 performs that restart for you if the daemon dies (e.g. `kill -9` of the daemon PID in `daemon.log`'s run directory). Without the flag a
 dead daemon ends the run as BLOCKED. The agents themselves (the PM's own model turn) are not resumed by the middleware.
 
 The launcher observes authoritative delivery receipts and state. It requires a
 completed real PM plus a real result from every other agent (Architect, Developer, Tester, Quality by default),
-shared notes, no unresolved or failed deliveries, **daemon-side evidence that the PM called `ask`**
+shared notes, no unresolved or failed deliveries, **durable evidence that the PM delegated work**
 (see below) and a Git-visible change. It does not decide detailed engineering work, replay
-ambiguous requests, or claim code correctness. Because `ask` blocks, the PM normally cannot return before a worker finishes; if it does (for example it gave up on a `stillRunning` ask), the
+ambiguous requests, or claim code correctness. If the PM returns before a worker finishes, the
 observer prints a warning and waits for the admitted work within the same deadline, and the PASS gate still requires every
 delivery to complete. A delivery completing and a tester report existing do not independently
 prove that a command ran or passed. Agent-reported commands, exit codes and outputs
@@ -208,9 +212,11 @@ correctness. Full-access agents can also modify evidence on disk.
 
 Tool-call evidence: the gateway logs show only the policy grant, so the launcher derives call evidence from the daemon's
 delivery records (`evidence.json` → `toolCalls`, printed as "PM tool-call evidence"). A delivery to a worker exists only
-because the PM called a delegation tool; `returnedAt` is set by the daemon only when a blocking `ask` handed the terminal result
-back, so `askCalls` counts completed asks, `delegations` counts deliveries per target and `coordinatorTurns` the PM turns.
-It is not a transcript of every PM tool call (note/read_notes calls are visible as `note-` state keys).
+because someone submitted it: `delegations`/`delegationCalls` count deliveries per target, `delegationsCompleted` the
+completed ones, `callers` the authenticated submitter IDs (`unauthenticated` in the trusted-local mode these examples run in)
+and `coordinatorTurns` the PM turns. The delivery record does **not** store which tool created it, so `ask` cannot be
+told apart from `send_message`/`dispatch`/`broadcast` and the removed `returnedAt` is not replaced. It is not a transcript of
+every PM tool call (note/read_notes calls are visible as `note-` state keys).
 
 ## 4. Inspect and actually verify
 
@@ -269,8 +275,8 @@ and [operator policy](https://github.com/tbrandenburg/opencode-a2a-lite/blob/v0.
 
 ## 5. Measure it
 
-`measure.py` repeats the whole team N times on its default settings and records PASS/BLOCKED, wall time, PM turns, PM `ask`
-calls, delegations and whether Quality ran. Everything after `--` goes to `team.py` unchanged (do not pass `--seconds` or
+`measure.py` repeats the whole team N times on its default settings and records PASS/BLOCKED, wall time, PM turns, PM
+delegation calls and whether Quality ran. Everything after `--` goes to `team.py` unchanged (do not pass `--seconds` or
 objective text that tells the PM when to wait; the point is the defaults):
 
 ```sh

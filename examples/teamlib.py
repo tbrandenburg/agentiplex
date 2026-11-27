@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 import re
 import signal
+import socket
 import subprocess
 import time
 import urllib.request
@@ -60,17 +61,32 @@ def policy(profile, tools):
 
 
 def call_evidence(deliveries, coordinator):
-    """Daemon-side proof of the coordinator's tool use (gateway logs only show policy grants).
+    """Durable proof of the coordinator's delegations (gateway logs only show policy grants).
 
-    A delivery to a worker exists because the coordinator called a delegation tool; `returnedAt`
-    is set only when the blocking `ask` handed a terminal result back, so it counts `ask` calls.
+    Every non-coordinator delivery exists because someone submitted it; with per-agent credentials
+    its `caller` is the authenticated submitter. The record does not store which tool was used, so
+    `ask` cannot be told apart from `send_message`/`dispatch`/`broadcast`; recipient execution alone
+    is not tool evidence. Completed deliveries are counted separately from invocations.
     """
     sent = [d for d in deliveries if d["target"] != coordinator]
     count = lambda items: {t: sum(d["target"] == t for d in items) for t in sorted({d["target"] for d in items})}
-    asked = [d for d in sent if d.get("returnedAt")]
     return {"coordinatorTurns": sum(d["target"] == coordinator for d in deliveries),
-            "delegations": count(sent), "askReturned": count(asked),
-            "askCalls": len(asked), "otherDelegations": len(sent) - len(asked)}
+            "delegations": count(sent), "delegationCalls": len(sent),
+            "delegationsCompleted": count([d for d in sent if d["state"] == "completed"]),
+            "callers": sorted({d.get("caller") or "unauthenticated" for d in sent}),
+            "toolIdentity": "not recorded (ask is not distinguishable from other delegation tools)"}
+
+
+def free_port():
+    with socket.socket() as sock:
+        sock.bind(("127.0.0.1", 0))
+        return sock.getsockname()[1]
+
+
+def registry(namespace, urls, groups=None, pools=None):
+    """Native registry YAML fragment (JSON is YAML) generated from the roster and bound endpoints."""
+    return {"namespace": namespace, "agents": {name: {"url": url} for name, url in urls.items()},
+            "groups": groups or {}, "pools": pools or {}}
 
 
 class Team:
@@ -109,32 +125,22 @@ class Team:
             self.spawn("daemon", *self.daemon_spec, append=True)
             self.wait_daemon()
 
-    def start_daemon(self, namespace, dashboard):
-        # No public URL: the daemon advertises the actual (possibly kernel-assigned) port.
-        command = [str(self.root / "agentiplexd"), "--listen", "127.0.0.1:" + str(self.args.port),
-                   "--broker-mode", "embedded", "--namespace", namespace,
-                   "--storage", str(self.root / "jetstream"), "--mcp", "--dashboard=" + str(dashboard).lower()]
-        # The delivery timeout bounds one HTTP operation to a gateway, not agent execution.
-        env = dict(self.env, AGENTIPLEX_DELIVERY_TIMEOUT="30s",
-                   AGENTIPLEX_DELIVERY_RETRY_DELAY="2s", AGENTIPLEX_DELIVERY_MAX_ATTEMPTS="80")
-        self.daemon_spec = (command, env)
-        self.spawn("daemon", command, env)
-        self.wait_daemon(first=True)
+    def start_daemon(self, namespace, dashboard, urls, groups=None, pools=None):
+        """Start the daemon last, from generated native config: endpoints already exist and are registered at startup."""
+        config = {"server": {"listen": "127.0.0.1:" + str(self.args.port)},
+                  "broker": {"mode": "embedded", "storage": str(self.root / "jetstream")},
+                  "protocols": {"mcp": {"enabled": True}},
+                  "observability": {"dashboard": dashboard},
+                  # The delivery timeout bounds one HTTP operation to a gateway, not agent execution.
+                  "delivery": {"timeout": "30s", "retry_delay": "2s", "max_attempts": 80},
+                  "registry": registry(namespace, urls, groups, pools)}
+        (self.root / "daemon.yaml").write_text(json.dumps(config, indent=2) + "\n")
+        command = [str(self.root / "agentiplexd"), "--config", str(self.root / "daemon.yaml")]
+        self.daemon_spec = (command, self.env)
+        self.spawn("daemon", command, self.env)
+        self.wait_daemon()
 
-    def wait_daemon(self, first=False):
-        # Require our own daemon's readiness record; a preflight bind is only advisory.
-        # A restart reuses the fixed port, so only /readyz is awaited again.
-        while first:
-            self.alive_basic()
-            match = re.search(r'agentiplexd ready"?\s+listen=127\.0\.0\.1:(\d+)\b',
-                              (self.root / "daemon.log").read_text(errors="replace"))
-            if match:
-                port = int(match.group(1))
-                if not 1024 <= port <= 65535 or self.args.port not in (0, port):
-                    raise RuntimeError("unexpected daemon readiness address")
-                self.endpoint = "http://127.0.0.1:" + str(port)
-                break
-            time.sleep(.2)
+    def wait_daemon(self):
         while True:
             self.alive_basic()
             try:

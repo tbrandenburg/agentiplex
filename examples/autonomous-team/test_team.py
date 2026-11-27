@@ -61,7 +61,7 @@ class TeamTests(unittest.TestCase):
                 self.assertIn("agentiplex_put_state:*", names)
                 self.assertNotIn("agentiplex_broadcast:*", names)
                 self.assertNotIn("agentiplex_dispatch:*", names)
-                self.assertEqual(a["id"] == "pm", "agentiplex_send_message:*" in names)
+                self.assertEqual(a["id"] == "pm", "agentiplex_ask:*" in names)
                 self.assertIn("smoke test", (project / "AGENTS.md").read_text())
 
     def test_terminal_diagnostic_does_not_echo_model_text(self):

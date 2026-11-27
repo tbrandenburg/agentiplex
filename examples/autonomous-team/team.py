@@ -64,14 +64,15 @@ def workspace(root, agent, endpoint, model, smoke=False):
     shutil.copytree(HERE / "fixture", project / "fixture")
     tools = READ_TOOLS + (DELEGATE_TOOLS if agent["id"] == "pm" else ())
     if smoke and agent["id"] == "pm":
-        tools = ("discover_agents", "send_message", "get_delivery", "put_state")
+        tools = ("discover_agents", "ask", "put_state")
     elif smoke and agent["role"] == "architect":
         tools = ("put_state",)
     role_path = HERE / "roles" / (agent["role"] + ".md")
     if smoke and agent["role"] in ("pm", "architect"):
         role_path = HERE / "roles" / (agent["role"] + "-smoke.md")
-    role = role_path.read_text()
-    system = "Logical agent ID: " + agent["id"] + ". " + role
+    role = role_path.read_text().strip()
+    common = "" if smoke and agent["role"] in ("pm", "architect") else (HERE / "roles" / "common.md").read_text().strip() + " "
+    system = "Logical agent ID: " + agent["id"] + ". " + common + role
     permissions = [{"action": "*", "resource": "*", "effect": "deny"}]
     permissions += [{"action": name, "resource": "*", "effect": "allow"} for name in ("read", "glob", "grep")]
     permissions += [{"action": "agentiplex_" + tool, "resource": "*", "effect": "allow"} for tool in tools]
@@ -97,7 +98,8 @@ def workspace(root, agent, endpoint, model, smoke=False):
 
 class Team(teamlib.Team):
     def start(self):
-        self.start_daemon("autonomous-demo", not self.args.headless)
+        """Start every endpoint first; the daemon then registers them and the collections from generated config."""
+        urls = {}
         for i, a in enumerate(self.team["agents"]):
             name, skill = a["id"], a["skill"]
             if a["runtime"] == "simulated":
@@ -122,11 +124,9 @@ class Team(teamlib.Team):
             tags = {t for s in card.get("skills", []) for t in s.get("tags", [])}
             if ("simulated" in tags) != (a["runtime"] == "simulated"):
                 raise RuntimeError("agent runtime label mismatch: " + name)
-            self.cli("register", name, url)
-            print("Registered", name, a["runtime"], url, flush=True)
-        for kind in ("groups", "pools"):
-            for name, members in self.team[kind].items():
-                self.cli(kind, "set", name, *members)
+            urls[name] = url
+            print("Started", name, a["runtime"], url, flush=True)
+        self.start_daemon("autonomous-demo", not self.args.headless, urls, self.team["groups"], self.team["pools"])
         agents = self.cli("agents", "list")
         if {a["id"] for a in agents} != {a["id"] for a in self.team["agents"]}:
             raise RuntimeError("registry mismatch")
@@ -307,7 +307,7 @@ def main():
     # Private standalone root outside the checkout. Retain artifacts for
     # operator review; never automatically publish model content or logs.
     os.umask(0o077)
-    root = Path(tempfile.mkdtemp(prefix="agentiplex-autonomous-", dir="/tmp")).resolve()
+    root = Path(tempfile.mkdtemp(prefix="agentiplex-autonomous-")).resolve()
     print("Private run directory:", root, flush=True)
     if real:
         print("Requested model:", args.model or "OpenCode default",

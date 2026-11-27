@@ -16,13 +16,11 @@ cleanup(){
 trap cleanup EXIT
 docker compose up -d --build --wait --wait-timeout 180
 cli(){ docker compose exec -T agentiplex agentiplex --server https://localhost:8080 --ca-file /run/secrets/ca.crt --token-file /run/secrets/operator "$@"; }
-collab(){ docker compose exec -T agentiplex agentiplex --server https://localhost:8080 --ca-file /run/secrets/ca.crt --token-file /run/secrets/agent-demo "$@"; }
-for agent in pm architect developer tester-1 tester-2 quality; do
-  for i in $(seq 1 30); do if cli register "$agent" "http://$agent:8001" >/dev/null; then break; fi; sleep 1; done
-done
+collab(){ docker compose exec -T agentiplex agentiplex --server https://localhost:8080 --ca-file /run/secrets/ca.crt --token-file /run/secrets/agent-pm "$@"; }
+# The team is declared in examples/engineering-team/compose-registry.yaml and applied at startup.
 cli agents list | jq -e 'length==6'
-cli groups set engineering pm architect developer tester-1 tester-2 quality >/dev/null
-cli pools set testers tester-1 tester-2 >/dev/null
+cli groups list | jq -e 'length==1'
+cli pools list | jq -e 'length==1'
 collab state put engineering requirement REQ-42 >/dev/null
 if collab agents remove architect >/dev/null 2>&1; then echo "agent performed admin action"; exit 1; fi
 if curl --cacert .demo-secrets/ca.crt -fsS https://localhost:18443/api/v1/agents >/dev/null 2>&1; then echo "unauthenticated registry accessible"; exit 1; fi
@@ -54,7 +52,7 @@ cli state get engineering requirement | jq -e '.value=="REQ-42"'
 cli messages status "$id" | jq -e '.state=="queued"'
 docker compose start quality
 wait_state "$id" completed | jq -e '.result|tostring|contains("SIMULATED quality")'
-go run ./examples/mcp-client --url https://localhost:18443/mcp --ca-file .demo-secrets/ca.crt --token-file .demo-secrets/agent-demo --target architect --text "Authenticated Compose MCP" --key compose-mcp >/dev/null
+go run ./examples/mcp-client --url https://localhost:18443/mcp --ca-file .demo-secrets/ca.crt --token-file .demo-secrets/agent-pm --target architect --text "Authenticated Compose MCP" --key compose-mcp >/dev/null
 # Crash recovery: SIGKILL the daemon process from the host PID namespace (docker kill and
 # an in-container kill of PID 1 are not real crashes and do not trigger the restart policy).
 cid=$(docker compose ps -q agentiplex)

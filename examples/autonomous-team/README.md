@@ -20,7 +20,7 @@ python3 -B examples/autonomous-team/team.py --profile simulated --check --headle
 # or make autonomous-check
 ```
 
-This validates generated configuration, explicit per-role grants, registration and collection setup, and process cleanup. It never calls a model. Go integration tests separately exercise an accepted A2A task initiating MCP discovery/delegation and awaiting a second A2A response while the original task is active, then persisting the actual receipt through MCP.
+This validates generated configuration, explicit per-role grants, generated registry configuration (agents, group and pool registered by the daemon at startup from `team.json`), and process cleanup. It never calls a model. Go integration tests separately exercise an accepted A2A task initiating MCP discovery/delegation and awaiting a second A2A response while the original task is active, then persisting the actual receipt through MCP.
 
 ## Real-model acceptance (free or credentialed)
 
@@ -67,7 +67,7 @@ The launcher stops its own foreground children on exit or Ctrl+C; the private ru
 
 ### Tool-call evidence
 
-The gateway logs only show the policy grant, so the observer also records `toolCalls` in `evidence.json` (and prints "PM tool-call evidence"): deliveries per target, PM turns and how many blocking `ask` calls handed a result back (the daemon sets `returnedAt` on the delivery only then).
+The gateway logs only show the policy grant, so the observer also records `toolCalls` in `evidence.json` (and prints "PM tool-call evidence"): deliveries per target and state, authenticated callers and PM turns. The delivery record does not store the tool used, so `ask` cannot be distinguished from other delegation tools.
 
 ### Completion and outstanding work
 

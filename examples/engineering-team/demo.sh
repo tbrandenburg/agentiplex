@@ -78,10 +78,23 @@ await_http() {
   done
   echo "Readiness timeout: $url" >&2; return 1
 }
+# Static team: the daemon registers these endpoints, the group and the pool from its own config at startup.
+write_config() {
+  {
+    echo "registry:"
+    echo "  namespace: demo"
+    echo "  agents:"
+    for id in "${!urls[@]}"; do echo "    $id: {url: \"${urls[$id]}\"}"; done
+    echo "  groups:"
+    echo "    engineering: [$(IFS=,; echo "${members[*]}")]"
+    echo "  pools:"
+    echo "    testers: [tester-1, tester-2]"
+  } >"$work/daemon.yaml"
+}
 start_daemon() {
   assert_free "$base_port"
   AGENTIPLEX_DELIVERY_RETRY_DELAY=1s AGENTIPLEX_DELIVERY_MAX_ATTEMPTS=40 \
-    "$work/agentiplexd" --listen "127.0.0.1:$base_port" --public-url "$server" --broker-mode embedded --namespace demo --storage "$work/state" --dashboard --mcp="$mcp" >"$work/daemon.log" 2>&1 &
+    "$work/agentiplexd" --config "$work/daemon.yaml" --listen "127.0.0.1:$base_port" --public-url "$server" --broker-mode embedded --storage "$work/state" --dashboard --mcp="$mcp" >"$work/daemon.log" 2>&1 &
   daemon_pid=$!
   daemon_index=${#pids[@]}
   pids+=("$daemon_pid")
@@ -102,7 +115,6 @@ stop_child() {
   wait "$pid" 2>/dev/null || true
   pids[$index]=""
 }
-register() { cli register "$1" "$2" >/dev/null; }
 wait_state() {
   local id=$1 desired=$2 timeout=$3 deadline result state
   deadline=$((SECONDS+timeout))
@@ -130,25 +142,24 @@ native_get() {
 }
 show() { jq -c '{id,kind,target,state,assignedAgent,children:[.children[]? | {target,state}]}' <<<"$1"; }
 
-start_daemon
-start_agent pm planning "$port_pm"; register pm "http://127.0.0.1:$port_pm"
+declare -A urls
+start_agent pm planning "$port_pm"; urls[pm]="http://127.0.0.1:$port_pm"
 if [[ -n "$opencode" ]]; then
   echo "Using operator-started OpenCode gateway at $opencode (not simulated)."
-  register architect "$opencode"
+  urls[architect]="${opencode%/}"
 else
-  start_agent architect architecture "$port_arch"; register architect "http://127.0.0.1:$port_arch"
+  start_agent architect architecture "$port_arch"; urls[architect]="http://127.0.0.1:$port_arch"
 fi
-start_agent developer development "$port_dev"; register developer "http://127.0.0.1:$port_dev"
-start_agent tester-1 testing "$port_test1"; register tester-1 "http://127.0.0.1:$port_test1"
-start_agent tester-2 testing "$port_test2"; register tester-2 "http://127.0.0.1:$port_test2"
-start_agent quality quality "$port_quality"; quality_index=$last_index; register quality "http://127.0.0.1:$port_quality"
-
-echo "Dashboard: $server/ui/"
+start_agent developer development "$port_dev"; urls[developer]="http://127.0.0.1:$port_dev"
+start_agent tester-1 testing "$port_test1"; urls[tester-1]="http://127.0.0.1:$port_test1"
+start_agent tester-2 testing "$port_test2"; urls[tester-2]="http://127.0.0.1:$port_test2"
+start_agent quality quality "$port_quality"; quality_index=$last_index; urls[quality]="http://127.0.0.1:$port_quality"
 # Only the explicit read-only architecture request invokes the optional model.
 members=(pm developer tester-1 tester-2 quality)
 if [[ -z "$opencode" ]]; then members+=(architect); fi
-cli groups set engineering "${members[@]}" >/dev/null
-cli pools set testers tester-1 tester-2 >/dev/null
+write_config
+start_daemon
+echo "Dashboard: $server/ui/"
 
 echo "1. Discovery: six registered agents, two testing skills and standard catalog"
 cli agents list | jq -e 'length == 6' >/dev/null

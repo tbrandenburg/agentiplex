@@ -157,7 +157,7 @@ class RepositoryTests(unittest.TestCase):
         data["agents"].append({"id": "docs-writer", "access": "read-only", "role": "Check documentation."})
         path.write_text(json.dumps(data))
         agents = team.load_roster(path)
-        self.assertIn("docs-writer: Check documentation.", team.pm_prompt(agents, "Do it"))
+        self.assertNotIn("Check documentation.", team.pm_prompt(agents, "Do it"))
         _, rules = team.policy_for(agents, agents[-1])
         self.assertNotIn("agentiplex_ask:*", {p["resource"] for p in rules["policies"]})
         for bad in ({"id": "x", "access": "root", "role": "r"}, {"id": "pm", "access": "read-only", "role": "dup"},
@@ -193,7 +193,7 @@ class RepositoryTests(unittest.TestCase):
             self.assertNotEqual(0, result.returncode)
             self.assertIn(message, result.stderr)
 
-    def test_start_registers_only_endpoints_with_same_workspace(self):
+    def test_endpoints_start_first_then_daemon_registers_them_from_config(self):
         args = SimpleNamespace(port=19080, headless=True, gateway="gateway", prompt_timeout="10m",
                                pass_env=[], workspace=self.workspace, accept_full_access=True)
         agents = team.load_roster(Path(team.__file__).with_name("team.json"))
@@ -202,8 +202,6 @@ class RepositoryTests(unittest.TestCase):
 
         def spawn(name, cmd, env, cwd=None, append=False):
             commands.append((name, cmd, env, cwd))
-            if name == "daemon":
-                (self.root / "daemon.log").write_text("INFO agentiplexd ready listen=127.0.0.1:19080 broker_mode=embedded\n")
             return name
 
         def cli(*args):
@@ -219,34 +217,25 @@ class RepositoryTests(unittest.TestCase):
              patch.object(runner, "gateway_ready", side_effect=lambda n, p: "http://127.0.0.1:200" + str(len(commands))), \
              patch.object(runner, "wait_card", side_effect=card), \
              patch.object(teamlib, "get", side_effect=lambda url: {"ready": True} if url.endswith("/readyz") else []):
-            runner.start()
+            runner.start_agents()
         self.assertEqual(len(agents) + 1, len(commands))
-        self.assertNotIn(str(self.workspace), commands[0][1])
-        for name, cmd, env, cwd in commands[1:]:
+        self.assertEqual("daemon", commands[-1][0])
+        self.assertNotIn(str(self.workspace), commands[-1][1])
+        for name, cmd, env, cwd in commands[:-1]:
             self.assertEqual(self.workspace, cwd)
             self.assertEqual(str(self.workspace), cmd[cmd.index("--workspace") + 1])
             self.assertEqual(name, env["A2A_NAME"])
-        registrations = [c for c in calls if c[0] == "register"]
-        self.assertEqual(len(agents), len(registrations))
-        self.assertTrue(all(len(c) == 3 and c[2].startswith("http://127.0.0.1:") for c in registrations))
+        self.assertEqual([("agents", "list")], calls)
+        registered = json.loads((self.root / "daemon.yaml").read_text())["registry"]["agents"]
+        self.assertEqual([a["id"] for a in agents], list(registered))
+        self.assertTrue(all(v["url"].startswith("http://127.0.0.1:") for v in registered.values()))
         self.assertFalse(repo.git_snapshot(self.workspace)["status"])
 
-    def test_daemon_auto_port_uses_owned_readiness_record(self):
-        args = SimpleNamespace(port=0, headless=True, accept_full_access=True)
-        runner = team.RepositoryTeam(args, {}, self.root, float("inf"))
-        (self.root / "daemon.log").write_text("INFO agentiplexd ready listen=127.0.0.1:29451 broker_mode=embedded\n")
-        with patch.object(runner, "spawn") as spawn, patch.object(teamlib, "get", return_value={"ready": True}) as get:
-            runner.start_daemon("repository-demo", False)
-            cmd = spawn.call_args.args[1]
-            self.assertEqual("127.0.0.1:0", cmd[cmd.index("--listen") + 1])
-            self.assertNotIn("--public-url", cmd)
-            get.assert_called_once_with("http://127.0.0.1:29451/readyz")
-        self.assertEqual("http://127.0.0.1:29451", runner.endpoint)
-        args.port = 19080
-        with patch.object(runner, "spawn"), patch.object(teamlib, "get") as get:
-            with self.assertRaisesRegex(RuntimeError, "unexpected daemon"):
-                runner.start_daemon("repository-demo", False)
-            get.assert_not_called()
+    def test_free_port_is_bindable(self):
+        import socket
+        port = teamlib.free_port()
+        with socket.socket() as sock:
+            sock.bind(("127.0.0.1", port))
 
     def test_daemon_restart_only_when_asked(self):
         class Dead:
@@ -269,16 +258,19 @@ class RepositoryTests(unittest.TestCase):
         roster = team.load_roster(Path(team.__file__).with_name("team.json"))
         root = {"id": "root", "target": "pm", "state": "completed", "result": {"text": "done"}}
         workers = [{"id": role, "target": role, "state": "completed", "result": {"text": "finding"},
-                    "returnedAt": "2026-11-27T10:00:00Z"} for role in ("architect", "developer", "tester", "quality")]
+                    "caller": "pm"} for role in ("architect", "developer", "tester", "quality")]
         deliveries = [root, *workers]
         return {"root": root, "deliveries": deliveries, "agents": roster,
                 "toolCalls": teamlib.call_evidence(deliveries, "pm"),
                 "state": [{"key": "note-team-1-aa", "revision": 1, "value": "{}"}]}
 
-    def test_acceptance_requires_every_role_ask_evidence_and_notes(self):
+    def test_acceptance_requires_every_role_delegation_evidence_and_notes(self):
         e = self.evidence()
         self.assertEqual(["architect", "developer", "quality", "tester"], team.verify_collaboration(e))
-        self.assertEqual(4, e["toolCalls"]["askCalls"])
+        self.assertEqual(4, e["toolCalls"]["delegationCalls"])
+        self.assertEqual(4, sum(e["toolCalls"]["delegationsCompleted"].values()))
+        self.assertEqual(["pm"], e["toolCalls"]["callers"])
+        self.assertIn("not recorded", e["toolCalls"]["toolIdentity"])
         self.assertEqual(1, e["toolCalls"]["coordinatorTurns"])
         e["deliveries"][-1]["state"] = "accepted"
         with self.assertRaisesRegex(RuntimeError, "did not complete"):
@@ -301,25 +293,40 @@ class RepositoryTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "shared notes"):
             team.verify_collaboration(e)
         e = self.evidence()
-        for d in e["deliveries"]:
-            d.pop("returnedAt", None)
+        e["deliveries"] = [e["root"]]
         e["toolCalls"] = teamlib.call_evidence(e["deliveries"], "pm")
-        self.assertEqual(4, e["toolCalls"]["otherDelegations"])
-        with self.assertRaisesRegex(RuntimeError, "PM called ask"):
+        with self.assertRaisesRegex(RuntimeError, "missing completed worker results"):
+            team.verify_collaboration(e)
+        e = self.evidence()
+        e["toolCalls"] = teamlib.call_evidence([e["root"]], "pm")
+        with self.assertRaisesRegex(RuntimeError, "durable evidence"):
             team.verify_collaboration(e)
 
     def test_prompt_is_generic_and_bounded(self):
         agents = team.load_roster(Path(team.__file__).with_name("team.json"))
         prompt = team.pm_prompt(agents, "Improve README")
         self.assertIn("Improve README", prompt)
+        self.assertIn("Discover the available agents", prompt)
         for a in agents[1:]:
-            self.assertIn("- " + a["id"] + ": " + a["role"], prompt)
+            self.assertNotIn(a["role"], prompt)
+        self.assertLess(len(prompt), 700)
         self.assertIn("note", prompt)
         self.assertIn("commits", prompt)
-        for mechanics in ("idempotency", "receipt", "poll", "revision", "resubmit", "key", "six"):
+        for mechanics in ("idempotency", "receipt", "poll", "revision", "resubmit", "key", "six", "ask"):
             self.assertNotIn(mechanics, prompt.lower())
         with self.assertRaises(ValueError):
             team.pm_prompt(agents, "x" * 4096)
+
+    def test_daemon_config_is_generated_from_endpoints(self):
+        args = SimpleNamespace(port=19999)
+        runner = team.RepositoryTeam(args, {}, self.root, float("inf"))
+        with patch.object(runner, "spawn"), patch.object(runner, "wait_daemon"):
+            runner.start_daemon("ns", False, {"pm": "http://127.0.0.1:1", "dev": "http://127.0.0.1:2"})
+        config = json.loads((self.root / "daemon.yaml").read_text())
+        self.assertEqual({"pm": {"url": "http://127.0.0.1:1"}, "dev": {"url": "http://127.0.0.1:2"}}, config["registry"]["agents"])
+        self.assertEqual("127.0.0.1:19999", config["server"]["listen"])
+        self.assertFalse(config["observability"]["dashboard"])
+        self.assertNotIn("token", json.dumps(config))
 
     def test_git_evidence_and_operator_verification(self):
         before = repo.git_snapshot(self.workspace)
