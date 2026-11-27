@@ -127,15 +127,18 @@ func Handler(b *agentiplex.Bus,authenticated ...bool)http.Handler{
 	h:=sdk.NewStreamableHTTPHandler(func(*http.Request)*sdk.Server{return s},&sdk.StreamableHTTPOptions{
 		Stateless:true,JSONResponse:true,MaxRequestBodyBytes:512<<10,PropagateRequestCancellation:true,
 	})
-	return http.HandlerFunc(func(w http.ResponseWriter,r *http.Request){
-		w.Header().Set("Cache-Control","no-store")
-		// ask blocks without a server-side limit; drop the daemon's per-request deadlines for this route only.
+	// ask blocks without a server-side limit; drop the daemon's per-request deadlines for this route only.
+	release:=func(w http.ResponseWriter)bool{
 		rc:=http.NewResponseController(w)
 		for _,set:=range []func(time.Time)error{rc.SetReadDeadline,rc.SetWriteDeadline}{
-			if err:=set(time.Time{});err!=nil&&!errors.Is(err,http.ErrNotSupported){http.Error(w,"cannot clear deadlines",500);return}
+			if err:=set(time.Time{});err!=nil&&!errors.Is(err,http.ErrNotSupported){http.Error(w,"cannot clear deadlines",500);return false}
 		}
+		return true
+	}
+	return http.HandlerFunc(func(w http.ResponseWriter,r *http.Request){
+		w.Header().Set("Cache-Control","no-store")
 		if r.Header.Get("Origin")!=""{http.Error(w,"browser MCP forbidden",403);return}
-		if len(authenticated)>0&&authenticated[0]{h.ServeHTTP(w,r);return}
+		if len(authenticated)>0&&authenticated[0]{if release(w){h.ServeHTTP(w,r)};return}
 		host,_,err:=net.SplitHostPort(r.RemoteAddr)
 		ip,parseErr:=netip.ParseAddr(host)
 		if err!=nil||parseErr!=nil||!ip.Unmap().IsLoopback()||r.Header.Get("Origin")!=""{
@@ -150,6 +153,6 @@ func Handler(b *agentiplex.Bus,authenticated ...bool)http.Handler{
 		if !strings.EqualFold(host,"localhost")&&(e!=nil||!hostIP.Unmap().IsLoopback()){
 			http.Error(w,"MCP requires a loopback Host",http.StatusForbidden);return
 		}
-		h.ServeHTTP(w,r)
+		if release(w){h.ServeHTTP(w,r)}
 	})
 }

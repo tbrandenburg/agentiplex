@@ -70,14 +70,14 @@ func roleAllowed(role,method,path string)bool{
 	read:=method=="GET"||method=="HEAD"
 	parts:=strings.Split(strings.TrimPrefix(path,"/"),"/")
 	if role=="viewer"{
-		return read&&(strings.HasPrefix(path,"/ui/")||path=="/ui"||path=="/api/v1/dashboard"||strings.HasPrefix(path,"/api/v1/dashboard/detail/")||path=="/.well-known/ai-catalog.json")
+		return read&&(strings.HasPrefix(path,"/ui/")||path=="/ui"||path=="/api/v1/dashboard"||path=="/api/v1/usage"||strings.HasPrefix(path,"/api/v1/dashboard/detail/")||path=="/.well-known/ai-catalog.json")
 	}
 	if role!="collaborator"{return false}
 	if path=="/mcp"||path=="/a2a"{return true}
 	if read&&path=="/.well-known/ai-catalog.json"{return true}
 	if len(parts)<3||parts[0]!="api"||parts[1]!="v1"{return false}
 	switch parts[2]{
-	case "agents","groups","pools","deliveries","events":
+	case "agents","groups","pools","deliveries","events","usage":
 		return read
 	case "messages","broadcasts","dispatches":
 		return method=="POST"&&len(parts)==3

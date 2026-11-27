@@ -18,8 +18,8 @@ import (
 
 // A note is one create-only state key "note-<topic>-<20-digit unix nanos>-<8 hex>",
 // so the key part stays a valid state ID (64 chars max) and sorts by time.
-// Notes bypass PutState's per-namespace key count (MaxStateKeys); only the
-// value limit and the bucket MaxBytes can refuse a note.
+// PutState's per-namespace key count (MaxStateKeys) does not count note keys,
+// so only the value limit and the bucket MaxBytes can refuse a note.
 const (
 	MaxNoteTopic=29
 	MaxNotesRead=100
@@ -28,6 +28,12 @@ const (
 
 var validTopic=regexp.MustCompile(`^[a-z0-9][a-z0-9_-]*$`)
 var noteSuffix=regexp.MustCompile(`^[0-9]{20}-[0-9a-f]{8}$`)
+
+// isNoteKey reports whether the full state key k is a note key of namespace.
+func isNoteKey(namespace,k string)bool{
+	rest,ok:=strings.CutPrefix(k,namespace+"."+notePrefix);if !ok||len(rest)<30{return false}
+	return rest[len(rest)-30]=='-'&&noteSuffix.MatchString(rest[len(rest)-29:])
+}
 
 type Note struct {
 	Key string `json:"key"`

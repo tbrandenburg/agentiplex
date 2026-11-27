@@ -141,9 +141,9 @@ Downtime assumption: one daemon per namespace, no HA. While the daemon is down i
 
 The `DELIVERIES` bucket is capped at 128 MiB and rejects writes when full, so terminal records are removed by an age-based sweep that runs once a minute in the existing reconciliation loop.
 
-- `delivery.retention` (default `168h`): a terminal record (completed, failed, uncertain, input-required, auth-required) is removed once its `updatedAt` is older than this.
+- `delivery.retention` (default `168h`): a terminal record (completed, failed, uncertain, input-required, auth-required) is removed once its `updatedAt` is older than this (age is measured from the last update, not from `returnedAt`).
 - `delivery.unreturned_retention` (default `720h`, must be at least `retention`): a terminal record that has no returned mark (no `ask` handed its result back) is kept this long instead, so a re-ask after a crash can still collect it. Agentiplex cannot tell never-asked records (`send_message`, `get_delivery`) from uncollected asks, so this longer limit applies to every unreturned terminal record.
 - Nonterminal records are never removed. A broadcast group (parent plus children) is removed only when its derived state is terminal (completed, failed or partial) and the newest child update is older than `retention`; children of a live parent are never removed individually. Broadcasts use the normal limit.
 - Removal is a compare-and-swap purge: a concurrent update wins and the record is retried on the next sweep. Purging frees the stored bytes (verified by test); only a small marker remains until it is cleaned up.
-- `GET /readyz` reports `deliveries`: `bytes`, `maxBytes`, `records`, and `unreturnedTerminal` (terminal records kept past `retention` by the last sweep). The sweep logs the same count.
+- `GET /readyz` stays public and returns only `{"ready":true}`. The authenticated `GET /api/v1/usage` (viewer role or higher) reports `deliveries`: `bytes`, `maxBytes`, `records`, and `unreturnedTerminal` (terminal records kept past `retention` by the last sweep). The sweep logs the same count.
 <!-- retention:end -->

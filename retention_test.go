@@ -2,6 +2,9 @@ package agentiplex
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"strconv"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -93,4 +96,29 @@ func TestSweepRetentionBroadcastGroups(t *testing.T){
 	for id,want:=range map[string]bool{"bg-open":true,childID("bg-open","m1"):true,childID("bg-open","m2"):true,"bg-done":false,childID("bg-done","m1"):false,childID("bg-done","m2"):false,"bg-fresh":true,childID("bg-fresh","m1"):true,"bg-fanout":true}{
 		if exists(b,id)!=want{t.Fatalf("%s exists=%v want %v",id,!want,want)}
 	}
+}
+
+func TestAskIDSkipsPurgedHoleToRunningDelivery(t *testing.T){
+	b:=retentionBus(t)
+	id:=func(n int)string{h:=sha256.Sum256([]byte("ask\x00a\x00x\x00"+strconv.Itoa(n)));return hex.EncodeToString(h[:])}
+	now:=time.Now().UTC()
+	putDelivery(t,b,Delivery{ID:id(1),State:"accepted",UpdatedAt:now})
+	got,err:=b.askID("a","x");if err!=nil{t.Fatal(err)}
+	if got!=id(1){t.Fatal("ask must re-attach to the running delivery behind a purged id")}
+}
+
+func TestAskIDAfterReturnedHoleUsesNextFree(t *testing.T){
+	b:=retentionBus(t)
+	id:=func(n int)string{h:=sha256.Sum256([]byte("ask\x00a\x00y\x00"+strconv.Itoa(n)));return hex.EncodeToString(h[:])}
+	now:=time.Now().UTC()
+	putDelivery(t,b,Delivery{ID:id(1),State:"completed",UpdatedAt:now,ReturnedAt:&now})
+	got,err:=b.askID("a","y");if err!=nil{t.Fatal(err)}
+	if got!=id(2){t.Fatal("new ask must follow the highest existing id")}
+}
+
+func TestPutStateIgnoresNotesInKeyLimit(t *testing.T){
+	b:=retentionBus(t)
+	ctx:=context.Background()
+	for i:=0;i<260;i++{if _,err:=b.Note(ctx,"team","t","n","");err!=nil{t.Fatal(err)}}
+	if _,err:=b.PutState(ctx,"team","plain","v",0);err!=nil{t.Fatalf("plain key refused after notes: %v",err)}
 }

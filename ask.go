@@ -52,13 +52,21 @@ func(b *Bus) Ask(ctx context.Context,target,text,key string,timeout time.Duratio
 // askID picks the first derived delivery that does not exist, is nonterminal,
 // or whose result was not returned yet.
 func(b *Bus) askID(target,text string)(string,error){
-	for n:=0;;n++{
+	const gap=8
+	next,missing:="",0
+	for n:=0;missing<gap;n++{
 		h:=sha256.Sum256([]byte("ask\x00"+target+"\x00"+text+"\x00"+strconv.Itoa(n)))
 		id:=hex.EncodeToString(h[:])
 		d,err:=b.rawDelivery(id)
-		if errors.Is(err,ErrNotFound)||(err==nil&&(!terminalState(d.State)||d.ReturnedAt==nil)){return id,nil}
+		if errors.Is(err,ErrNotFound){
+			if next==""{next=id}
+			missing++;continue
+		}
 		if err!=nil{return "",err}
+		missing,next=0,""
+		if !terminalState(d.State)||d.ReturnedAt==nil{return id,nil}
 	}
+	return next,nil
 }
 
 // markReturned sets the durable returned mark by compare-and-swap so it never
@@ -103,9 +111,10 @@ func awaitTerminal(ctx context.Context,id string,get func()(Delivery,error),watc
 					if !ok{w=nil;break}
 					if e==nil{continue}
 					if e.Operation()!=nats.KeyValuePut{_ = w.Stop();return last,ErrNotFound}
-					if json.Unmarshal(e.Value(),&d)==nil{
-						last=d
-						if terminalState(d.State){_ = w.Stop();return d,nil}
+					var nd Delivery
+					if json.Unmarshal(e.Value(),&nd)==nil{
+						last=nd
+						if terminalState(nd.State){_ = w.Stop();return nd,nil}
 					}
 				}
 			}

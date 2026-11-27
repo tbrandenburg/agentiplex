@@ -61,7 +61,9 @@ func TestSecureHTTPRolesA2AAndMCP(t *testing.T){
 		for _,secret:=range []string{operator,collaborator,viewer}{if strings.Contains(string(raw),secret){t.Fatal("credential disclosed in response")}}
 		return string(raw)
 	}
-	call("GET","/readyz","","","",200)
+	if body:=call("GET","/readyz","","","",200);strings.TrimSpace(body)!=`{"ready":true}`{t.Fatalf("public readyz body %q",body)}
+	call("GET","/api/v1/usage","","","",401)
+	call("GET","/api/v1/usage",viewer,"","",200)
 	card:=call("GET","/.well-known/agent-card.json","","","",200)
 	if !strings.Contains(card,"httpAuthSecurityScheme")||!strings.Contains(card,"securityRequirements"){t.Fatal("missing advertised security")}
 	for _,path:=range []string{"/api/v1/agents","/api/v1/dashboard","/api/v1/state/engineering","/.well-known/ai-catalog.json","/ui/"}{call("GET",path,"","","",401)}

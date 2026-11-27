@@ -178,6 +178,7 @@ func(b *Bus) process(ctx context.Context,m *nats.Msg){
 	b.mu.Lock()
 	d,err:=b.rawDelivery(string(m.Data))
 	b.mu.Unlock()
+	if errors.Is(err,ErrNotFound){_ = m.Term();return}
 	if err!=nil{_ = m.NakWithDelay(b.cfg.RetryDelay);return}
 	switch d.State{
 	case "completed","failed","uncertain","input-required","auth-required":
