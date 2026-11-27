@@ -64,6 +64,8 @@ func TestMCPDelegationAndStateAcrossRestart(t *testing.T){
 	}
 	agents:=decodeMCP[struct{Agents []agentiplex.Agent}](t,mcpCall(t,c,"discover_agents",map[string]any{"skill":"architecture","group":"engineering"},false))
 	if len(agents.Agents)!=2{t.Fatalf("discovery %+v",agents)}
+	none:=decodeMCP[struct{Agents []agentiplex.Agent;Registered int;Hint string}](t,mcpCall(t,c,"discover_agents",map[string]any{"skill":"nonexistent"},false))
+	if len(none.Agents)!=0||none.Registered<2||!strings.Contains(none.Hint,"without filters"){t.Fatalf("empty filtered discovery lacks hint %+v",none)}
 	h:=decodeMCP[agentiplex.AgentHealth](t,mcpCall(t,c,"get_agent_health",map[string]any{"id":"tester-1"},false))
 	if h.Reachability!="reachable"||h.Busy{t.Fatalf("health %+v",h)}
 	pools:=decodeMCP[struct{Collections []agentiplex.Collection}](t,mcpCall(t,c,"list_collections",map[string]any{"kind":"pool"},false))

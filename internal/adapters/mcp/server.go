@@ -92,10 +92,20 @@ func NewServer(b *agentiplex.Bus)*sdk.Server{
 	})
 	add(s,"discover_agents","Find registered agents by advertised skill, tag and/or group. Reachability is the last observation, not a guarantee.",true,false,false,false,func(_ context.Context,in discoveryInput)(any,error){
 		a,err:=b.Discover(in.Skill,in.Tag,in.Group)
-		return map[string]any{"agents":a},err
+		if err!=nil||len(a)>0{return map[string]any{"agents":a},err}
+		all,err:=b.Discover("","","")
+		if err!=nil{return nil,err}
+		out:=map[string]any{"agents":a,"registered":len(all)}
+		switch{
+		case len(all)==0:out["hint"]="No agents are registered yet; registration may still be in progress. Retry discover_agents shortly."
+		case in.Skill!=""||in.Tag!=""||in.Group!="":out["hint"]="No agent matches the filter, but agents are registered. Call discover_agents without filters to list all of them."
+		}
+		return out,nil
 	})
 	add(s,"list_collections","List configured groups (broadcast to all) or pools (dispatch to one).",true,false,false,false,func(_ context.Context,in collectionInput)(any,error){
-		c,err:=b.Collections(in.Kind);return map[string]any{"collections":c},err
+		c,err:=b.Collections(in.Kind)
+		if err!=nil||len(c)>0{return map[string]any{"collections":c},err}
+		return map[string]any{"collections":c,"hint":"No groups or pools are configured; this is normal. Use discover_agents and send to agents directly."},nil
 	})
 	add(s,"get_agent_health","Read cached timestamped card reachability and bus-tracked busy state; does not probe or execute work.",true,false,false,false,func(_ context.Context,in agentInput)(any,error){return b.AgentHealth(in.ID)})
 	submit:=func(kind string,fn func(context.Context,string,string,string)(agentiplex.Delivery,error))func(context.Context,submitInput)(any,error){
