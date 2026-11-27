@@ -16,6 +16,20 @@ broker:
 registry:
   namespace: engineering
   health_interval: 30s # zero disables periodic observations
+  # Optional static provisioning, applied additively at startup (see docs/DEPLOYMENT.md).
+  # Agent descriptions and skills come from native A2A cards. Config file only (no env override).
+  # agents:
+  #   pm:
+  #     url: https://pm.example.org # A2A base URL or Agent Card URL
+  #     token_file: /run/secrets/agent-pm # inbound credential bound to ID "pm" (required in secure mode)
+  #   architect:
+  #     url: https://architect.example.org
+  #     token_file: /run/secrets/agent-architect
+  #     outbound_token_file: /run/secrets/architect-recipient # sent to this HTTPS origin only
+  # groups:
+  #   engineering: [pm, architect]
+  # pools:
+  #   reviewers: [architect]
 delivery:
   workers: 4 # bounded outbound HTTP concurrency; one restores serial mode
   timeout: 120s # per HTTP operation, not task execution lifetime
@@ -41,7 +55,8 @@ protocols:
 # server.tls_cert_file and server.tls_key_file plus HTTPS public_url required.
 security:
   operator_token_file: ""
-  # One credential file per named agent (logical agent ID -> file). Each token must be
+  # Credential files for agent IDs NOT declared under registry.agents (declared agents use
+  # registry.agents.<id>.token_file; an ID may be set in only one place). Each token must be
   # unique across all principals. Rotate or revoke by editing files and restarting.
   agent_token_files: {}
   #  pm: /run/secrets/agent-pm

@@ -64,6 +64,8 @@ Use KV revision checks for updates. Registration is not a heartbeat. Keep an una
 
 Publish the AI Catalog at `/.well-known/ai-catalog.json` with `application/ai-catalog+json`. Entries reference native A2A Agent Cards using the specification's artifact media type. Use SDK validation; do not invent catalog fields for local groups, health or queue status. For the local demo use URLs resolvable by the consumer; do not silently publish container-internal or unreachable addresses. Discovery filters are local application behavior, not a claim to implement an ARD registry API or federated discovery.
 
+Optional static provisioning (`registry.agents/groups/pools` in the YAML) runs once at startup through the same `Register` and `SetCollection` paths, after storage/auth/transport init and before listening; it is additive, restart-idempotent and never edits queued or accepted delivery snapshots (see `docs/DEPLOYMENT.md`).
+
 ## 5. Messaging and storage
 
 Use a configured namespace to isolate deployments on a shared NATS installation. The names below are illustrative logical resources; actual NATS stream/KV names are derived safely from the namespace.
