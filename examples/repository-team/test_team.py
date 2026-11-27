@@ -180,7 +180,13 @@ class RepositoryTests(unittest.TestCase):
     def test_timeouts_must_fit_and_are_launcher_options(self):
         script = str(Path(team.__file__))
         base = [sys.executable, "-B", script, "--workspace", "/nonexistent", "--accept-full-access", "--check"]
-        for extra, message in ((["--seconds", "600"], "must exceed --prompt-timeout"),
+        run = [a for a in base if a != "--check"] + ["--seconds", "600"]
+        result = subprocess.run(run, capture_output=True, text=True)
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn("must exceed --prompt-timeout", result.stderr)
+        result = subprocess.run(base + ["--seconds", "180"], capture_output=True, text=True)
+        self.assertNotIn("must exceed --prompt-timeout", result.stderr)
+        for extra, message in (
                                (["--mcp-timeout", "unlimited"], "finite duration"),
                                (["--restart-daemon", "--repo", "/nonexistent"], "not allowed")):
             result = subprocess.run(base + extra, capture_output=True, text=True)

@@ -209,7 +209,7 @@ def main():
     if args.execution_ms is None:
         p.error("--mcp-timeout must be a finite duration (ms, s, m or h)")
     prompt_ms = teamlib.duration_ms(args.prompt_timeout)
-    if prompt_ms is not None and prompt_ms >= args.seconds * 1000:
+    if not args.check and prompt_ms is not None and prompt_ms >= args.seconds * 1000:
         p.error("--seconds must exceed --prompt-timeout so a whole PM turn fits in the launcher deadline")
     if args.restart_daemon and not args.port:
         p.error("--restart-daemon needs a fixed --port (agents keep the original MCP URL)")
