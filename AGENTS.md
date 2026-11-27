@@ -46,3 +46,5 @@ agents. Running them for testing is allowed without asking; read `examples/READM
 
 ## Lessons Learned
 - 2026-11-27: Pitfall: `gh issue view N --comments` omits the issue body, so a first read missed the specs. Prevention rule/countermeasure: always also fetch `--json body -q .body`, and pass both to subagents.
+- 2026-11-27: Pitfall: Fresh git worktrees lack gitignored generated assets (dashboard), so subagent builds/tests failed confusingly. Prevention: run `make dashboard-assets` first in every new worktree.
+- 2026-11-27: Pitfall: Embedded JetStream refuses to start when free disk is below its bucket reservations (~560 MB), with an opaque error. Prevention: check `df` before E2E; use `TMPDIR=/dev/shm` when `/` is nearly full.
