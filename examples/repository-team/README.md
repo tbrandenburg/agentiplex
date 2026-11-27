@@ -1,16 +1,16 @@
 # Repository engineering team
 
-A third, optional example: six independent real OpenCode A2A agents collaborate
+A third, optional example: independent real OpenCode A2A agents (five by default, see [team.json](team.json)) collaborate
 on **one explicitly selected Git workspace** (a fresh scratch worktree or an existing checkout). Unlike the fixture-based
 [autonomous-team](../autonomous-team/README.md), this example can produce real
 repository changes. It is an operator-side launcher and observer, not a new
 Agentiplex runtime, workflow engine, or workspace API. The CLI and daemon only
 receive agent IDs, endpoints, collaboration messages and shared state.
 
-> **WARNING — FULL ACCESS:** Developer and both Testers can execute arbitrary shell
+> **WARNING — FULL ACCESS:** Agents with `"access": "full-access"` in `team.json` (Developer and Tester by default) can execute arbitrary shell
 > commands without per-command approval, edit any files available to your OS user,
 > use the network, access forwarded provider credentials, perform Git operations,
-> and bypass MCP role grants. There is no OS sandbox or rollback. Use a disposable
+> and bypass MCP tool grants. There is no OS sandbox or rollback. Use a disposable
 > isolated VM/container/user with minimal credentials, not your everyday development
 > environment. The launcher requires explicit `--accept-full-access` even for startup-only checks.
 
@@ -28,7 +28,7 @@ The gateway requires a trusted standalone workspace with reviewed configuration.
 Do not use a workspace with untrusted project instructions, escaping symlinks,
 unexpected ancestor config, secrets or plugins. Prefer an isolated VM or
 container/user with minimal host permissions and credentials; the runtime
-profiles are **not an OS sandbox**. All six gateways and the dedicated daemon
+profiles are **not an OS sandbox**. All gateways and the dedicated daemon
 listen on loopback, without authentication. Never expose them to other users or
 a public proxy. The selected workspace is not copied to temporary fixtures.
 
@@ -80,6 +80,7 @@ for public or synthetic data only:
   "$schema": "https://opencode.ai/config.json",
   "model": {"providerID": "opencode", "model": "big-pickle"},
   "mcp": {
+    "timeout": {"execution": 2700000},
     "servers": {
       "agentiplex": {
         "type": "remote",
@@ -95,7 +96,7 @@ for public or synthetic data only:
 No extra configuration fields or MCP servers are accepted by this example.
 The gateway independently preflights effective OpenCode policy. Project role
 instructions must be trusted and must not attempt to weaken that policy.
-For a different launcher port, change the MCP URL to match `--port`.
+For a different launcher port, change the MCP URL to match `--port`. `timeout.execution` (milliseconds) must equal `--mcp-timeout` (default 45m = 2700000); the launcher refuses a different value. A clone run writes this config itself.
 No provider credentials belong in this file.
 
 ## 2. Start and submit one objective
@@ -103,7 +104,7 @@ No provider credentials belong in this file.
 From the Agentiplex checkout:
 
 ```sh
-# Optional startup-only check with six real gateways; no model task:
+# Optional startup-only check with real gateways; no model task:
 make repository-team WORKSPACE=/absolute/trusted/repo \
   REPOSITORY_ARGS="--check --accept-full-access"
 
@@ -137,50 +138,79 @@ evidence capture: a second launcher using the same existing checkout fails inste
 of concurrently editing it. These advisory locks coordinate this example only,
 not arbitrary Git processes or full-access agents. Existing workspace mode uses
 port 19080 by default; choose a distinct `--port` and matching local MCP config
-for simultaneous different existing workspaces. Default team deadline 1200s,
-gateway prompt timeout 10m; override using `REPOSITORY_ARGS` (e.g. `--seconds 1800`).
+for simultaneous different existing workspaces. Timeouts are explicit launcher options, not hidden defaults:
+
+| Option | Default | Meaning |
+|---|---|---|
+| `--prompt-timeout` | 45m | Gateway deadline for **one whole agent turn**. The PM's entire turn, all `ask` calls summed, must fit in it. |
+| `--mcp-timeout` | 45m | OpenCode `mcp.timeout.execution` (OpenCode's own default is 12 h): the longest single tool call, i.e. one `ask`. |
+| `--seconds` | 3600 | Launcher wall-clock guard (60–86400), including startup; must exceed `--prompt-timeout`. |
+
+A typical run (architect, developer, tester, quality, one fix round) takes 5–20 minutes, so 45m leaves
+headroom; raise all three together for a larger task (`--prompt-timeout 3h --mcp-timeout 3h --seconds 14400`).
+The daemon's `AGENTIPLEX_DELIVERY_TIMEOUT=30s` is kept: it bounds one HTTP operation to a gateway, not agent
+execution (see [A2A](../../docs/A2A.md)); `AGENTIPLEX_DELIVERY_MAX_ATTEMPTS=80` bounds only pre-submission reachability.
 The dashboard URL is printed at startup (unless `--headless`).
 
 ## 3. Collaboration and write authority
 
-| Agent | Runtime profile | Responsibility |
-|---|---|---|
-| PM | read-only | Discover, delegate, wait, consolidate |
-| Architect | read-only | Analyze project, propose change |
-| Developer | full-access | Implement, build, run tests and fix failures |
-| Tester 1 / Tester 2 | full-access | Independently execute build/test/lint commands and report results |
-| Quality | read-only | Independent review |
+The team is data: [team.json](team.json), one line per agent (`id`, `access`, `role`):
 
-All six receive the exact same canonical workspace path as gateway `--workspace`; they have
-independent gateway processes and sessions, and separate policy files outside
-the checkout. Names and skills are advertised through A2A. The PM receives a
-single objective and role guidance, and chooses the details of its delegations.
-Only PM receives explicit send/broadcast/dispatch MCP grants. Workers can inspect
-receipts and share bounded KV notes. Full-access workers can bypass the MCP grants
-through shell/network access to the unauthenticated daemon. Role instructions are
-not authenticated identities, filesystem permissions or enforceable ownership.
+```json
+{"agents": [
+  {"id": "pm", "access": "read-only", "role": "Coordinate the work: ..."},
+  {"id": "developer", "access": "full-access", "role": "Implement the agreed change ..."}
+]}
+```
 
-For Developer and both Testers, the launcher selects gateway `full-access` and
-passes `--access danger-full-access` after the operator acknowledges the warning.
-This permits unrestricted shell execution, including Git, builds, tests, debugging,
-web access and potentially edits outside the project. Testers are instructed not
-to edit source and all agents are instructed not to stage, commit, push, merge or
-switch branches. These are behavioral requests, not enforcement. Developer and
-testers must sequence work; the PM can delegate a fix and retest after a failure
-within the existing six-delegation budget. PM, Architect and Quality retain their
-read-only gateway profiles. No custom shell MCP server or middleware change.
+To add an agent (a second tester, a docs reviewer) add a line; no Python changes. Use another file with
+`--team path.json`. Rules the launcher derives from the data:
+
+- **Coordinator:** the first agent. It is the only one that receives the delegation tools (`ask`, `send_message`,
+  `broadcast`, `dispatch`) and the only one the objective is submitted to. There is no per-agent delegation flag.
+- **Grants:** every agent gets the collaboration tools (discovery, delivery lookup, state, `note`, `read_notes`).
+  `access` (`read-only` or `full-access`) is the only per-agent safety setting; it selects the gateway
+  `--access` profile. MCP grants are least-privilege hygiene, not a boundary (see the warning).
+- **Prompt:** the PM gets one short generic prompt: the objective, the role list and the no-commit rules. Keys, receipts,
+  waiting and re-attaching are in the `ask` tool description, not in the prompt. Workers get no prompt of their own; they see
+  their `role` as their A2A description and the PM's `ask` text.
+- **Gate roles:** every non-coordinator agent (a trailing `-<n>` is ignored, so `tester-1`/`tester-2` count as one `tester`) must produce a
+  completed result.
+
+All agents receive the exact same canonical workspace path as gateway `--workspace`; they have independent gateway
+processes and sessions, and separate policy files outside the checkout.
+
+For `full-access` agents the launcher passes `--access danger-full-access` after the operator acknowledges the warning.
+This permits unrestricted shell execution, including Git, builds, tests, web access and potentially edits outside the
+project. The PM's prompt asks that nobody stage, commit, push, merge or switch branches, and the tester role says not to
+edit source. These are behavioral requests, not enforcement. The PM can have a failed test fixed and retested. Shared findings go through the
+append-only `note`/`read_notes` tools (namespace `repository`). No custom shell MCP server or middleware change.
+
+### Crash restart
+
+Restarting the daemon mid-run continues the team to the PASS gate. The PM's in-flight `ask` fails; the PM repeats it, and it
+re-attaches to the same delivery without a second downstream execution (see [MCP](../../docs/MCP.md) and
+[ARCH 5.5](../../docs/ARCH.md)). This relies on restarting the daemon on the same storage and port, which is what the
+[restart policy](../../docs/DEPLOYMENT.md) of #31 does in a deployment. For this launcher, pass `--port N --restart-daemon` and it
+performs that restart for you if the daemon dies (e.g. `kill -9` of the daemon PID in `daemon.log`'s run directory). Without the flag a
+dead daemon ends the run as BLOCKED. The agents themselves (the PM's own model turn) are not resumed by the middleware.
 
 The launcher observes authoritative delivery receipts and state. It requires a
-completed real PM plus real Architect, Developer, at least one Tester and Quality
-result, PM/developer shared-state notes, a completed tester’s shared-state verification
-report, no unresolved or failed deliveries,
-and a Git-visible change. It does not decide detailed engineering work, replay
-ambiguous requests, or claim code correctness. If the PM returns before a worker
-finishes, the observer waits within the same bounded deadline. The unused tester
-may remain idle. A delivery completing and a tester report existing do not independently
+completed real PM plus a real result from every other agent (Architect, Developer, Tester, Quality by default),
+shared notes, no unresolved or failed deliveries, **daemon-side evidence that the PM called `ask`**
+(see below) and a Git-visible change. It does not decide detailed engineering work, replay
+ambiguous requests, or claim code correctness. Because `ask` blocks, the PM normally cannot return before a worker finishes; if it does (for example it gave up on a `stillRunning` ask), the
+observer prints a warning and waits for the admitted work within the same deadline, and the PASS gate still requires every
+delivery to complete. A delivery completing and a tester report existing do not independently
 prove that a command ran or passed. Agent-reported commands, exit codes and outputs
 must be reviewed; the PASS gate attests collaboration and Git-visible changes, not
 correctness. Full-access agents can also modify evidence on disk.
+
+Tool-call evidence: the gateway logs show only the policy grant, so the launcher derives call evidence from the daemon's
+delivery records (`evidence.json` → `toolCalls`, printed as "PM tool-call evidence"). A delivery to a worker exists only
+because the PM called a delegation tool; `returnedAt` is set by the daemon only when a blocking `ask` handed the terminal result
+back, so `askCalls` counts completed asks, `delegations` counts deliveries per target and `coordinatorTurns` the PM turns.
+It is not a transcript of every PM tool call (note/read_notes calls are visible as `note-` state keys).
 
 ## 4. Inspect and actually verify
 
@@ -227,12 +257,28 @@ operator-owned and not automatically sent back to the stopped agents.
 
 The original fixture examples remain unchanged. No new middleware features or
 third-party Python dependencies are introduced. `make repository-check` runs
-provider-free regression tests for shared workspace binding, role grants,
+provider-free regression tests for the team data file, derived grants, shared workspace binding,
 registration, Git evidence, acceptance and operator test execution. Live
 repository collaboration is explicitly opt-in and not run against private source
-in CI. The Live OpenCode workflow additionally provisions six real gateways on a
+in CI. The Live OpenCode workflow additionally provisions the real gateways on a
 clean synthetic Git checkout in both existing-workspace and scratch-clone modes
 with explicit full-access acknowledgement and no model submission. Review/redact run data before sharing and delete it yourself when done.
 
 Gateway reference: [v0.9.0 capability profiles](https://github.com/tbrandenburg/opencode-a2a-lite/blob/v0.9.0/README.md#access-levels)
 and [operator policy](https://github.com/tbrandenburg/opencode-a2a-lite/blob/v0.9.0/docs/operator-policy-state.md).
+
+## 5. Measure it
+
+`measure.py` repeats the whole team N times on its default settings and records PASS/BLOCKED, wall time, PM turns, PM `ask`
+calls, delegations and whether Quality ran. Everything after `--` goes to `team.py` unchanged (do not pass `--seconds` or
+objective text that tells the PM when to wait; the point is the defaults):
+
+```sh
+make repository-measure N=10 MEASURE_ARGS="--repo /abs/path/or/url --model openai/gpt-5.4-mini --pass-env OPENAI_API_KEY \
+  --accept-full-access --accept-provider-data --headless --objective 'Add a subtract function with a test'"
+```
+
+Results go to a private directory (`results.md`, `results.json`, one log per attempt). A run that fails before the team is ready
+(the known flaky gateway preflight in [../README.md](../README.md)) is relaunched up to `--startup-retries` times and is
+reported as `startupAttempts`, not as BLOCKED. Baseline for comparison (polling flow, `openai/gpt-5.4-mini`, 3 runs): 1 BLOCKED (the PM stopped
+polling a tester that finished a second later, so Quality never ran), 2 PASS only with `--seconds 1800` and an instruction to wait for the tester.

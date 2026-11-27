@@ -55,4 +55,15 @@ cli messages status "$id" | jq -e '.state=="queued"'
 docker compose start quality
 wait_state "$id" completed | jq -e '.result|tostring|contains("SIMULATED quality")'
 go run ./examples/mcp-client --url https://localhost:18443/mcp --ca-file .demo-secrets/ca.crt --token-file .demo-secrets/collaborator --target architect --text "Authenticated Compose MCP" --key compose-mcp >/dev/null
+# Crash recovery: SIGKILL the daemon process from the host PID namespace (docker kill and
+# an in-container kill of PID 1 are not real crashes and do not trigger the restart policy).
+cid=$(docker compose ps -q agentiplex)
+docker run --rm --pid=host --user 0 --entrypoint kill nats:2.15.3-alpine -9 "$(docker inspect -f '{{.State.Pid}}' "$cid")"
+for i in $(seq 1 60); do
+  if [ "$(docker inspect -f '{{.RestartCount}} {{.State.Health.Status}}' "$cid")" = "1 healthy" ]; then break; fi
+  sleep 1
+done
+test "$(docker inspect -f '{{.RestartCount}} {{.State.Health.Status}}' "$cid")" = "1 healthy"
+for i in $(seq 1 30); do if cli state get engineering requirement >/dev/null 2>&1; then break; fi; sleep 1; done
+cli state get engineering requirement | jq -e '.value=="REQ-42"'
 echo "PASS: authenticated TLS Compose, six-recipient broadcast, external NATS and daemon recreation, persistent state and offline delivery."

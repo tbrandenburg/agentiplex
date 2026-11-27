@@ -46,6 +46,8 @@ class TeamTests(unittest.TestCase):
                 names = {r["resource"] for r in rules["policies"]}
                 self.assertIn("agentiplex_get_state:*", names)
                 self.assertIn("agentiplex_put_state:*", names)
+                self.assertTrue({"agentiplex_note:*", "agentiplex_read_notes:*"} <= names)
+                self.assertEqual(a["id"] == "pm", "agentiplex_ask:*" in names)
                 for tool in team.DELEGATE_TOOLS:
                     self.assertEqual(a["id"] == "pm", "agentiplex_" + tool + ":*" in names)
                 self.assertFalse(any("shell" in n or "edit" in n for n in names))
@@ -147,6 +149,12 @@ class TeamTests(unittest.TestCase):
         assessment = team.verify_evidence(e)
         self.assertEqual(["worker-1"], assessment["completedRealWorkerReceipts"])
         self.assertTrue(assessment["exactReceiptCitation"])
+        e["state"][1]["key"] = "note-architect-01795757362334294238-70f9e1f3"
+        self.assertEqual(["worker-1"], team.verify_evidence(e)["completedRealWorkerReceipts"])
+        e["state"][1]["key"] = "note-tester-1-01795757362334294238-70f9e1f3"
+        with self.assertRaisesRegex(RuntimeError, "worker shared-state"):
+            team.verify_evidence(e)
+        e["state"][1]["key"] = "architect"
         e["agents"][1]["runtime"] = "simulated"
         with self.assertRaises(RuntimeError):
             team.verify_evidence(e)

@@ -44,3 +44,10 @@ go.work.sum
 /dist/
 
 /.playwright-mcp/
+
+# parallel-agent worktrees
+.worktrees/
+
+# Python bytecode
+__pycache__/
+*.pyc

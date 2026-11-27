@@ -84,8 +84,13 @@ func (b *Bus) reconcileBroadcast(ctx context.Context,d Delivery){
 func (b *Bus) recoverFanouts(ctx context.Context){
 	ticker:=time.NewTicker(2*time.Second)
 	defer ticker.Stop()
+	var swept time.Time
 	for{
 		if ctx.Err()!=nil{return}
+		if now:=time.Now();now.Sub(swept)>=time.Minute{
+			swept=now
+			if _,err:=b.sweepRetention(ctx,now,b.cfg.Retention,b.cfg.UnreturnedRetention);err!=nil{slog.Warn("retention sweep failed")}
+		}
 		ks,err:=keys(b.store.Deliveries)
 		if err==nil{
 			for _,id:=range ks{

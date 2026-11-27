@@ -57,6 +57,8 @@ delivery:
 
 Tokens are attached only to the approved HTTPS origin (card resolution, send and task polling); redirects are not followed, and the interface must match the card's origin. URLs containing credentials are rejected. The public Agentiplex card advertises bearer auth when secured. MCP hosts may supply a static bearer header if supported; OAuth discovery, individual agent identity, fine-grained authorization, cross-tenant boundaries, mTLS client authentication and enterprise SSO are not implemented.
 
+Embedded broker durability: `broker.sync` (default `always`) fsyncs every acknowledged JetStream write, so a host crash or power loss does not roll back accepted work; `kill -9` of the daemon is covered by `tests/integration/kill_restart_test.go`. A duration such as `2m` selects the nats-server background fsync interval instead: faster, but a host crash may lose up to that window of acknowledged writes (a process kill still loses nothing). Valid values are `always` or 1s–1h. Indicative cost on a low-end 2-core Celeron under concurrent load (`go test ./tests/integration -run xxx -bench BrokerSync -benchtime 30x`, local simulated agent): Send latency 16.8 ms with `always` vs 4.5 ms with `2m`; end-to-end delivery throughput 21 vs 68 deliveries/s. Agent traffic is low, so this is accepted; re-measure on your storage. For external or replicated NATS, `broker.sync` is ignored and durability follows the cluster configuration (server `sync_interval`, JetStream replication and storage).
+
 External NATS:
 ```yaml
 broker:
@@ -123,3 +125,25 @@ This is a first network deployment boundary, not production multi-tenant securit
 ## MVP operational limits
 
 One daemon per namespace only. Configure delivery.workers (default 4; range 1–16, zero uses default) or --workers. No active-active failover. Operator-only messages abandon requires matching downstream task ID and explicit --confirm-remote-stopped; never use merely because an endpoint is unreachable. It stops local monitoring, retains uncertainty and releases the reservation, not remote execution. No automatic replay. Retry a 409 if a poll is in flight. Release tags are created with make release bump=PATCH|MINOR|MAJOR from a clean current main; preview via make release-plan. The existing tag workflow builds/tests/publishes. No tag was pushed by implementing the target.
+
+## Restart and supervision
+
+The daemon keeps its durable record in JetStream, so a crashed or killed daemon only needs to be started again. Every packaging mode does this:
+
+- Compose: `agentiplex` and `nats` use `restart: unless-stopped`; the daemon healthcheck runs `agentiplex status` (GET `/readyz`) against the TLS endpoint. `scripts/compose-check.sh` SIGKILLs the daemon process from the host PID namespace and verifies it restarts healthy with state intact (`docker kill` does not exercise the restart policy).
+- Helm: the kubelet restarts a crashed container (default `restartPolicy: Always`); liveness uses `/healthz`, readiness and startup use `/readyz`, and the Deployment uses `Recreate` with one replica.
+- systemd: [deploy/agentiplexd.service](../deploy/agentiplexd.service) sets `Restart=on-failure`; verify with `systemd-analyze verify deploy/agentiplexd.service`.
+
+Downtime assumption: one daemon per namespace, no HA. While the daemon is down it accepts nothing and clients must retry; queued work waits in JetStream, and after restart accepted tasks are monitored again and queued deliveries resume.
+
+<!-- retention:begin -->
+## Delivery retention and bucket usage
+
+The `DELIVERIES` bucket is capped at 128 MiB and rejects writes when full, so terminal records are removed by an age-based sweep that runs once a minute in the existing reconciliation loop.
+
+- `delivery.retention` (default `168h`): a terminal record (completed, failed, uncertain, input-required, auth-required) is removed once its `updatedAt` is older than this (age is measured from the last update, not from `returnedAt`).
+- `delivery.unreturned_retention` (default `720h`, must be at least `retention`): a terminal record that has no returned mark (no `ask` handed its result back) is kept this long instead, so a re-ask after a crash can still collect it. Agentiplex cannot tell never-asked records (`send_message`, `get_delivery`) from uncollected asks, so this longer limit applies to every unreturned terminal record.
+- Nonterminal records are never removed. A broadcast group (parent plus children) is removed only when its derived state is terminal (completed, failed or partial) and the newest child update is older than `retention`; children of a live parent are never removed individually. Broadcasts use the normal limit.
+- Removal is a compare-and-swap purge: a concurrent update wins and the record is retried on the next sweep. Purging frees the stored bytes (verified by test); only a small marker remains until it is cleaned up.
+- `GET /readyz` stays public and returns only `{"ready":true}`. The authenticated `GET /api/v1/usage` (viewer role or higher) reports `deliveries`: `bytes`, `maxBytes`, `records`, and `unreturnedTerminal` (terminal records kept past `retention` by the last sweep). The sweep logs the same count.
+<!-- retention:end -->

@@ -67,7 +67,8 @@ func (b *Bus) PutState(ctx context.Context,namespace,key,value string,revision u
 		if e==nil{return StateEntry{},ErrConflict}
 		if !errors.Is(stateError(e),ErrNotFound){return StateEntry{},e}
 		entries,e:=b.ListState(namespace);if e!=nil{return StateEntry{},e}
-		if len(entries)>=MaxStateKeys{return StateEntry{},fmt.Errorf("%w: namespace key limit",ErrInvalid)}
+		n:=0;for _,en:=range entries{if !isNoteKey(namespace,namespace+"."+en.Key){n++}}
+		if n>=MaxStateKeys{return StateEntry{},fmt.Errorf("%w: namespace key limit",ErrInvalid)}
 		next,err=b.store.State.Create(k,[]byte(value))
 	}else{
 		e,eerr:=b.store.State.Get(k);if eerr!=nil{return StateEntry{},stateError(eerr)}

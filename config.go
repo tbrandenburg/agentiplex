@@ -12,6 +12,7 @@ type Config struct {
 	BrokerTokenFile string
 	BrokerCredentialsFile string
 	BrokerCAFile string
+	BrokerSync time.Duration // embedded fsync interval; zero fsyncs every write
 	OutboundTokenFiles map[string]string
 	OutboundCAFile string
 	Storage string
@@ -24,6 +25,8 @@ type Config struct {
 	MaxAttempts int // pre-submission reachability attempts only
 	TaskPollInterval time.Duration // zero inherits RetryDelay; no accepted-task lifetime limit
 	HealthInterval time.Duration // zero disables periodic observation
+	Retention time.Duration // age after which terminal deliveries are removed; zero selects 7d
+	UnreturnedRetention time.Duration // longer limit for terminal deliveries no ask handed back; zero selects 30d
 }
 
 var validID = regexp.MustCompile("^[a-z0-9][a-z0-9_-]{0,63}$")
@@ -49,8 +52,15 @@ func (c Config) validate() error {
 	if c.Timeout < time.Second || c.Timeout > 5*time.Minute || c.RetryDelay < time.Second || c.RetryDelay > time.Minute || c.MaxAttempts < 1 || c.MaxAttempts > 100 {
 		return fmt.Errorf("invalid delivery limits")
 	}
+	if c.BrokerSync!=0&&(c.BrokerSync<time.Second||c.BrokerSync>time.Hour){return fmt.Errorf("invalid broker sync (always or 1s–1h)")}
 	if c.Workers<0||c.Workers>16{return fmt.Errorf("invalid delivery worker count (0–16)")}
 	if c.TaskPollInterval!=0&&(c.TaskPollInterval<time.Second||c.TaskPollInterval>time.Minute){return fmt.Errorf("invalid task poll interval")}
 	if c.HealthInterval!=0&&(c.HealthInterval<time.Second||c.HealthInterval>time.Hour){return fmt.Errorf("invalid health interval")}
+	if c.Retention!=0&&(c.Retention<time.Hour||c.Retention>3650*24*time.Hour){return fmt.Errorf("invalid delivery retention (1h–3650d)")}
+	if c.UnreturnedRetention!=0&&(c.UnreturnedRetention<time.Hour||c.UnreturnedRetention>3650*24*time.Hour){return fmt.Errorf("invalid unreturned retention (1h–3650d)")}
+	r,u:=c.Retention,c.UnreturnedRetention
+	if r==0{r=defaultRetention}
+	if u==0{u=defaultUnreturnedRetention}
+	if u<r{return fmt.Errorf("unreturned retention must not be shorter than retention")}
 	return nil
 }

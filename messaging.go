@@ -27,10 +27,11 @@ func(b *Bus) rawDelivery(id string)(Delivery,error){
 }
 
 func(b *Bus) save(d *Delivery,state,detail string)error{
+	prev:=d.State
 	d.State=state;d.Detail=detail;d.UpdatedAt=time.Now().UTC()
 	raw,err:=json.Marshal(d);if err!=nil{return err}
 	_,err=b.store.Deliveries.Put(d.ID,raw)
-	if err==nil{b.emit("delivery.state",d.ID,state)}
+	if err==nil&&state!=prev{b.emit("delivery.state",d.ID,state)}
 	return err
 }
 
@@ -177,6 +178,7 @@ func(b *Bus) process(ctx context.Context,m *nats.Msg){
 	b.mu.Lock()
 	d,err:=b.rawDelivery(string(m.Data))
 	b.mu.Unlock()
+	if errors.Is(err,ErrNotFound){_ = m.Term();return}
 	if err!=nil{_ = m.NakWithDelay(b.cfg.RetryDelay);return}
 	switch d.State{
 	case "completed","failed","uncertain","input-required","auth-required":
@@ -245,13 +247,16 @@ func(b *Bus) poll(ctx context.Context,m *nats.Msg,d *Delivery){
 	t,err:=b.adapter.Task(call,d.Endpoint,d.TaskID);cancel()
 	if ctx.Err()!=nil{_ = m.Nak();return}
 	d.Polls++
-	if err!=nil||t==nil||t.ID!=d.TaskID{
+	if errors.Is(err,a2a.ErrTaskNotFound)||(err==nil&&t!=nil&&t.ID!=d.TaskID){
+		b.settle(m,d,"uncertain","remote task lost; outcome unknown; no automatic replay");return
+	}
+	if err!=nil||t==nil{
 		// Never discard the known task handle or release its endpoint merely
 		// because observation failed. Retain the last valid snapshot, and
 		// retry only GetTask (never SendMessage or pool reassignment).
 		if d.PollFailures<63{d.PollFailures++}
 		detail:="task status unavailable; monitoring continues"
-		if err==nil{detail="task status invalid or ID mismatch; monitoring continues"}
+		if err==nil{detail="task status invalid; monitoring continues"}
 		b.laterAfter(m,d,"accepted",detail,b.cfg.pollDelay(d.PollFailures))
 		return
 	}

@@ -46,6 +46,7 @@ type Delivery struct {
 	Result json.RawMessage `json:"result,omitempty"`
 	Detail string `json:"detail,omitempty"`
 	UpdatedAt time.Time `json:"updatedAt"`
+	ReturnedAt *time.Time `json:"returnedAt,omitempty"` // set when an ask handed this terminal result back to a caller
 }
 
 type Event struct {
