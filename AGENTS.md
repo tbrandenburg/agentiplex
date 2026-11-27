@@ -26,3 +26,6 @@ The owner allows inference (real model calls) for testing and validation, includ
 Real-agent examples (`examples/repository-team`, `autonomous-team`) start full-access OpenCode
 agents. Running them for testing is allowed without asking; read `examples/README.md` first
 (setup, private-repo handling, known flaky startup, operating tips).
+
+## Lessons Learned
+- 2026-11-27: Pitfall: `gh issue view N --comments` omits the issue body, so a first read missed the specs. Prevention rule/countermeasure: always also fetch `--json body -q .body`, and pass both to subagents.
