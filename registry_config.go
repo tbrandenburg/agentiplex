@@ -131,7 +131,9 @@ func sameCard(configured,stored string)bool{
 
 // ApplyRegistry provisions declared agents, groups and pools additively. Everything
 // checkable is validated before the first write; identical state is a no-op, a
-// different URL for a persisted ID fails, and an unresolvable new card fails.
+// different URL for a persisted ID fails, and an unresolvable new card fails. Card
+// resolution happens during Register, so apply is idempotent per agent, not atomic:
+// agents before a failure stay persisted and a restart reapplies the rest.
 // Collection edits affect new admissions only. Call before accepting requests.
 func (b *Bus) ApplyRegistry(ctx context.Context,r Registry)error{
 	if err:=r.Validate();err!=nil{return err}

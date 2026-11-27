@@ -71,7 +71,7 @@ def call_evidence(deliveries, coordinator):
     sent = [d for d in deliveries if d["target"] != coordinator]
     count = lambda items: {t: sum(d["target"] == t for d in items) for t in sorted({d["target"] for d in items})}
     return {"coordinatorTurns": sum(d["target"] == coordinator for d in deliveries),
-            "delegations": count(sent), "delegationCalls": len(sent),
+            "delegations": count(sent), "delegationCalls": len(sent),  # delivery records, not tool calls
             "delegationsCompleted": count([d for d in sent if d["state"] == "completed"]),
             "callers": sorted({d.get("caller") or "unauthenticated" for d in sent}),
             "toolIdentity": "not recorded (ask is not distinguishable from other delegation tools)"}

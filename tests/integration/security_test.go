@@ -38,10 +38,10 @@ func secretFile(t *testing.T,dir,name,value string)string{
 func TestSecureHTTPRolesA2AAndMCP(t *testing.T){
 	b:=open(t,config(t));a,_:=registerPair(t,b)
 	dir:=t.TempDir()
-	operator,collaborator,viewer:=strings.Repeat("o",48),strings.Repeat("c",48),strings.Repeat("v",48)
+	operator,agentToken,viewer:=strings.Repeat("o",48),strings.Repeat("c",48),strings.Repeat("v",48)
 	beta:=strings.Repeat("b",48)
 	opFile:=secretFile(t,dir,"operator",operator)
-	coFile:=secretFile(t,dir,"alpha",collaborator)
+	coFile:=secretFile(t,dir,"alpha",agentToken)
 	betaFile:=secretFile(t,dir,"beta",beta)
 	viFile:=secretFile(t,dir,"viewer",viewer)
 	auth,err:=security.New(security.Config{OperatorFile:opFile,AgentFiles:map[string]string{"alpha":coFile,"beta":betaFile},ViewerFile:viFile})
@@ -60,7 +60,7 @@ func TestSecureHTTPRolesA2AAndMCP(t *testing.T){
 		resp,err:=s.Client().Do(req);if err!=nil{t.Fatal(err)};defer resp.Body.Close()
 		raw,err:=io.ReadAll(resp.Body);if err!=nil{t.Fatal(err)}
 		if resp.StatusCode!=want{t.Fatalf("%s %s returned %d want %d: %s",method,path,resp.StatusCode,want,raw)}
-		for _,secret:=range []string{operator,collaborator,beta,viewer}{if strings.Contains(string(raw),secret){t.Fatal("credential disclosed in response")}}
+		for _,secret:=range []string{operator,agentToken,beta,viewer}{if strings.Contains(string(raw),secret){t.Fatal("credential disclosed in response")}}
 		return string(raw)
 	}
 	if body:=call("GET","/readyz","","","",200);strings.TrimSpace(body)!=`{"ready":true}`{t.Fatalf("public readyz body %q",body)}
@@ -71,25 +71,25 @@ func TestSecureHTTPRolesA2AAndMCP(t *testing.T){
 	for _,path:=range []string{"/api/v1/agents","/api/v1/dashboard","/api/v1/state/engineering","/.well-known/ai-catalog.json","/ui/"}{call("GET",path,"","","",401)}
 	call("POST","/a2a","","{}","",401)
 	call("POST","/mcp","","{}","",401)
-	call("GET","/api/v1/agents",collaborator,"","",200)
-	call("POST","/api/v1/agents",collaborator,"{}","",403)
-	call("DELETE","/api/v1/agents/tester-1",collaborator,"","",403)
-	call("PUT","/api/v1/groups/team",collaborator,`{"members":["tester-1"]}`,"",403)
+	call("GET","/api/v1/agents",agentToken,"","",200)
+	call("POST","/api/v1/agents",agentToken,"{}","",403)
+	call("DELETE","/api/v1/agents/tester-1",agentToken,"","",403)
+	call("PUT","/api/v1/groups/team",agentToken,`{"members":["tester-1"]}`,"",403)
 	call("PUT","/api/v1/groups/team",operator,`{"members":["tester-1"]}`,"",200)
-	call("PUT","/api/v1/state/team/key",collaborator,`{"value":"context","revision":0}`,"",200)
-	call("DELETE","/api/v1/state/team/key?revision=1",collaborator,"","",403)
+	call("PUT","/api/v1/state/team/key",agentToken,`{"value":"context","revision":0}`,"",200)
+	call("DELETE","/api/v1/state/team/key?revision=1",agentToken,"","",403)
 	call("GET","/api/v1/dashboard",viewer,"","",200)
 	call("GET","/api/v1/state/team/key",viewer,"","",403)
 	call("POST","/api/v1/messages",viewer,"{}","",403)
 	call("POST","/api/v1/messages",operator,"{}","https://evil.example",403)
-	call("POST","/mcp",collaborator,"{}","https://evil.example",403)
+	call("POST","/mcp",agentToken,"{}","https://evil.example",403)
 	req,_:=http.NewRequest("GET",s.URL+"/ui/",nil);req.SetBasicAuth("viewer",viewer)
 	resp,err:=s.Client().Do(req);if err!=nil{t.Fatal(err)};resp.Body.Close()
 	if resp.StatusCode!=200{t.Fatalf("viewer browser authentication: %d",resp.StatusCode)}
 	// No TLS means no protected access, even with a valid credential.
 	rec:=httptest.NewRecorder();plain:=httptest.NewRequest("GET","http://localhost/api/v1/agents",nil);plain.Header.Set("Authorization","Bearer "+operator)
 	s.Config.Handler.ServeHTTP(rec,plain);if rec.Code!=403{t.Fatal("plaintext auth accepted")}
-	client:=&http.Client{Transport:authenticatedTransport{base:s.Client().Transport,token:collaborator},Timeout:20*time.Second}
+	client:=&http.Client{Transport:authenticatedTransport{base:s.Client().Transport,token:agentToken},Timeout:20*time.Second}
 	ctx,cancel:=context.WithTimeout(context.Background(),30*time.Second);defer cancel()
 	ac,err:=a2aclient.NewFromEndpoints(ctx,[]*a2a.AgentInterface{a2a.NewAgentInterface(public+"/a2a",a2a.TransportProtocolJSONRPC)},a2aclient.WithJSONRPCTransport(client))
 	if err!=nil{t.Fatal(err)};defer ac.Destroy()
