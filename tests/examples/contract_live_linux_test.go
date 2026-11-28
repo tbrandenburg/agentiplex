@@ -28,7 +28,7 @@ func (l *liveTeam) contract(ws, base string, seconds int) {
 	final := teamCLI[teamState](l,"state","get","repository","objective")
 	if initial != final { l.t.Fatal("approved objective changed") }
 	cursor := teamCLI[teamState](l,"state","get","repository","contract-run")
-	var c struct { Round int }
+	var c struct { Round int; Completed []string }
 	if err := json.Unmarshal([]byte(cursor.Value),&c); err!=nil || c.Round!=0 { l.t.Fatal("contract runner did not close") }
 	checklist := teamCLI[teamState](l,"state","get","repository","contract")
 	var contract struct { Criteria []struct { ID, Owner, Status, Delivery, Evidence string } }
@@ -45,17 +45,21 @@ func (l *liveTeam) contract(ws, base string, seconds int) {
 	var records []teamDelivery
 	if err := l.get(l.api+"/api/v1/deliveries?limit=100",&records); err!=nil || len(records)>=100 { l.t.Fatal("cannot inspect complete delivery set",err) }
 	rounds := map[int]bool{}
+	pmIDs := map[string]bool{}
+	for _, id := range c.Completed { pmIDs[id]=true }
+	if len(pmIDs)!=len(c.Completed) || len(pmIDs)<2 { l.t.Fatal("invalid persisted PM round history") }
 	for _, summary := range records {
 		d := teamCLI[teamDelivery](l,"messages","status",summary.ID)
 		if d.State!="completed" { l.t.Fatal("unfinished or unsuccessful delivery",d.ID) }
-		if d.Target=="pm" && strings.HasPrefix(d.Text,"Contract round ") {
+		if d.Target=="pm" {
+			if !pmIDs[d.ID] || !strings.HasPrefix(d.Text,"Contract round ") { l.t.Fatal("unexpected PM activation",d.ID) }
 			fields:=strings.Fields(d.Text)
 			n,err:=strconv.Atoi(strings.TrimSuffix(fields[2],":"))
 			if err!=nil || rounds[n] || !d.hasResult() { l.t.Fatal("invalid or duplicate PM activation") }
 			rounds[n]=true
 		}
 	}
-	if !rounds[1] || !rounds[2] { l.t.Fatal("contract did not continue across independent PM turns") }
+	if len(rounds)!=len(pmIDs) || !rounds[1] || !rounds[2] { l.t.Fatal("contract did not continue across independent PM turns") }
 	if err:=verifyTeamWorkspace(ws,base,"defect"); err!=nil { l.t.Fatal(err) }
 	run("run",30*time.Second)
 	var after []teamDelivery
