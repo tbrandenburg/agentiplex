@@ -37,7 +37,7 @@ file each for `operator`, `viewer` (dashboard) and every agent. [scripts/demo-se
 openssl/`openssl rand -hex 32` steps used by the repo's tests; field semantics are in
 [DEPLOYMENT](../docs/DEPLOYMENT.md#static-credentials-and-tls).
 
-**Edit an operator-owned copy of `team.yaml`** (the committed file stays unchanged). For repository-team, declare the five endpoints from its documented registration commands in `registry.agents` so the daemon knows the per-agent token files. Secure static-roster startup with explicit native roles remains unverified (#41); the trusted-local dynamic-registration path is not a substitute for credential provisioning.
+**Edit an operator-owned copy of `team.yaml`** (the committed file stays unchanged). For autonomous-team, use the static registry credential fields shown below. For the prompted repository-team, keep its empty declarative roster and put all five agent IDs and token-file paths in `security.agent_token_files` instead; start the HTTPS daemon first, start the prompted gateways, and register the endpoints with the authenticated operator CLI. Credential identity and endpoint registration are independent. Do not configure both credential fields for the same ID. The released-gateway authenticated real-team run remains unverified (#41).
 ```yaml
 server:   # add to the existing block
   public_url: "https://localhost:19080"
@@ -51,6 +51,19 @@ security:
   viewer_token_file: /secure/viewer     # required while the dashboard is enabled
 ```
 Agent endpoints may stay loopback HTTP; only agent-to-daemon traffic is TLS.
+
+For repository-team use this alternative credential mapping rather than `registry.agents`:
+```yaml
+security:
+  operator_token_file: /secure/operator
+  viewer_token_file: /secure/viewer
+  agent_token_files:
+    pm: /secure/pm
+    architect: /secure/architect
+    developer: /secure/developer
+    tester: /secure/tester
+    quality: /secure/quality
+```
 
 **Shared `opencode.json`**: change the MCP entry to `"url": "https://localhost:19080/mcp"` and add
 `"oauth": false` and `"headers": {"Authorization": "Bearer {env:AGENTIPLEX_TOKEN}"}`. No token is in the file. Give **each
