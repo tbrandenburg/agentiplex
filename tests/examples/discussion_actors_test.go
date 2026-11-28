@@ -155,7 +155,7 @@ func discussionActorCommands(t *testing.T) []string {
 	want := []string{
 		"agentiplex state put discussion-actors objective --file objective-actors.md --revision 0",
 		"agentiplex state put discussion-actors contract --file contract-actors.md --revision 0",
-		"agentiplex send lead --file objective-actors.md --idempotency-key discussion-actors-1 --wait",
+		"agentiplex send lead --file objective-actors.md --wait",
 	}
 	if !reflect.DeepEqual(lines, want) { t.Fatal("expected ordinary native submission:", lines) }
 	return lines
@@ -241,8 +241,14 @@ func verifyDiscussionActorTransition(old, next discussionActorContract) error {
 			return fmt.Errorf("correction must address the current rejected review")
 		}
 	case "critic":
-		if next.Draft!=old.Draft || next.Review.Version!=old.Draft.Version || strings.TrimSpace(next.Review.Finding)=="" {
-			return fmt.Errorf("critic must independently review the current draft")
+		if next.Draft!=old.Draft {
+			return fmt.Errorf("critic changed expert-owned draft: previous=%+v observed=%+v",old.Draft,next.Draft)
+		}
+		if next.Review.Version!=old.Draft.Version {
+			return fmt.Errorf("critic reviewed wrong draft version: got %d want %d",next.Review.Version,old.Draft.Version)
+		}
+		if strings.TrimSpace(next.Review.Finding)=="" {
+			return fmt.Errorf("critic review finding is missing")
 		}
 		if old.Draft.Version==1 && (next.Checked[3] || next.Review.Decision!="rejected" || !strings.Contains(strings.ToLower(next.Review.Finding),"recovery")) {
 			return fmt.Errorf("critic did not reject missing recovery")
@@ -259,10 +265,10 @@ func verifyDiscussionActorTransition(old, next discussionActorContract) error {
 	return nil
 }
 
-func verifyDiscussionActorReceipts(a discussionActorContract, deliveries []core.Delivery, objective string) error {
+func verifyDiscussionActorReceipts(a discussionActorContract, deliveries []core.Delivery, objective, rootKey string) error {
 	if len(deliveries)!=len(a.Handoffs)+1 {return fmt.Errorf("extra or missing ordinary deliveries")}
 	expected:=map[string]struct{target,text string}{
-		discussionActorID("discussion-actors-1"):{"lead",objective},
+		discussionActorID(rootKey):{"lead",objective},
 	}
 	for _,h:=range a.Handoffs {
 		expected[discussionActorID(fmt.Sprintf("discussion-actors-handoff-%d",h.Seq))]=struct{target,text string}{h.To,discussionActorText(h.Seq)}
@@ -310,6 +316,20 @@ func TestDiscussionActorContractTransitions(t *testing.T) {
 	})
 	bad:=a;bad.Status="done";bad.Owner="lead"
 	if verifyDiscussionActorTransition(a,bad)==nil{t.Fatal("accepted premature closure")}
+	// A critic must not rewrite expert-owned evidence or approve/reject a
+	// different version. Keep these checks strict despite model variation.
+	for _,mutate:=range []func(*discussionActorContract){
+		func(n *discussionActorContract){n.Draft.Comparison+=" rewritten"},
+		func(n *discussionActorContract){n.Review.Version=0},
+		func(n *discussionActorContract){n.Review.Finding=""},
+	}{
+		bad:=a
+		bad.Owner="expert"
+		bad.Handoffs=append(append([]discussionActorHandoff(nil),a.Handoffs...),discussionActorHandoff{len(a.Handoffs)+1,"critic","expert","missing recovery"})
+		bad.Review=discussionActorReview{1,"rejected","missing recovery"}
+		mutate(&bad)
+		if verifyDiscussionActorTransition(a,bad)==nil{t.Fatal("accepted invalid critic review")}
+	}
 	advance("expert",func(n *discussionActorContract){n.Review=discussionActorReview{1,"rejected","missing recovery"}})
 	advance("critic",func(n *discussionActorContract){
 		n.Draft=discussionActorDraft{2,"comparison","consistency","restore and replay"}
@@ -335,9 +355,9 @@ func TestDiscussionActorContractTransitions(t *testing.T) {
 	for _,h:=range closed.Handoffs{
 		ds=append(ds,core.Delivery{ID:discussionActorID(fmt.Sprintf("discussion-actors-handoff-%d",h.Seq)),Target:h.To,Text:discussionActorText(h.Seq),State:"completed",Result:result})
 	}
-	if err:=verifyDiscussionActorReceipts(closed,ds,objective);err!=nil{t.Fatal(err)}
+	if err:=verifyDiscussionActorReceipts(closed,ds,objective,"discussion-actors-1");err!=nil{t.Fatal(err)}
 	ds[1].State="uncertain"
-	if verifyDiscussionActorReceipts(closed,ds,objective)==nil{t.Fatal("accepted uncertain receipt")}
+	if verifyDiscussionActorReceipts(closed,ds,objective,"discussion-actors-1")==nil{t.Fatal("accepted uncertain receipt")}
 	ds[1].State="completed";ds[1].ID=ds[0].ID
-	if verifyDiscussionActorReceipts(closed,ds,objective)==nil{t.Fatal("accepted duplicate receipt")}
+	if verifyDiscussionActorReceipts(closed,ds,objective,"discussion-actors-1")==nil{t.Fatal("accepted duplicate receipt")}
 }

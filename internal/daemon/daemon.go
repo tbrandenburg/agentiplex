@@ -29,10 +29,12 @@ func Command() *cobra.Command {
 	v.SetEnvKeyReplacer(strings.NewReplacer(".","_","-","_"))
 	v.AutomaticEnv()
 	d:=core.DefaultConfig()
+	home,_:=os.UserHomeDir()
+	storageDefault:=defaultStoragePath(os.Getenv("XDG_STATE_HOME"),home)
 	defaults:=map[string]any{
 		"server.listen":"127.0.0.1:8080","server.public_url":"","server.trusted_network":false,"protocols.mcp.enabled":false,"observability.dashboard":true,"observability.dashboard_schema":"","observability.dashboard_theme":"cxd","observability.dashboard_refresh_interval":2*time.Second,
 		"security.operator_token_file":"","security.agent_token_files":map[string]string{},"security.viewer_token_file":"","server.tls_cert_file":"","server.tls_key_file":"","broker.token_file":"","broker.credentials_file":"","broker.ca_file":"","delivery.ca_file":"",
-		"broker.mode":d.BrokerMode,"broker.url":"","broker.storage":d.Storage,"broker.replicas":d.Replicas,"broker.sync":"always",
+		"broker.mode":d.BrokerMode,"broker.url":"","broker.storage":storageDefault,"broker.replicas":d.Replicas,"broker.sync":"always",
 		"registry.namespace":d.Namespace,"registry.health_interval":d.HealthInterval,"delivery.allowed_origins":[]string{},"delivery.timeout":d.Timeout,
 		"delivery.workers":d.Workers,"delivery.retry_delay":d.RetryDelay,"delivery.max_attempts":d.MaxAttempts,"delivery.task_poll_interval":d.TaskPollInterval,"delivery.retention":7*24*time.Hour,
 	}
@@ -58,6 +60,12 @@ func Command() *cobra.Command {
 		cfg.BrokerSync=sync
 		if cfg.BrokerMode=="external"&&v.GetString("broker.sync")!="always"{slog.Warn("broker.sync is ignored with broker.mode=external")}
 		auth,err:=security.New(security.Config{OperatorFile:v.GetString("security.operator_token_file"),AgentFiles:agentFiles,ViewerFile:v.GetString("security.viewer_token_file")});if err!=nil{return err}
+		if cfg.BrokerMode=="embedded"{
+			if cfg.Storage==""{return errors.New("embedded storage path unavailable or empty; set --storage or AGENTIPLEX_BROKER_STORAGE")}
+			if cfg.Storage==storageDefault{
+				if err:=prepareDefaultStorage(cfg.Storage);err!=nil{return err}
+			}
+		}
 		return run(cmd.Context(),cfg,v.GetString("server.listen"),v.GetString("server.public_url"),v.GetBool("server.trusted_network"),v.GetBool("observability.dashboard"),v.GetBool("protocols.mcp.enabled"),dashboard.Config{Schema:v.GetString("observability.dashboard_schema"),Theme:v.GetString("observability.dashboard_theme"),Refresh:v.GetDuration("observability.dashboard_refresh_interval")},reg,auth,v.GetString("server.tls_cert_file"),v.GetString("server.tls_key_file"))
 	}}
 	f:=cmd.Flags()
@@ -72,7 +80,7 @@ func Command() *cobra.Command {
 	f.Bool("trusted-network",false,"explicitly permit non-loopback bind for isolated trusted demo networks")
 	f.String("broker-mode",d.BrokerMode,"embedded or external")
 	f.String("broker-url","","external NATS URL")
-	f.String("storage",d.Storage,"embedded JetStream storage directory")
+	f.String("storage",storageDefault,"embedded JetStream storage directory (default: $XDG_STATE_HOME/agentiplex or ~/.local/state/agentiplex)")
 	f.String("namespace",d.Namespace,"NATS resource namespace")
 	f.Int("workers",d.Workers,"bounded outbound delivery workers (1–16; zero uses default)")
 	f.Duration("task-poll-interval",d.TaskPollInterval,"accepted task observation interval; zero inherits delivery retry delay")
@@ -104,6 +112,7 @@ func run(ctx context.Context,cfg core.Config,listen,publicURL string,trusted,das
 	srv:=NewServer(api.HandlerSecure(b,ui,publicURL,mcpEnabled,auth),tlsConfig,cfg.Timeout)
 	result:=make(chan error,1)
 	go func(){if tlsConfig!=nil{result<-srv.ServeTLS(ln,"","")}else{result<-srv.Serve(ln)}}()
+	if cfg.BrokerMode=="embedded"{slog.Info("embedded storage","path",cfg.Storage)}
 	slog.Info("agentiplexd ready","listen",ln.Addr().String(),"broker_mode",cfg.BrokerMode,"namespace",cfg.Namespace)
 	select{
 	case err:=<-result:

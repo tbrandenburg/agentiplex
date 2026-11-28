@@ -9,6 +9,27 @@
 
 These are single-daemon deployments, not HA. Never run a second daemon in the same JetStream namespace. Network policies/firewalls, resource sizing, backup, broker accounts/ACLs, certificate issuance, secret rotation and operational hardening remain operator responsibilities.
 
+## Daemon storage
+
+With the embedded broker, the native daemon defaults to
+`$XDG_STATE_HOME/agentiplex` when XDG_STATE_HOME is absolute, otherwise
+`$HOME/.local/state/agentiplex`. Newly created default directories are private
+(mode 0700 on Unix). The resolved path is logged on startup. A missing usable
+state/home directory requires an explicit storage path.
+
+Override the default using `--storage PATH`, `AGENTIPLEX_BROKER_STORAGE`, or
+`broker.storage` in YAML, in that precedence order. Explicit relative paths
+remain relative to the working directory. External NATS does not use this path.
+Docker, Helm and other deployments with an explicit path are unchanged.
+
+**Upgrade from the previous `./data` default:** no existing data is moved,
+merged or deleted. To retain the old state, start with `--storage /absolute/path/to/data`
+or configure that path explicitly before upgrading. Do not accidentally start
+new work against an empty store while older work remains unresolved. Use
+separate storage paths for independent daemon instances or demonstrations.
+The Go library's `core.DefaultConfig()` remains unchanged; this default is
+specific to the daemon executable.
+
 ## Distributed deployment (agents on other hosts)
 
 ```
@@ -46,7 +67,7 @@ delivery:
 
 4. Reachability checks, run **from the daemon host/network** before registering: `curl --cacert agent-ca.crt https://pm.internal:8443/.well-known/agent-card.json` and the same card URL must list a `supportedInterfaces` URL on the same origin. From each agent host: `agentiplex --server https://agentiplex.internal:8443 --ca-file ca.crt --token-file <own token> agents list`. A startup failure for an unresolvable declared agent is deliberate (start the agents first).
 5. VPN, tunnel or routing is the operator's: it must provide **both directions**. A tunnel that only lets agents reach the daemon is not enough, because the daemon opens the connection to each recipient. A target behind NAT with no permitted inbound path (even through the tunnel/VPN) cannot be a recipient with today's protocol; it can still be a caller. No pull connector or reverse delivery exists.
-6. Retry contract: every submission needs an `idempotencyKey` (MCP/REST) or a stable `messageId` (A2A). After a dropped connection, timeout, daemon restart or SIGKILL, repeat the same key with the same target and text; an accepted task is observed again and never sent twice.
+6. Retry contract: every submission needs an `idempotencyKey` (MCP/REST) or a stable `messageId` (A2A). The CLI generates a key when omitted and prints it before submission; reuse it with `--idempotency-key` for a retry. After a dropped connection, timeout, daemon restart or SIGKILL, repeat the same key with the same target and text; an accepted task is observed again and never sent twice.
 
 **Constraints and decision**
 - Latency adds one round trip per daemon-to-agent HTTP operation; `delivery.timeout` is per HTTP operation, not per task. Pre-submission failures are retried `delivery.max_attempts` times at `delivery.retry_delay`; accepted tasks are polled indefinitely.
@@ -249,6 +270,6 @@ The `DELIVERIES` bucket is capped at 128 MiB and rejects writes when full, so te
 
 ### Breaking change: required idempotency keys and single retention
 
-- MCP and REST submissions (`ask`, `send_message`, `broadcast`, `dispatch`, `POST /api/v1/messages|broadcasts|dispatches`, CLI `--idempotency-key`) now require a nonempty `idempotencyKey`; keyless calls are rejected with 400/invalid arguments. The prompt-derived `ask` identity, the `returnedAt` delivery field, the `delivery.unreturned_retention` setting (remove it from configs; unknown keys are ignored) and the `unreturnedTerminal` usage counter are removed. Clients must create a key once per intended operation and reuse it only to retry.
+- MCP and REST submissions (`ask`, `send_message`, `broadcast`, `dispatch`, `POST /api/v1/messages|broadcasts|dispatches`) now require a nonempty `idempotencyKey`; keyless calls are rejected with 400/invalid arguments. The prompt-derived `ask` identity, the `returnedAt` delivery field, the `delivery.unreturned_retention` setting (remove it from configs; unknown keys are ignored) and the `unreturnedTerminal` usage counter are removed. Clients must create a key once per intended operation and reuse it only to retry. The CLI now generates this key automatically unless `--idempotency-key` is supplied; REST/MCP requirements remain unchanged.
 - Records written by earlier versions keep their IDs; `returnedAt` in stored JSON is ignored and they now follow the single `delivery.retention` window (a previous 30-day unreturned record may be purged earlier). Drain or reconcile outstanding work before upgrading if that matters; no migration is provided.
 - Keys are not a permanent replay guard: after retention expiry the same key is a new operation. Uncertain outcomes are never replayed automatically and remote exactly-once execution is not claimed.

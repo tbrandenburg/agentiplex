@@ -18,20 +18,20 @@ agentiplex pools set testers tester-1 tester-2
 agentiplex groups list
 agentiplex pools get testers
 agentiplex discover --group engineering
-agentiplex broadcast engineering "Contract updated" --idempotency-key release-1
-agentiplex dispatch testers "Verify requirement 42" --idempotency-key verify-42
+agentiplex broadcast engineering "Contract updated"
+agentiplex dispatch testers "Verify requirement 42"
 agentiplex messages status DELIVERY_ID
 agentiplex messages wait DELIVERY_ID
-agentiplex send architect "Review this proposal" --idempotency-key proposal-1 --wait
+agentiplex send architect "Review this proposal" --wait
 agentiplex events --follow
 agentiplex events --follow --after 12 --kind delivery.state
 ```
 
-Groups/pools set is an upsert. Members must already be registered. The idempotency key is required; use a fresh key for each new operation; repeating the same key and payload returns the same receipt while the record is retained (7 days after it finishes by default). A conflicting payload is rejected. Keys are scoped to the caller and operation.
+Groups/pools set is an upsert. Members must already be registered. The CLI automatically generates a fresh random idempotency key for each new send, broadcast or dispatch (including until-done) and prints it to stderr before admission. REST and MCP still require a nonempty key. A new CLI invocation without an explicit key is new work, even with identical text. To retry the same intended submission after an ambiguous response, use the printed key with `--idempotency-key KEY` and identical arguments, within the retention window (7 days after completion by default). Repeating the same key and payload returns the same receipt; conflicting payloads are rejected. Keys are scoped to the caller and operation. Never blindly replay uncertain work.
 
 ## Waiting for results
 
-`messages wait ID` waits for a terminal delivery without submitting work. It prints the state, ID and downstream text (or structured result); `--json` returns the full record. For broadcast parents it waits for all admitted children and reports their states and IDs. `send --wait` submits once under the same required idempotency key and prints the receipt ID to stderr before blocking. Normal `send` and `messages status` keep their JSON output. Any terminal state other than completed exits nonzero; completed is transport-level success, not an engineering verdict.
+`messages wait ID` waits for a terminal delivery without submitting work. It prints the state, ID and downstream text (or structured result); `--json` returns the full record. For broadcast parents it waits for all admitted children and reports their states and IDs. `send --wait` submits once under its generated or explicitly supplied idempotency key and prints the receipt ID to stderr before blocking. Normal `send` and `messages status` keep their JSON output. Any terminal state other than completed exits nonzero; completed is transport-level success, not an engineering verdict.
 
 The wait is event-driven on the durable delivery KV record, using the same watcher as MCP `ask`; broadcast admission and each child use their own existing record. No server lifetime cap or per-waiter polling of agents. Ctrl-C, a lost connection or a daemon restart ends the observation, not the work. Run `messages wait ID` again against the restarted daemon on the same storage. A failed submission response may be retried only with the same key and payload while retained; never blindly resubmit uncertain work. Normal authentication and per-caller visibility apply. Raw result text is untrusted.
 
@@ -41,8 +41,8 @@ A single delivery is still the default. Use the same `send` command for a
 collaborative objective that may need multiple independent agent turns:
 
 ```sh
-agentiplex send lead "Resolve all findings" --idempotency-key objective-1 --until-done --wait
-agentiplex send lead --file objective.md --idempotency-key objective-2 --until-done --max-turns 20 --timeout 2h --nudge-after 5m --wait
+agentiplex send lead "Resolve all findings" --until-done --wait
+agentiplex send lead --file objective.md --until-done --max-turns 20 --timeout 2h --nudge-after 5m --wait
 ```
 
 These are alternative submissions, not concurrent commands for the same daemon.
