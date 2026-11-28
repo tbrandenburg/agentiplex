@@ -14,12 +14,12 @@ shared state; no orchestration layer, no generated team roster.
 
 | Agent | Access | Policy | Port |
 |---|---|---|---|
-| `pm` (coordinator) | read | [coordinator.json](policies/coordinator.json): collaboration + delegation tools (`ask`, `send_message`, `broadcast`, `dispatch`) | 19081 |
+| `pm` (coordinator) | read | [coordinator.json](policies/coordinator.json): collaboration + blocking delegation (`ask`) | 19081 |
 | `architect`, `quality` | read | [reader.json](policies/reader.json): collaboration tools only | 19082, 19085 |
 | `developer`, `tester` | danger-full-access | [writer.json](policies/writer.json): collaboration tools only | 19083, 19084 |
 | daemon (dashboard `/ui/`, MCP `/mcp`) | - | [team.yaml](team.yaml) | 19080 |
 
-Only the coordinator is granted delegation tools by the MCP policies. Workers independently inspect the objective, shared notes and repository and return findings; the PM can request corrections. The grants are least-privilege hygiene, not an OS boundary (see the warning).
+Only the coordinator has explicit delegation grants. In ordinary mode the full-access workers' wildcard tool permissions can expose other tools from the enabled MCP server; their no-delegation rule is a working agreement, not enforced isolation. Workers independently inspect the objective, shared notes and repository and return findings; the PM can request corrections. The grants are least-privilege hygiene, not an OS boundary (see the warning).
 
 ## Quick start
 
@@ -31,7 +31,7 @@ From the Agentiplex checkout, edit [objective.md](objective.md) to describe the 
 Start the team, then submit the original objective and read the results:
 
 ```sh
-ACCEPT_FULL_ACCESS=yes bash examples/repository-team/up.sh /path/to/disposable/git/checkout
+ACCEPT_FULL_ACCESS=yes CONTRACT_MODE=yes bash examples/repository-team/up.sh /path/to/disposable/git/checkout
 export AGENTIPLEX_SERVER=http://127.0.0.1:19080
 OBJECTIVE="$(cat examples/repository-team/objective.md)"
 bin/agentiplex state put repository objective "$OBJECTIVE" --revision 0 &&
@@ -52,13 +52,19 @@ same daemon. Review the actual Git diff and run independent checks before accept
 ## Contract-driven mode (opt in)
 
 Use a fresh disposable repository and fresh daemon storage. The existing five
-agents, policies and gateway are reused. The PM's shared
-[contract instructions](roles/contract-kernel.md) are appended by the launcher.
+agents and gateway are reused. Set `CONTRACT_MODE=yes` to append the PM's shared
+[contract instructions](roles/contract-kernel.md) and launch developer and tester
+with [no MCP exceptions](policies/contract-worker.json). Full-access workers
+otherwise have wildcard tool permission, so omitting a grant alone is not a
+reliable restriction once MCP is enabled. The PM passes the approved objective
+with each request and persists the workers' returned evidence; the read-only
+quality reviewer can inspect files and the completed deliveries via MCP.
+This removes the normal MCP scheduling path, not OS-level network access.
 Review [the approved objective](objective.contract.md) and
 [the checklist](contract.json) before starting; this example is specifically
 for the synthetic Clamp defect used in CI (see the fixture in
 [team_verify_test.go](../../tests/examples/team_verify_test.go)).
-Requires Bash, jq and GNU timeout in addition to the usual tools.
+Requires Bash, jq, curl and GNU timeout in addition to the usual tools.
 
 ```sh
 ACCEPT_FULL_ACCESS=yes bash examples/repository-team/up.sh /path/to/disposable/git/checkout
@@ -73,8 +79,10 @@ bin/agentiplex state watch repository
 The runner prints the checklist after each bounded PM activation. Round one
 reproduces the failing check and checkpoints it before repair. Subsequent
 rounds work on open criteria, reverify after changes, and stop only when all
-criteria have evidence, an explicit blocker occurs, or the eight-round budget
-is exhausted. The PM owns the checklist; owners supply independent evidence.
+criteria have evidence and all deliveries are completed, an explicit blocker
+occurs, or the eight-round budget is exhausted. Only the runner schedules PM
+rounds; an unexpected PM delivery or unfinished work pauses the run instead of
+reporting fulfillment. Completed PM delivery IDs are persisted in the cursor. The PM owns the checklist; owners supply independent evidence.
 The operator must still review the diff and run independent checks; delivery
 completion and model-reported evidence do not attest a test result.
 
