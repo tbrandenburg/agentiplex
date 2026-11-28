@@ -1,0 +1,16 @@
+{
+  "owner": "lead",
+  "status": "open",
+  "blocker": "",
+  "draft": {
+    "version": 0,
+    "text": "",
+    "recovery": ""
+  },
+  "review": {
+    "version": 0,
+    "decision": "pending",
+    "finding": ""
+  },
+  "handoffs": []
+}

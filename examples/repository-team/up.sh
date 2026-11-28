@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Convenience only: runs the README native commands in the background. No other logic.
-# Usage: ACCEPT_FULL_ACCESS=yes [CONTRACT_MODE=yes|actors] up.sh <disposable-git-workspace>
+# Usage: ACCEPT_FULL_ACCESS=yes [CONTRACT_MODE=yes] up.sh <disposable-git-workspace>
 set -euo pipefail
 EX=$(cd "$(dirname "$0")" && pwd); ROOT=$EX/../..
 [[ ${ACCEPT_FULL_ACCESS:-} == yes ]] || { echo "developer and tester run with FULL ACCESS as your OS user (shell, files, network, Git). Use a disposable workspace/host, then set ACCEPT_FULL_ACCESS=yes." >&2; exit 2; }
@@ -16,11 +16,6 @@ if [[ ${CONTRACT_MODE:-} == yes ]]; then
     cat "$EX/roles/$name.md" "$EX/roles/contract-worker.md" > "$RUN/$name.md"
   done
   chmod 600 "$RUN"/{pm,developer,tester}.md
-elif [[ ${CONTRACT_MODE:-} == actors ]]; then
-  for name in pm architect developer tester quality; do
-    { printf 'You are actor %s.\n\n' "$name"; cat "$EX/roles/contract-actors.md"; } > "$RUN/$name.md"
-    chmod 600 "$RUN/$name.md"
-  done
 fi
 make -C "$ROOT" build >/dev/null
 setsid "$ROOT/bin/agentiplexd" --config "$EX/team.yaml" --storage "$RUN/jetstream" >"$RUN/daemon.log" 2>&1 &
@@ -32,12 +27,6 @@ gw() {  # name port access policy description [extra gateway flags]
     case "$1" in
       pm) role="$RUN/pm.md" ;;
       developer|tester) role="$RUN/$1.md"; policy=contract-worker ;;
-    esac
-  elif [[ ${CONTRACT_MODE:-} == actors ]]; then
-    role="$RUN/$1.md"
-    case "$3" in
-      read) policy=actors-reader ;;
-      *) policy=actors-writer ;;
     esac
   fi
   setsid opencode-a2a-lite --name "$1" --description "$5" --workspace "$W" --system-prompt-file "$role" --port "$2" --access "$3" --policy-file "$P/$policy.json" --prompt-timeout 45m "${@:6}" >"$RUN/$1.log" 2>&1 &
@@ -54,8 +43,6 @@ gw quality 19085 read reader "Independent acceptance review" --no-env
 printf 'Team up (dashboard http://127.0.0.1:19080/ui/).\nRUN=%q\n' "$RUN"
 if [[ ${CONTRACT_MODE:-} == yes ]]; then
   printf '%s\n' 'Contract mode: put bin/ on PATH, export AGENTIPLEX_SERVER=http://127.0.0.1:19080, cd examples/repository-team and follow the README native contract commands.'
-elif [[ ${CONTRACT_MODE:-} == actors ]]; then
-  printf '%s\n' 'Actor-owned contract: put bin/ on PATH, export AGENTIPLEX_SERVER=http://127.0.0.1:19080, cd examples/repository-team and follow the README actor-owned contract commands.'
 else
   printf '%s\n' 'From the repository root, publish and submit the same objective:' '  OBJECTIVE="$(cat examples/repository-team/objective.md)"' '  bin/agentiplex --server http://127.0.0.1:19080 state put repository objective "$OBJECTIVE" --revision 0 &&' '  bin/agentiplex --server http://127.0.0.1:19080 send pm "$OBJECTIVE" --idempotency-key repository-objective --wait' '  bin/agentiplex --server http://127.0.0.1:19080 notes list repository'
 fi

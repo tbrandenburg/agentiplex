@@ -46,6 +46,11 @@
       "action": "tool.use",
       "resource": "agentiplex_resolve_request:*",
       "effect": "allow"
+    },
+    {
+      "action": "tool.use",
+      "resource": "agentiplex_send_message:*",
+      "effect": "allow"
     }
   ]
 }

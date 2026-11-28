@@ -123,6 +123,7 @@ func runDiscussionQuickstart(t *testing.T) {
 	}
 	t.Log("PASS: exact README commands, three real completed agents, readable verdict and all three durable note topics.")
  runDiscussionContract(l,dir)
+ runDiscussionActors(l,dir)
 }
 
 func runDiscussionContract(l *liveTeam,dir string){

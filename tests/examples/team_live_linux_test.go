@@ -24,7 +24,7 @@ import (
 )
 
 // Explicit opt-in; ordinary go test ./... never starts real model runtimes.
-var liveScenario = flag.String("live", "", "provision, docs, defect, integration, contract, actors, autonomous or discussion")
+var liveScenario = flag.String("live", "", "provision, docs, defect, integration, contract, autonomous or discussion")
 var liveModel = flag.String("model", "", "OpenCode provider/model")
 var liveSeconds = flag.Int("seconds", 0, "objective deadline in seconds (default: 900 hybrid, 1200 repository)")
 var livePromptTimeout = flag.String("prompt-timeout", "", "gateway prompt deadline")
@@ -298,12 +298,6 @@ func (l *liveTeam) repository(scenario,prompt string,seconds int) {
 				writeTeamFile(l.t,rolePath,string(l.read("roles",r.name+".md"))+"\n"+string(l.read("roles",extra)))
 			}
 		}
-		if scenario=="actors" {
-			rolePath=filepath.Join(l.run,r.name+".md")
-			writeTeamFile(l.t,rolePath,"You are actor "+r.name+".\n\n"+string(l.read("roles","contract-actors.md")))
-			policy="actors-reader"
-			if r.access=="danger-full-access" { policy="actors-writer" }
-		}
 		l.gateway(r.name,r.desc,ws,r.access,policy,r.port,prompt,"--system-prompt-file",rolePath)
 		teamCLI[json.RawMessage](l,"register",r.name,"http://127.0.0.1:"+r.port)
 		want[r.name]=true
@@ -326,10 +320,6 @@ func (l *liveTeam) repository(scenario,prompt string,seconds int) {
 	}
 	if scenario=="contract" {
 		l.contract(ws,base,seconds)
-		return
-	}
-	if scenario=="actors" {
-		l.actorContract(ws,base,seconds)
 		return
 	}
 	initial:=teamCLI[teamState](l,"state","put","repository","objective",objective,"--revision","0")
@@ -382,7 +372,7 @@ func TestLiveTeam(t *testing.T) {
 	case "autonomous":
 		if prompt=="" { prompt="10m" }; if seconds==0 { seconds=900 }
 		newLiveTeam(t,"autonomous-team").autonomous(prompt,seconds)
-	case "provision","docs","defect","integration","contract","actors":
+	case "provision","docs","defect","integration","contract":
 		if prompt=="" { prompt="45m" }; if seconds==0 { seconds=1200 }
 		newLiveTeam(t,"repository-team").repository(*liveScenario,prompt,seconds)
 	default: t.Fatal("unknown live scenario")

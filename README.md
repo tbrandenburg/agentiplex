@@ -122,6 +122,21 @@ Related work: [Building with AI Agents](https://mikkosniemela.com/build-with-age
 [Meta-Engineering Harnesses for AI-Native Software Production](https://arxiv.org/abs/2605.25665) (Sengupta et al., May 2026, preprint),
 and [Contract Driven Development](https://github.com/enthali/syspilot/blob/main/docs/methodology.md) (Syspilot's methodology). These are conceptual references, not protocol-conformance claims.
 
+### Actor-owned contract (direct handovers)
+
+Use the same three running agents after the previous deliveries have settled; review the [actor-owned objective](examples/discussion-team/contract-actors.md) and [living contract](examples/discussion-team/contract-actors.json) in the private quickstart directory.
+
+<!-- discussion-actors:start -->
+```sh
+agentiplex state put discussion-actors objective --file contract-actors.md --revision 0
+agentiplex state put discussion-actors contract --file contract-actors.json --revision 0
+agentiplex send lead --file contract-actors.md --idempotency-key discussion-actors-1 --wait
+```
+<!-- discussion-actors:end -->
+
+The expert owns the draft, the critic owns review, and responsibility moves directly between them via ordinary messages after revision-checked state writes. The lead initiates and closes; no coordinator relay, extra setup or middleware mode.
+Observe `agentiplex state watch discussion-actors` and `agentiplex messages list`. Here --wait observes only the initial delivery; look for contract status done and all deliveries completed. See [recovery limits and verification](examples/discussion-team/README.md#actor-owned-contract-direct-handovers).
+
 ### Simulated team (no model or API key)
 
 Try the complete collaboration demo locally, without an LLM or API key.
@@ -198,10 +213,10 @@ Choose the level of collaboration you want to explore.
 | --- | --- | --- |
 | [Three-agent discussion](#three-real-agents) | [native commands](#three-real-agents) | Three real read-only agents, shared notes and a verdict. [![Three-agent quickstart](https://github.com/tbrandenburg/agentiplex/actions/workflows/discussion-quickstart.yaml/badge.svg?branch=main)](https://github.com/tbrandenburg/agentiplex/actions/workflows/discussion-quickstart.yaml) |
 | [Three-agent contract](#contract-driven-collaboration) | [native command](#contract-driven-collaboration) | Same read-only agents, living acceptance criteria, independent review and durable continuation. |
+| [Actor-owned contract](#actor-owned-contract-direct-handovers) | [native commands](#actor-owned-contract-direct-handovers) | Three read-only agents, direct responsibility transfers and independently reviewed rework. |
 | [Engineering team](docs/DEMO.md) | `make demo-team` | Six simulated agents; deterministic communication, persistence and recovery. |
 | [Autonomous team](examples/autonomous-team/README.md) | [native commands](examples/autonomous-team/README.md) | Real model-driven delegation through A2A and MCP using synthetic fixtures. |
 | [Repository team](examples/repository-team/README.md) | [native commands](examples/repository-team/README.md) | Five real agents working on the same Git worktree, with implementation and executable verification. |
-| [Actor-owned contract team](examples/repository-team/README.md#actor-owned-contract-direct-handovers) | [direct handovers](examples/repository-team/README.md#actor-owned-contract-direct-handovers) | Role-owned evidence, revision-checked responsibility handovers and independent review through ordinary asynchronous messaging. |
 | [Contract-driven repository team](examples/repository-team/README.md#contract-driven-mode-opt-in) | [approve and run](examples/repository-team/README.md#contract-driven-mode-opt-in) | Living checklist, bounded continuation, rework and independent verification. |
 
 The core is agent-runtime independent. The real-agent examples use an off-the-shelf

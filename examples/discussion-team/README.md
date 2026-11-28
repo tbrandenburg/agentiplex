@@ -38,7 +38,37 @@ another terminal inspect `agentiplex state watch discussion-contract` and
 `agentiplex messages list`. Ctrl-C detaches; `messages wait MESSAGE_ID`
 reattaches. Use a dedicated daemon, only one open until-done request, and
 public/synthetic input. The lead has state and resolution tools for this mode;
-expert and critic retain their original read-only policies.
+expert and critic retain read-only OS profiles. Their direct messaging and state grants are also used by the actor-owned example below.
+
+## Actor-owned contract (direct handovers)
+
+Follow the [native commands in the main README](../../README.md#actor-owned-contract-direct-handovers).
+There is no contract-mode setting, new daemon, gateway restart or launcher.
+The initial objective and subsequent contract-reference messages select the
+actor-owned behavior in the same three role prompts. The expert owns the
+draft and critic owns the review. The current actor updates the living
+contract with its observed revision and then sends the next actor a normal
+asynchronous message. An intentional incomplete draft makes the critic
+reject it and return work directly to the expert; the lead closes after
+independent acceptance of the revised draft.
+
+This demonstrates the collaboration pattern of
+[Syspilot's Contract Driven Development](https://github.com/enthali/syspilot/blob/main/docs/methodology.md)
+using shared KV rather than Git commits of the contract. Artifact ownership
+and sender identity are working agreements in trusted-local mode; the read-only
+policies now allow state writes and ordinary send_message for all three agents,
+but only lead has blocking ask and resolve_request grants. No OS write access
+is added.
+
+The initial send --wait is not an overall completion receipt. Watch contract
+status and delivery records; require status done and all deliveries completed.
+A contract write and its subsequent message admission are separate durable
+operations. If the sender crashes between them, the new owner may not be
+activated. Inspect the last handoff and durable receipts; only if the
+notification was not admitted and execution is known safe, submit its exact
+target/text/key (discussion-actors-handoff-N) using ordinary send. Never blindly
+replay uncertain work. No automatic wakeup or middleware-managed ownership is
+promised. This is methodology-level evidence, not full Jarvis/Syspilot parity.
 
 ## Verification
 
@@ -48,14 +78,14 @@ the actual setup-copy, daemon, gateway, registration, send/wait and notes
 commands from the main README, runs them in an isolated private home and
 verifies the durable deliveries and notes plus readable CLI output.
 It requires real results from the lead, expert and critic, and no failed
-or pending deliveries. The same live test then executes the until-done command from the main README, checks the recorded incomplete checkpoint, multiple coordinator activations, distinct expert and critic evidence before and after revision, and explicit final resolution. Startup alone is not a pass. It does not attest
+or pending deliveries. The same live test then executes the until-done command from the main README, checks the recorded incomplete checkpoint, multiple coordinator activations, distinct expert and critic evidence before and after revision, and explicit final resolution. The same agents then execute the actor-owned commands and the observer checks each contract revision, direct expert-to-critic-to-expert rework, accepted current draft and all distinct ordinary delivery receipts, without scheduling any work. Startup alone is not a pass. It does not attest
 individual tool calls, note authorship or semantic correctness.
 
 After the README setup's build and install commands, run locally on a
 disposable Linux host with free ports (uses real model inference):
 
 ```sh
-go test -count=1 -v -timeout 35m ./tests/examples -run '^TestLiveTeam$' -args -live discussion
+go test -count=1 -v -timeout 50m ./tests/examples -run '^TestLiveTeam$' -args -live discussion
 ```
 
 Ordinary `make check` remains provider-free. CI records bounded output and
