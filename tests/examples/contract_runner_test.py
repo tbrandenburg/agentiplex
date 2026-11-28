@@ -158,6 +158,7 @@ class RunnerTest(unittest.TestCase):
                             json.loads(db["state"]["contract"]["value"])["criteria"]))
         self.assertEqual(db["deliveries"]["unsolicited-pm"]["state"], "queued")
         # Even if the unexpected activation completes, do not accept it.
+        self.env.pop("CONTRACT_FAKE_EXTRA_PM")
         db["deliveries"]["unsolicited-pm"]["state"] = "completed"
         self.db.write_text(json.dumps(db))
         self.assertIn("unexpected PM activation", self.invoke("run", ok=False))
