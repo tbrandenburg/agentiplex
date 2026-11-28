@@ -98,10 +98,17 @@ func TestUntilDoneContinuationRestartAndResolution(t *testing.T){
  if _,err=b2.ResolveFollow(ctx,root.ID,first.ID,"done","stale activation");!errors.Is(err,core.ErrConflict){t.Fatalf("stale resolution: %v",err)}
  work,err:=b2.Send(ctx,"expert","independent verification","worker");if err!=nil{t.Fatal(err)}
  wait(t,b2,work.ID,"accepted")
- _,m:=mcpSession(t,b2,false)
+ ms,m:=mcpSession(t,b2,false)
  args:=map[string]any{"requestId":root.ID,"activationId":second.ID,"outcome":"done","result":"Independent finding accepted"}
  mcpCall(t,m,"resolve_request",args,false)
  mcpCall(t,m,"resolve_request",args,false) // idempotent proposal
+ owner:=security.WithPrincipal(ctx,security.Principal{Role:security.RoleAgent,AgentID:"lead"})
+ if _,err=b2.ResolveFollow(owner,root.ID,second.ID,"done","Independent finding accepted");err!=nil{t.Fatal(err)}
+ operator:=security.WithPrincipal(ctx,security.Principal{Role:security.RoleOperator})
+ if _,err=b2.ResolveFollow(operator,root.ID,second.ID,"done","Independent finding accepted");!errors.Is(err,core.ErrNotFound){t.Fatalf("operator resolution: %v",err)}
+ // Crash/restart after the final proposal but before either active task finishes.
+ _=m.Close();ms.Close();b2.Close()
+ b2=open(t,cfg)
  releaseFollow(release[1])
  wait(t,b2,second.ID,"completed")
  got,err:=b2.Delivery(root.ID)

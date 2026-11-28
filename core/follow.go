@@ -144,24 +144,48 @@ func (b *Bus) restoreFollow()error {
 }
 
 func (b *Bus) followLoop(ctx context.Context) {
- ticker:=time.NewTicker(500*time.Millisecond)
- defer ticker.Stop()
  for ctx.Err()==nil {
-  b.reconcileFollows(ctx)
-  select {case <-ctx.Done():return;case <-ticker.C:case <-b.followWake:}
+  delay:=b.reconcileFollows(ctx)
+  timer:=time.NewTimer(delay)
+  select {case <-ctx.Done():timer.Stop();return;case <-timer.C:case <-b.followWake:}
+  timer.Stop()
  }
 }
 
-func (b *Bus) reconcileFollows(ctx context.Context) {
+func (b *Bus) reconcileFollows(ctx context.Context) time.Duration {
  b.mu.Lock();defer b.mu.Unlock()
- if b.followID==""{return}
+ const fallback=2*time.Second
+ if b.followID==""{return fallback}
  d,err:=b.rawDelivery(b.followID)
- if err!=nil{slog.Warn("follow-through record unavailable");return}
- if d.State!="continuing"{b.followID="";return}
- if err=b.advanceFollow(ctx,&d,time.Now().UTC(),"continuation");err!=nil{slog.Warn("follow-through reconciliation pending","id",d.ID)}
- if terminalState(d.State){ // confirm persistence before releasing the cached reservation
-  if current,e:=b.rawDelivery(d.ID);e==nil&&terminalState(current.State){b.followID=""}
+ if err!=nil{slog.Warn("follow-through record unavailable");return fallback}
+ if d.State!="continuing"{b.followID="";return fallback}
+ if err=b.advanceFollow(ctx,&d,time.Now().UTC(),"continuation");err!=nil{
+  slog.Warn("follow-through reconciliation pending","id",d.ID)
+  return fallback
  }
+ if terminalState(d.State){
+  b.followID=""
+  return fallback
+ }
+ // Recompute the timer from durable timestamps. This is a wake-up only,
+ // not authority to admit work; normal delivery transitions wake us first.
+ // A due watchdog that cannot safely activate waits for the next event or
+ // bounded reconciliation tick, rather than spinning or forcing a send.
+ now:=time.Now().UTC()
+ delay:=fallback
+ sooner:=func(at time.Time){
+  if left:=at.Sub(now);left>0&&left<delay{delay=left}
+ }
+ sooner(d.Follow.Deadline)
+ if n:=len(d.Follow.Turns);n>0{
+  if last,e:=b.rawDelivery(d.Follow.Turns[n-1]);e==nil&&last.State=="completed"{
+   sooner(last.UpdatedAt.Add(250*time.Millisecond))
+   if d.Follow.Options.NudgeSeconds>0{
+    sooner(last.UpdatedAt.Add(time.Duration(d.Follow.Options.NudgeSeconds)*time.Second))
+   }
+  }
+ }
+ return delay
 }
 
 // advanceFollow runs only under the single-daemon admission mutex. Persist
@@ -200,10 +224,13 @@ func (b *Bus) advanceFollow(ctx context.Context,d *Delivery,now time.Time,reason
  for _,id:=range ks {
   if id==d.ID||owned[id]{continue}
   v,e:=b.rawDelivery(id);if e!=nil{return e}
+  if v.Kind=="broadcast"{v,e=b.broadcastView(v);if e!=nil{return e}}
+  // Admission required an idle daemon without uncertain work. These states
+  // are always relevant, even if the wall clock moved backwards.
+  if pendingState(v.State){pending=true;continue}
+  if v.State=="uncertain"{return b.save(d,"input-required","uncertain delivery in dedicated scope: "+id)}
   if v.UpdatedAt.Before(f.StartedAt){continue}
   if v.Target==d.Target||v.Endpoint==d.Endpoint{return b.save(d,"input-required","unexpected coordinator activation: "+id)}
-  if v.Kind=="broadcast"{v,e=b.broadcastView(v);if e!=nil{return e}}
-  if pendingState(v.State){pending=true;continue}
   if v.State!="completed"{return b.save(d,"input-required","unresolved delivery in dedicated scope: "+id)}
  }
  if pending{return nil}
@@ -240,7 +267,11 @@ func (b *Bus) followView(d Delivery)(Delivery,error) {
  d.Children=make([]ChildDelivery,0,len(d.Follow.Turns))
  for _,id:=range d.Follow.Turns {
   c,e:=b.rawDelivery(id)
-  if errors.Is(e,ErrNotFound){d.Children=append(d.Children,ChildDelivery{ID:id,Target:d.Target,State:"preparing"});continue}
+  if errors.Is(e,ErrNotFound){
+   state:="preparing"
+   if terminalState(d.State){state="not-admitted"}
+   d.Children=append(d.Children,ChildDelivery{ID:id,Target:d.Target,State:state});continue
+  }
   if e!=nil{return Delivery{},e}
   d.Children=append(d.Children,ChildDelivery{ID:id,Target:c.Target,State:c.State,Detail:c.Detail})
  }

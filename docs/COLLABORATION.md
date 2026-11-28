@@ -99,8 +99,8 @@ authenticated resolution requires the coordinator's own agent credential.
 
 The parent and deterministic activation intents are persisted in the existing
 DELIVERIES KV. Delivery state transitions wake one daemon reconciler; a bounded
-500ms reconciliation tick repairs missed wakes, enforces deadlines, and checks
-overdue watchdogs. No new stream, scheduler, task store or application workflow
+two-second reconciliation tick repairs missed wakes; earlier durable deadlines,
+continuation floors and optional watchdog timestamps shorten the next wake. No new stream, scheduler, task store or application workflow
 is needed. Native JetStream message scheduling was considered, but it would add
 stream configuration and duplicate admission paths without improving the
 immediate event-driven continuation in this dedicated scope. The persisted

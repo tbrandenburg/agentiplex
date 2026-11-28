@@ -401,8 +401,8 @@ activation follows the existing direct durable delivery path. Parent intent is
 persisted before child creation/publish; restart reconciles the same ID. A
 recipient proposes explicit resolution through MCP; the parent becomes terminal
 only after the current activation and known scope settle, or pauses/fails safely
-on intervention. The daemon wakes on delivery transitions and reconciles every
-500ms as a safety net, including watchdog/deadline checks. No extra broker
+on intervention. The daemon wakes on delivery transitions and reconciles at most every
+two seconds as a safety net, with earlier deadline/watchdog wakes. No extra broker
 resources or orchestration DSL. The MVP admits one request on an initially idle
 dedicated daemon; delegated calls have no cross-agent request correlation and
 all work since admission is conservatively in scope. See [COLLABORATION](COLLABORATION.md#durable-follow-through-until-done) for the boundary and CLI semantics.
