@@ -127,13 +127,7 @@ func runDiscussionQuickstart(t *testing.T) {
 
 func runDiscussionContract(l *liveTeam,dir string){
  t:=l.t;t.Helper()
- doc:=string(l.read("README.md"))
- _,block,ok:=strings.Cut(doc,"<!-- discussion-contract:start -->")
- block,_,end:=strings.Cut(block,"<!-- discussion-contract:end -->")
- if !ok||!end{t.Fatal("missing until-done quickstart")}
- command:=strings.TrimSpace(block)
- command=strings.TrimPrefix(command,"```sh\n");command=strings.TrimSuffix(command,"\n```")
- if strings.Contains(command,"\n")||!strings.Contains(command,"--until-done")||!strings.Contains(command,"--wait")||strings.Contains(command,"--nudge-after"){t.Fatal("unexpected until-done quickstart")}
+ command:=discussionContractCommand(t)
  out,err:=commandOutput(dir,13*time.Minute,l.env,"bash","-ec","exec "+command)
  t.Logf("Until-done result: %.4000q",out)
  if err!=nil{t.Fatalf("native until-done command: %v",err)}

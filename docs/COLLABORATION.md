@@ -116,7 +116,7 @@ Omit it for an ordinary send. `POST /api/v1/deliveries/{id}/nudge` is
 operator-only in secure mode. Existing status/wait routes observe the parent.
 Native A2A ingress and MCP ask/send retain their original semantics.
 
-Examples: [three read-only agents](../examples/discussion-team/README.md#continue-until-the-objective-is-done)
+Examples: [three read-only agents](../README.md#contract-driven-collaboration)
 and [repository repair](../examples/repository-team/README.md#contract-driven-mode-opt-in).
 
 ## HTTP / A2A
