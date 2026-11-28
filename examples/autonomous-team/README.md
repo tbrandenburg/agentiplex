@@ -4,7 +4,7 @@ A disposable, trusted-local example: a real **PM** (the coordinator) and a real 
 [opencode-a2a-lite](https://github.com/tbrandenburg/opencode-a2a-lite)) plus four simulated workers, reviewing a
 fictional synthetic fixture. You start the agents with their native commands, start the daemon with
 [team.yaml](team.yaml) unchanged and submit **one objective** to the PM. The PM discovers the team and delegates by
-itself with the MCP tools it is granted. No launcher, no generated configuration.
+itself with the MCP tools it is granted. No orchestration layer, no generated team roster.
 
 | Agent | Runtime | Port | Native config |
 |---|---|---|---|
@@ -25,14 +25,16 @@ Linux, Go 1.26+, Node 22+, Bun 1.4.4, OpenCode 2.3.2 or newer, `opencode-a2a-lit
 JetStream needs free disk: edit `broker.storage` in `team.yaml` (default `/tmp/agentiplex-autonomous/jetstream`) if needed.
 
 ## Quick start
+Run these commands from the repository root. Start the team only once and set `RUN` to the directory printed by the launcher before stopping it.
 `up.sh` and `down.sh` only run the commands of "Run it" below in the background (no other logic). The objective is the plain file
 [objective.md](objective.md); the agents' role prompts are the `system` text in [profiles/](profiles/).
 
 ```sh
-make autonomous-team-up                         # prints RUN=<dir>; the gateway preflight can take a minute or more
-make autonomous-team-send                       # sends objective.md to the coordinator: bin/agentiplex send pm "$(cat objective.md)"
+bash examples/autonomous-team/up.sh  # prints RUN=<dir>
+# Set RUN to the printed directory before using the stop command.
+bin/agentiplex --server http://127.0.0.1:19080 send pm "$(cat examples/autonomous-team/objective.md)" --idempotency-key review
 bin/agentiplex --server http://127.0.0.1:19080 messages status <id>   # until a terminal state; also http://127.0.0.1:19080/ui/
-make autonomous-team-down RUN=<dir>             # stops exactly the recorded processes
+bash examples/down.sh "$RUN"                   # stops exactly the recorded processes
 ```
 Verified: the PM completed and delegated to the architect and the `testers` pool by itself (opencode 2.4.1, gateway 0.9.0, free model).
 
