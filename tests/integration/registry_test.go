@@ -8,10 +8,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/tbrandenburg/agentiplex"
+	"github.com/tbrandenburg/agentiplex/core"
 )
 
-func kinds(t *testing.T,b *agentiplex.Bus,kind string)int{
+func kinds(t *testing.T,b *core.Bus,kind string)int{
 	t.Helper()
 	ev,err:=b.Events(0);if err!=nil{t.Fatal(err)}
 	n:=0;for _,e:=range ev{if e.Kind==kind{n++}}
@@ -23,13 +23,13 @@ func TestStaticRegistryStartupSemantics(t *testing.T){
 	cfg:=config(t);cfg.HealthInterval=0
 	a,b2,c:=&agentService{},&agentService{},&agentService{}
 	a.start(t,false);b2.start(t,false);defer a.stop();defer b2.stop();defer c.stop()
-	reg:=agentiplex.Registry{
-		Agents:map[string]agentiplex.AgentSpec{"alpha":{URL:a.URL()},"beta":{URL:b2.URL()}},
+	reg:=core.Registry{
+		Agents:map[string]core.AgentSpec{"alpha":{URL:a.URL()},"beta":{URL:b2.URL()}},
 		Groups:map[string][]string{"team":{"alpha","beta"}},Pools:map[string][]string{"rev":{"beta","alpha"}}}
 
 	// Legacy path: no registry means nothing is applied.
 	bus:=open(t,cfg)
-	if err:=bus.ApplyRegistry(ctx,agentiplex.Registry{});err!=nil{t.Fatal(err)}
+	if err:=bus.ApplyRegistry(ctx,core.Registry{});err!=nil{t.Fatal(err)}
 	if ag,_:=bus.Agents("","");len(ag)!=0{t.Fatal("empty registry registered agents")}
 
 	if err:=bus.ApplyRegistry(ctx,reg);err!=nil{t.Fatal(err)}
@@ -65,20 +65,20 @@ func TestStaticRegistryStartupSemantics(t *testing.T){
 	if n:=a.calls.Load();n!=2{t.Fatalf("alpha invoked %d times, want 2 (broadcast + queued)",n)}
 
 	// Failures validate before any write and never overwrite.
-	bad:=agentiplex.Registry{Agents:map[string]agentiplex.AgentSpec{"alpha":{URL:b2.URL()},"gamma":{URL:b2.URL()}}}
+	bad:=core.Registry{Agents:map[string]core.AgentSpec{"alpha":{URL:b2.URL()},"gamma":{URL:b2.URL()}}}
 	if err=bus.ApplyRegistry(ctx,bad);err==nil||!strings.Contains(err.Error(),"retarget"){t.Fatalf("url conflict: %v",err)}
-	if _,err=bus.Agent("gamma");!errors.Is(err,agentiplex.ErrNotFound){t.Fatal("conflicting apply wrote records")}
+	if _,err=bus.Agent("gamma");!errors.Is(err,core.ErrNotFound){t.Fatal("conflicting apply wrote records")}
 	if got,_:=bus.Agent("alpha");got.CardURL!=a.URL()+"/.well-known/agent-card.json"{t.Fatalf("alpha retargeted: %s",got.CardURL)}
-	unk:=agentiplex.Registry{Groups:map[string][]string{"x":{"ghost"}}}
+	unk:=core.Registry{Groups:map[string][]string{"x":{"ghost"}}}
 	if err=bus.ApplyRegistry(ctx,unk);err==nil||!strings.Contains(err.Error(),"unknown member"){t.Fatalf("unknown member: %v",err)}
 	c.start(t,false);c.stop() // port freed: nothing listens
 	start:=time.Now()
-	down:=agentiplex.Registry{Agents:map[string]agentiplex.AgentSpec{"gamma":{URL:c.URL()}}}
+	down:=core.Registry{Agents:map[string]core.AgentSpec{"gamma":{URL:c.URL()}}}
 	if err=bus.ApplyRegistry(ctx,down);err==nil||!strings.Contains(err.Error(),"start the endpoint first")||time.Since(start)>cfg.Timeout+time.Second{t.Fatalf("unavailable new card: %v after %s",err,time.Since(start))}
-	if _,err=bus.Agent("gamma");!errors.Is(err,agentiplex.ErrNotFound){t.Fatal("placeholder record created")}
+	if _,err=bus.Agent("gamma");!errors.Is(err,core.ErrNotFound){t.Fatal("placeholder record created")}
 
 	// Membership change and omission: old snapshot unchanged, new admissions follow, nothing deleted.
-	shrink:=agentiplex.Registry{Groups:map[string][]string{"team":{"beta"}}}
+	shrink:=core.Registry{Groups:map[string][]string{"team":{"beta"}}}
 	if err=bus.ApplyRegistry(ctx,shrink);err!=nil{t.Fatal(err)}
 	if kinds(t,bus,"group.configured")!=2{t.Fatal("changed membership not recorded once")}
 	if err=bus.ApplyRegistry(ctx,shrink);err!=nil||kinds(t,bus,"group.configured")!=2{t.Fatalf("unchanged collection not a no-op: %v",err)}

@@ -14,12 +14,12 @@ import (
 	"time"
 
 	"github.com/a2aproject/a2a-go/v2/a2a"
-	"github.com/tbrandenburg/agentiplex"
+	"github.com/tbrandenburg/agentiplex/core"
 	"github.com/tbrandenburg/agentiplex/internal/api"
 	"github.com/tbrandenburg/agentiplex/internal/cli"
 )
 
-func registerPair(t *testing.T,b *agentiplex.Bus)(*agentService,*agentService){
+func registerPair(t *testing.T,b *core.Bus)(*agentService,*agentService){
 	t.Helper()
 	first,second:=&agentService{},&agentService{}
 	first.start(t,false);second.start(t,false)
@@ -36,8 +36,8 @@ func TestBroadcastSnapshotOfflineAndRestart(t *testing.T){
 	first,second:=registerPair(t,b)
 	ctx:=context.Background()
 	if _,err:=b.SetCollection(ctx,"group","engineering",[]string{"tester-2","tester-1"});err!=nil{t.Fatal(err)}
-	if _,err:=b.SetCollection(ctx,"group","bad",[]string{"tester-1","tester-1"});!errors.Is(err,agentiplex.ErrInvalid){t.Fatalf("duplicate member: %v",err)}
-	if _,err:=b.SetCollection(ctx,"pool","bad",[]string{"missing"});!errors.Is(err,agentiplex.ErrNotFound){t.Fatalf("unknown member: %v",err)}
+	if _,err:=b.SetCollection(ctx,"group","bad",[]string{"tester-1","tester-1"});!errors.Is(err,core.ErrInvalid){t.Fatalf("duplicate member: %v",err)}
+	if _,err:=b.SetCollection(ctx,"pool","bad",[]string{"missing"});!errors.Is(err,core.ErrNotFound){t.Fatalf("unknown member: %v",err)}
 	// The first sorted recipient is offline. The second must still complete.
 	first.stop()
 	d,err:=b.Broadcast(ctx,"engineering","contract updated","broadcast-1")
@@ -54,7 +54,7 @@ func TestBroadcastSnapshotOfflineAndRestart(t *testing.T){
 	if len(done.Children)!=2||first.calls.Load()!=1||second.calls.Load()!=1{t.Fatalf("snapshot or restart lost: %+v calls %d %d",done,first.calls.Load(),second.calls.Load())}
 	duplicate,err:=b2.Broadcast(ctx,"engineering","contract updated","broadcast-1")
 	if err!=nil||duplicate.ID!=d.ID||len(duplicate.Children)!=2{t.Fatalf("duplicate broadcast: %+v %v",duplicate,err)}
-	if _,err=b2.Broadcast(ctx,"engineering","changed","broadcast-1");!errors.Is(err,agentiplex.ErrConflict){t.Fatalf("broadcast key conflict: %v",err)}
+	if _,err=b2.Broadcast(ctx,"engineering","changed","broadcast-1");!errors.Is(err,core.ErrConflict){t.Fatalf("broadcast key conflict: %v",err)}
 	next,err:=b2.Broadcast(ctx,"engineering","next contract","broadcast-2")
 	if err!=nil||len(next.Children)!=1{t.Fatalf("new membership: %+v %v",next,err)}
 	wait(t,b2,next.ID,"completed")
@@ -125,12 +125,12 @@ func TestBroadcastPartialFailure(t *testing.T){
 func TestCollaborationA2AAndCLI(t *testing.T){
 	b:=open(t,config(t));first,second:=registerPair(t,b)
 	s,c:=ingressClient(t,b)
-	runCLI:=func(args ...string)agentiplex.Delivery{
+	runCLI:=func(args ...string)core.Delivery{
 		t.Helper()
 		cmd:=cli.Command();var out bytes.Buffer;cmd.SetOut(&out);cmd.SetErr(&out)
 		cmd.SetArgs(append([]string{"--server",s.URL},args...))
 		if err:=cmd.Execute();err!=nil{t.Fatalf("CLI %v: %v %s",args,err,out.String())}
-		var d agentiplex.Delivery
+		var d core.Delivery
 		if err:=json.Unmarshal(out.Bytes(),&d);err!=nil{t.Fatalf("CLI JSON: %s %v",out.String(),err)}
 		return d
 	}
@@ -168,16 +168,16 @@ func TestEventSubscriptionReplayAndLive(t *testing.T){
 		if res.StatusCode!=200||res.Header.Get("Content-Type")!="text/event-stream"{t.Fatalf("SSE response %d",res.StatusCode)}
 		return res,bufio.NewScanner(res.Body)
 	}
-	readEvent:=func(scanner *bufio.Scanner)agentiplex.Event{
+	readEvent:=func(scanner *bufio.Scanner)core.Event{
 		t.Helper()
 		for scanner.Scan(){
 			line:=scanner.Text()
 			if !strings.HasPrefix(line,"data: "){continue}
-			var event agentiplex.Event
+			var event core.Event
 			if err:=json.Unmarshal([]byte(strings.TrimPrefix(line,"data: ")),&event);err!=nil{t.Fatal(err)}
 			return event
 		}
-		t.Fatalf("SSE stream ended: %v",scanner.Err());return agentiplex.Event{}
+		t.Fatalf("SSE stream ended: %v",scanner.Err());return core.Event{}
 	}
 	if _,err:=b.SetCollection(ctx,"group","first",[]string{"tester-1"});err!=nil{t.Fatal(err)}
 	res,scanner:=connect(0);defer res.Body.Close()

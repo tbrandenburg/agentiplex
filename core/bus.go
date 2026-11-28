@@ -1,5 +1,5 @@
-// Package agentiplex implements the Agentiplex collaboration service.
-package agentiplex
+// Package core implements the Agentiplex collaboration service.
+package core
 
 import (
 	"context"

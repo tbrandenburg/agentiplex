@@ -1,4 +1,4 @@
-package agentiplex
+package core
 
 import (
 	"testing"

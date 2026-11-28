@@ -194,6 +194,8 @@ filesystem sandbox or exactly-once execution system.
 
 ## Contributing
 
+The public Go library lives in `core/` (`github.com/tbrandenburg/agentiplex/core`). This replaces the former root-package import; the module path and CLI/daemon interfaces are unchanged. See [architecture](docs/ARCH.md#9-repository-layout).
+
 Bug reports and focused improvements are welcome. Open an
 [issue](https://github.com/tbrandenburg/agentiplex/issues) or submit a
 [pull request](https://github.com/tbrandenburg/agentiplex/pulls).

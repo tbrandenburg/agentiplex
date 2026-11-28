@@ -17,7 +17,7 @@ import (
 	"github.com/a2aproject/a2a-go/v2/a2a"
 	"github.com/a2aproject/a2a-go/v2/a2aclient"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
-	"github.com/tbrandenburg/agentiplex"
+	"github.com/tbrandenburg/agentiplex/core"
 	"github.com/tbrandenburg/agentiplex/internal/api"
 	"github.com/tbrandenburg/agentiplex/internal/cli"
 	"github.com/tbrandenburg/agentiplex/internal/dashboard"
@@ -98,7 +98,7 @@ func TestSecureHTTPRolesA2AAndMCP(t *testing.T){
 	mc:=mcp.NewClient(&mcp.Implementation{Name:"secure-test",Version:"1.0.0"},nil)
 	session,err:=mc.Connect(ctx,&mcp.StreamableClientTransport{Endpoint:public+"/mcp",HTTPClient:client,DisableStandaloneSSE:true},nil)
 	if err!=nil{t.Fatal(err)};defer session.Close()
-	d:=decodeMCP[agentiplex.Delivery](t,mcpCall(t,session,"send_message",map[string]any{"target":"tester-1","text":"secure MCP","idempotencyKey":"secure-mcp"},false))
+	d:=decodeMCP[core.Delivery](t,mcpCall(t,session,"send_message",map[string]any{"target":"tester-1","text":"secure MCP","idempotencyKey":"secure-mcp"},false))
 	wait(t,b,d.ID,"completed")
 	if a.calls.Load()!=2{t.Fatal("secure SDK requests did not execute exactly twice")}
 	ca:=secretFile(t,dir,"ca.crt",string(pem.EncodeToMemory(&pem.Block{Type:"CERTIFICATE",Bytes:s.Certificate().Raw})))
@@ -135,5 +135,5 @@ func TestOutboundA2AOriginScopedCredential(t *testing.T){
 	if _,err=b.Register(ctx,"other",other.URL);err==nil{t.Fatal("invalid card accepted")}
 	b.Close()
 	cfg.Storage=t.TempDir();cfg.OutboundTokenFiles=map[string]string{"http://127.0.0.1:1234":cred}
-	if invalid,err:=agentiplex.Open(ctx,cfg);err==nil{invalid.Close();t.Fatal("plaintext outbound credential accepted")}
+	if invalid,err:=core.Open(ctx,cfg);err==nil{invalid.Close();t.Fatal("plaintext outbound credential accepted")}
 }

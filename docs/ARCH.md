@@ -269,12 +269,13 @@ agentiplex/
 ├── cmd/
 │   ├── agentiplex/main.go
 │   └── agentiplexd/main.go
-├── bus.go                     # Small public Go API / constructor
-├── agent.go                   # Public agent types
-├── registry.go
-├── messaging.go
-├── state.go
-├── config.go
+├── core/                      # Public Go library; unit tests beside code
+│   ├── bus.go
+│   ├── agent.go
+│   ├── registry.go
+│   ├── messaging.go
+│   ├── state.go
+│   └── config.go
 ├── internal/
 │   ├── daemon/                # Composition and lifecycle
 │   ├── cli/                   # Remote CLI commands
@@ -312,7 +313,7 @@ agentiplex/
 └── LICENSE
 ```
 
-The root exposes a small embeddable API and can construct built-in integrations. Keep shared implementation types in a leaf package if required to avoid import cycles; internal packages must not import the root if the root imports them. CLI calls the remote API, not embedded storage. Unit tests live beside code; integration/e2e tests use real broker/agents. No empty placeholders for future adapters. Add AHP (host control), ACP (runtime integration) and MCP (collaboration tools) under adapters only when needed.
+The `core/` package exposes the small embeddable Go API and constructs built-in integrations. Its import path is `github.com/tbrandenburg/agentiplex/core` (previously `github.com/tbrandenburg/agentiplex`); existing Go consumers must update imports and package qualifiers. The module path and runtime protocols are unchanged. Keep shared implementation types in a leaf package if required to avoid import cycles; internal packages must not import `core` if `core` imports them. CLI calls the remote API, not embedded storage. Unit tests live beside code; integration/e2e tests use real broker/agents. No empty placeholders for future adapters. Add AHP (host control), ACP (runtime integration) and MCP (collaboration tools) under adapters only when needed.
 
 ## 10. Dependencies and implementation order
 

@@ -11,12 +11,12 @@ import (
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
-	"github.com/tbrandenburg/agentiplex"
+	"github.com/tbrandenburg/agentiplex/core"
 	"github.com/tbrandenburg/agentiplex/internal/api"
 	"github.com/tbrandenburg/agentiplex/internal/daemon"
 )
 
-func mcpSession(t *testing.T,b *agentiplex.Bus,legacy bool)(*httptest.Server,*mcp.ClientSession){
+func mcpSession(t *testing.T,b *core.Bus,legacy bool)(*httptest.Server,*mcp.ClientSession){
 	t.Helper()
 	s:=httptest.NewServer(api.HandlerWithProtocols(b,nil,"",true))
 	t.Cleanup(s.Close)
@@ -62,48 +62,48 @@ func TestMCPDelegationAndStateAcrossRestart(t *testing.T){
 		read,ok:=want[tool.Name]
 		if !ok||tool.InputSchema==nil||tool.Annotations==nil||tool.Annotations.ReadOnlyHint!=read{t.Fatalf("unexpected tool: %+v",tool)}
 	}
-	agents:=decodeMCP[struct{Agents []agentiplex.Agent}](t,mcpCall(t,c,"discover_agents",map[string]any{"skill":"architecture","group":"engineering"},false))
+	agents:=decodeMCP[struct{Agents []core.Agent}](t,mcpCall(t,c,"discover_agents",map[string]any{"skill":"architecture","group":"engineering"},false))
 	if len(agents.Agents)!=2{t.Fatalf("discovery %+v",agents)}
-	none:=decodeMCP[struct{Agents []agentiplex.Agent;Registered int;Hint string}](t,mcpCall(t,c,"discover_agents",map[string]any{"skill":"nonexistent"},false))
+	none:=decodeMCP[struct{Agents []core.Agent;Registered int;Hint string}](t,mcpCall(t,c,"discover_agents",map[string]any{"skill":"nonexistent"},false))
 	if len(none.Agents)!=0||none.Registered<2||!strings.Contains(none.Hint,"without filters"){t.Fatalf("empty filtered discovery lacks hint %+v",none)}
-	h:=decodeMCP[agentiplex.AgentHealth](t,mcpCall(t,c,"get_agent_health",map[string]any{"id":"tester-1"},false))
+	h:=decodeMCP[core.AgentHealth](t,mcpCall(t,c,"get_agent_health",map[string]any{"id":"tester-1"},false))
 	if h.Reachability!="reachable"||h.Busy{t.Fatalf("health %+v",h)}
-	pools:=decodeMCP[struct{Collections []agentiplex.Collection}](t,mcpCall(t,c,"list_collections",map[string]any{"kind":"pool"},false))
+	pools:=decodeMCP[struct{Collections []core.Collection}](t,mcpCall(t,c,"list_collections",map[string]any{"kind":"pool"},false))
 	if len(pools.Collections)!=1||len(pools.Collections[0].Members)!=2{t.Fatalf("pools %+v",pools)}
 	mcpCall(t,c,"list_collections",map[string]any{"kind":"bad"},true)
 	send:=map[string]any{"target":"tester-1","text":"review fixture","idempotencyKey":"mcp-send"}
-	d:=decodeMCP[agentiplex.Delivery](t,mcpCall(t,c,"send_message",send,false))
+	d:=decodeMCP[core.Delivery](t,mcpCall(t,c,"send_message",send,false))
 	wait(t,b,d.ID,"completed")
 	result:=mcpCall(t,c,"get_delivery",map[string]any{"id":d.ID},false)
 	if !strings.Contains(string(result),"SIMULATED"){t.Fatalf("missing downstream result %s",result)}
-	dup:=decodeMCP[agentiplex.Delivery](t,mcpCall(t,c,"send_message",send,false))
+	dup:=decodeMCP[core.Delivery](t,mcpCall(t,c,"send_message",send,false))
 	if dup.ID!=d.ID||first.calls.Load()!=1{t.Fatal("duplicate re-executed")}
 	mcpCall(t,c,"send_message",map[string]any{"target":"tester-1","text":"changed","idempotencyKey":"mcp-send"},true)
 	mcpCall(t,c,"send_message",map[string]any{"target":"tester-1","text":"no key"},true)
 	mcpCall(t,c,"send_message",map[string]any{"target":"missing","text":"bad","idempotencyKey":"bad-target"},true)
 	mcpCall(t,c,"get_delivery",map[string]any{"id":"missing"},true)
-	bc:=decodeMCP[agentiplex.Delivery](t,mcpCall(t,c,"broadcast",map[string]any{"target":"engineering","text":"update","idempotencyKey":"mcp-bc"},false))
+	bc:=decodeMCP[core.Delivery](t,mcpCall(t,c,"broadcast",map[string]any{"target":"engineering","text":"update","idempotencyKey":"mcp-bc"},false))
 	wait(t,b,bc.ID,"completed")
-	bc=decodeMCP[agentiplex.Delivery](t,mcpCall(t,c,"get_delivery",map[string]any{"id":bc.ID},false))
+	bc=decodeMCP[core.Delivery](t,mcpCall(t,c,"get_delivery",map[string]any{"id":bc.ID},false))
 	if len(bc.Children)!=2||first.calls.Load()!=2||second.calls.Load()!=1{t.Fatalf("broadcast %+v",bc)}
-	dp:=decodeMCP[agentiplex.Delivery](t,mcpCall(t,c,"dispatch",map[string]any{"target":"testers","text":"verify","idempotencyKey":"mcp-dp"},false))
+	dp:=decodeMCP[core.Delivery](t,mcpCall(t,c,"dispatch",map[string]any{"target":"testers","text":"verify","idempotencyKey":"mcp-dp"},false))
 	wait(t,b,dp.ID,"completed")
-	dp=decodeMCP[agentiplex.Delivery](t,mcpCall(t,c,"get_delivery",map[string]any{"id":dp.ID},false))
+	dp=decodeMCP[core.Delivery](t,mcpCall(t,c,"get_delivery",map[string]any{"id":dp.ID},false))
 	if dp.AssignedAgent==""||first.calls.Load()+second.calls.Load()!=4{t.Fatalf("dispatch %+v",dp)}
 	create:=map[string]any{"namespace":"engineering","key":"context","value":"pending","revision":0}
-	st:=decodeMCP[agentiplex.StateEntry](t,mcpCall(t,c,"put_state",create,false))
+	st:=decodeMCP[core.StateEntry](t,mcpCall(t,c,"put_state",create,false))
 	if st.Revision==0{t.Fatal("missing state revision")}
 	mcpCall(t,c,"put_state",create,true)
 	mcpCall(t,c,"put_state",map[string]any{"namespace":"engineering","key":"context","value":"missing revision"},true)
-	updated:=decodeMCP[agentiplex.StateEntry](t,mcpCall(t,c,"put_state",map[string]any{"namespace":"engineering","key":"context","value":"complete","revision":st.Revision},false))
+	updated:=decodeMCP[core.StateEntry](t,mcpCall(t,c,"put_state",map[string]any{"namespace":"engineering","key":"context","value":"complete","revision":st.Revision},false))
 	if updated.Revision<=st.Revision{t.Fatal("state revision did not advance")}
 	metadata:=mcpCall(t,c,"list_state",map[string]any{"namespace":"engineering"},false)
 	if bytes.Contains(metadata,[]byte("\"value\"")){t.Fatalf("state values in list %s",metadata)}
 	_ = c.Close();s.Close();b.Close()
 	b2:=open(t,cfg);_,c2:=mcpSession(t,b2,true)
-	got:=decodeMCP[agentiplex.StateEntry](t,mcpCall(t,c2,"get_state",map[string]any{"namespace":"engineering","key":"context"},false))
+	got:=decodeMCP[core.StateEntry](t,mcpCall(t,c2,"get_state",map[string]any{"namespace":"engineering","key":"context"},false))
 	if got.Revision!=updated.Revision||got.Value==nil||*got.Value!="complete"{t.Fatalf("restart state %+v",got)}
-	replay:=decodeMCP[agentiplex.Delivery](t,mcpCall(t,c2,"send_message",send,false))
+	replay:=decodeMCP[core.Delivery](t,mcpCall(t,c2,"send_message",send,false))
 	if replay.ID!=d.ID||first.calls.Load()+second.calls.Load()!=4{t.Fatal("restart replayed work")}
 }
 

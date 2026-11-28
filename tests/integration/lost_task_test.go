@@ -11,7 +11,7 @@ import (
 
 	"github.com/a2aproject/a2a-go/v2/a2a"
 	"github.com/a2aproject/a2a-go/v2/a2asrv"
-	"github.com/tbrandenburg/agentiplex"
+	"github.com/tbrandenburg/agentiplex/core"
 )
 
 // taskAgent runs a task until release is closed. Swapping the handler simulates a gateway restart.
@@ -69,7 +69,7 @@ func TestLostRemoteTaskSettlesUncertainWithoutReplay(t *testing.T){
 	wait(t,b,d.ID,"accepted")
 	a.restart(a.card())
 	deadline:=time.Now().Add(20*time.Second)
-	var cur agentiplex.Delivery
+	var cur core.Delivery
 	for cur.State!="uncertain"{
 		if time.Now().After(deadline){t.Fatalf("not settled: %+v",cur)}
 		time.Sleep(100*time.Millisecond)

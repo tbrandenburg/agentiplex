@@ -16,7 +16,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
-	"github.com/tbrandenburg/agentiplex"
+	"github.com/tbrandenburg/agentiplex/core"
 	"github.com/tbrandenburg/agentiplex/internal/api"
 	"github.com/tbrandenburg/agentiplex/internal/dashboard"
 	adapter "github.com/tbrandenburg/agentiplex/internal/adapters/a2a"
@@ -27,7 +27,7 @@ func Command() *cobra.Command {
 	v.SetEnvPrefix("AGENTIPLEX")
 	v.SetEnvKeyReplacer(strings.NewReplacer(".","_","-","_"))
 	v.AutomaticEnv()
-	d:=agentiplex.DefaultConfig()
+	d:=core.DefaultConfig()
 	defaults:=map[string]any{
 		"server.listen":"127.0.0.1:8080","server.public_url":"","server.trusted_network":false,"protocols.mcp.enabled":false,"observability.dashboard":true,"observability.dashboard_schema":"","observability.dashboard_theme":"cxd","observability.dashboard_refresh_interval":2*time.Second,
 		"security.operator_token_file":"","security.agent_token_files":map[string]string{},"security.viewer_token_file":"","server.tls_cert_file":"","server.tls_key_file":"","broker.token_file":"","broker.credentials_file":"","broker.ca_file":"","delivery.token_files":map[string]string{},"delivery.ca_file":"",
@@ -39,11 +39,11 @@ func Command() *cobra.Command {
 	var config string
 	cmd:=&cobra.Command{Use:"agentiplexd",Short:"Agentiplex collaboration daemon",SilenceUsage:true,Args:cobra.NoArgs,RunE:func(cmd *cobra.Command,args []string)error{
 		if config!=""{v.SetConfigFile(config);if err:=v.ReadInConfig();err!=nil{return err}}
-		cfg:=agentiplex.Config{BrokerMode:v.GetString("broker.mode"),BrokerURL:v.GetString("broker.url"),BrokerTokenFile:v.GetString("broker.token_file"),BrokerCredentialsFile:v.GetString("broker.credentials_file"),BrokerCAFile:v.GetString("broker.ca_file"),OutboundTokenFiles:v.GetStringMapString("delivery.token_files"),OutboundCAFile:v.GetString("delivery.ca_file"),Storage:v.GetString("broker.storage"),Replicas:v.GetInt("broker.replicas"),Namespace:v.GetString("registry.namespace"),AllowedOrigins:v.GetStringSlice("delivery.allowed_origins"),Timeout:v.GetDuration("delivery.timeout"),RetryDelay:v.GetDuration("delivery.retry_delay"),Workers:v.GetInt("delivery.workers"),MaxAttempts:v.GetInt("delivery.max_attempts"),TaskPollInterval:v.GetDuration("delivery.task_poll_interval"),HealthInterval:v.GetDuration("registry.health_interval"),Retention:v.GetDuration("delivery.retention")}
-		var reg agentiplex.Registry
+		cfg:=core.Config{BrokerMode:v.GetString("broker.mode"),BrokerURL:v.GetString("broker.url"),BrokerTokenFile:v.GetString("broker.token_file"),BrokerCredentialsFile:v.GetString("broker.credentials_file"),BrokerCAFile:v.GetString("broker.ca_file"),OutboundTokenFiles:v.GetStringMapString("delivery.token_files"),OutboundCAFile:v.GetString("delivery.ca_file"),Storage:v.GetString("broker.storage"),Replicas:v.GetInt("broker.replicas"),Namespace:v.GetString("registry.namespace"),AllowedOrigins:v.GetStringSlice("delivery.allowed_origins"),Timeout:v.GetDuration("delivery.timeout"),RetryDelay:v.GetDuration("delivery.retry_delay"),Workers:v.GetInt("delivery.workers"),MaxAttempts:v.GetInt("delivery.max_attempts"),TaskPollInterval:v.GetDuration("delivery.task_poll_interval"),HealthInterval:v.GetDuration("registry.health_interval"),Retention:v.GetDuration("delivery.retention")}
+		var reg core.Registry
 		if config!=""{
 			raw,err:=os.ReadFile(config);if err!=nil{return err}
-			if reg,err=agentiplex.ParseRegistry(raw);err!=nil{return err}
+			if reg,err=core.ParseRegistry(raw);err!=nil{return err}
 		}
 		secure:=v.GetString("security.operator_token_file")!=""
 		agentFiles,err:=reg.AgentTokenFiles(v.GetStringMapString("security.agent_token_files"),secure);if err!=nil{return err}
@@ -77,7 +77,7 @@ func Command() *cobra.Command {
 	return cmd
 }
 
-func run(ctx context.Context,cfg agentiplex.Config,listen,publicURL string,trusted,dashboardEnabled,mcpEnabled bool,dashboardConfig dashboard.Config,reg agentiplex.Registry,auth *security.Auth,certFile,keyFile string)error{
+func run(ctx context.Context,cfg core.Config,listen,publicURL string,trusted,dashboardEnabled,mcpEnabled bool,dashboardConfig dashboard.Config,reg core.Registry,auth *security.Auth,certFile,keyFile string)error{
 	var ui *dashboard.UI
 	if dashboardEnabled{var err error;ui,err=dashboard.New(dashboardConfig);if err!=nil{return err}}
 	host,_,err:=net.SplitHostPort(listen)
@@ -93,7 +93,7 @@ func run(ctx context.Context,cfg agentiplex.Config,listen,publicURL string,trust
 	if (certFile!="")!=strings.HasPrefix(publicURL,"https://"){return errors.New("public URL scheme must match listener TLS configuration")}
 	var tlsConfig *tls.Config
 	if certFile!=""{pair,e:=tls.LoadX509KeyPair(certFile,keyFile);if e!=nil{return errors.New("cannot load TLS certificate/key")};tlsConfig=&tls.Config{MinVersion:tls.VersionTLS12,Certificates:[]tls.Certificate{pair}}}
-	b,err:=agentiplex.Open(ctx,cfg);if err!=nil{return err};defer b.Close()
+	b,err:=core.Open(ctx,cfg);if err!=nil{return err};defer b.Close()
 	if err=b.ApplyRegistry(ctx,reg);err!=nil{return err}
 	srv:=NewServer(api.HandlerSecure(b,ui,publicURL,mcpEnabled,auth),tlsConfig,cfg.Timeout)
 	result:=make(chan error,1)

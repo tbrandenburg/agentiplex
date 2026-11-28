@@ -7,11 +7,11 @@ framework-agnostic and never decides what agents do. Product docs live in `READM
 and `docs/` (start with `docs/ARCH.md`); do not duplicate them here.
 
 ## Layout
-- Root `*.go`: core library. `cmd/`: `agentiplex` CLI and `agentiplexd` daemon.
+- `core/`: public Go collaboration library and its unit tests. `cmd/`: `agentiplex` CLI and `agentiplexd` daemon.
 - `internal/`: adapters, api, catalog, cli, daemon, dashboard, nats, security, simagent.
 - `deploy/`: sample daemon configuration, Helm and systemd assets.
 - `examples/`: operator-side demos, outside the core. Do not add example logic to the core.
-- `tests/integration/`: integration tests.
+- `tests/integration/`: integration tests; `tests/examples/`: example validation.
 
 ## Early-stage simplification
 Agentiplex is pre-1.0. Breaking changes to its own APIs, configuration, storage

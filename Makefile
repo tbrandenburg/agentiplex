@@ -1,9 +1,10 @@
-.PHONY: help fmt lint dashboard-assets build test check clean run demo-agent demo-team demo-check examples-check live-check repository-provision-check repository-team-up repository-team-send repository-team-down autonomous-team-up autonomous-team-send autonomous-team-down docker compose-up compose-down release release-plan
+.PHONY: help fmt lint dashboard-assets build test check examples-python-check clean run demo-agent demo-team demo-check examples-check live-check repository-provision-check repository-team-up repository-team-send repository-team-down autonomous-team-up autonomous-team-send autonomous-team-down docker compose-up compose-down release release-plan
 .DEFAULT_GOAL := help
 export bump
 
 # Optional overrides; no secrets or environment files are created by make.
 GO_TEST_FLAGS ?= -race -count=1
+GO_TEST_PACKAGES ?= ./...
 RUN_ARGS ?= --mcp
 DEMO_ARGS ?=
 LIVE_ARGS ?= --prompt-timeout 10m --seconds 900
@@ -50,12 +51,12 @@ build: dashboard-assets
 	go build -mod=readonly ./examples/...
 
 test: dashboard-assets
-	go test $(GO_TEST_FLAGS) ./...
+	go test $(GO_TEST_FLAGS) $(GO_TEST_PACKAGES)
 
 lint: dashboard-assets
 	go vet ./...
 
-check: test lint examples-check
+check: test lint examples-python-check
 	bash scripts/test-release.sh
 
 clean:
@@ -73,8 +74,10 @@ demo-team:
 demo-check:
 	bash examples/engineering-team/demo.sh --check $(DEMO_ARGS)
 
-examples-check: dashboard-assets
+examples-check: dashboard-assets examples-python-check
 	go test $(GO_TEST_FLAGS) ./tests/examples/
+
+examples-python-check:
 	python3 -B tests/examples/repository-team/test_verify.py
 	python3 -B tests/examples/autonomous-team/test_live_check.py
 

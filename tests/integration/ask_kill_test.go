@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/tbrandenburg/agentiplex"
+	"github.com/tbrandenburg/agentiplex/core"
 )
 
 // askDaemon builds and starts the real daemon with MCP enabled on shared storage.
@@ -56,7 +56,7 @@ func TestAskSIGKILLDuringBlockedAskThenReattach(t *testing.T){
 	go func(){time.Sleep(2*time.Second);close(a.release)}()
 	got:=mustAsk(t,mcpClient(t,api2),args)
 	if !got.Done||got.State!="completed"||a.sends.Load()!=1{t.Fatalf("re-attach: %+v sends=%d",got,a.sends.Load())}
-	var d agentiplex.Delivery
+	var d core.Delivery
 	call(t,"GET",api2+"/api/v1/deliveries/"+got.ID,nil,&d)
 	if d.ID!=got.ID||d.State!="completed"{t.Fatalf("delivery %+v",d)}
 }
