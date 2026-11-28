@@ -73,7 +73,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Native example configuration, policies and provider-free startup
+      - name: Native examples, policies, contract continuation and provider-free startup
         run: make examples-check GO_TEST_FLAGS="-race -count=1 -v"
       - name: Check shell syntax and full-access opt-in
         run: |
