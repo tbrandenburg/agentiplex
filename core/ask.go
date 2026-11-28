@@ -22,7 +22,7 @@ func(b *Bus) Ask(ctx context.Context,target,text,key string,timeout time.Duratio
 	if err!=nil{return Delivery{},false,err}
 	wctx:=ctx
 	if timeout>0{var cancel context.CancelFunc;wctx,cancel=context.WithTimeout(ctx,timeout);defer cancel()}
-	last,err:=awaitTerminal(wctx,d.ID,func()(Delivery,error){return b.rawDelivery(d.ID)},b.watchDelivery,500*time.Millisecond)
+	last,err:=b.WaitDelivery(wctx,d.ID)
 	if err!=nil&&ctx.Err()==nil&&wctx.Err()!=nil{
 		// Only the per-call timeout ended the wait: report the current record.
 		if cur,e:=b.rawDelivery(d.ID);e==nil{last=cur}
@@ -30,6 +30,29 @@ func(b *Bus) Ask(ctx context.Context,target,text,key string,timeout time.Duratio
 	}
 	if err!=nil{return Delivery{},false,err}
 	return last,true,nil
+}
+
+// WaitDelivery observes existing work, never submits or cancels it. The
+// initial read checks caller scope before any watch is established. Broadcasts
+// wait for the manifest to finish admission and then for its existing children.
+func (b *Bus) WaitDelivery(ctx context.Context, id string) (Delivery, error) {
+	d, err := b.DeliveryFor(ctx, id)
+	if err != nil { return Delivery{}, err }
+	if terminalOrPartial(d.State) { return d, nil }
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	stop := context.AfterFunc(b.ctx, cancel)
+	defer stop()
+	wait := func(id string, done func(string) bool) (Delivery, error) {
+		return awaitTerminal(ctx, id, func() (Delivery, error) { return b.rawDelivery(id) }, b.watchDelivery, 500*time.Millisecond, done)
+	}
+	if d.Kind != "broadcast" { return wait(id, terminalState) }
+	manifest, err := wait(id, func(state string) bool { return state == "broadcast-admitted" })
+	if err != nil { return Delivery{}, err }
+	for _, member := range manifest.Members {
+		if _, err := wait(childID(id, member), terminalState); err != nil { return Delivery{}, err }
+	}
+	return b.DeliveryFor(ctx, id)
 }
 
 // ErrSelfAsk rejects a blocking ask whose target is the caller's own agent.
@@ -54,7 +77,7 @@ func(b *Bus) watchDelivery(ctx context.Context,id string)(nats.KeyWatcher,error)
 // is re-read after every (re)established watch, so a missed update or a watch
 // failure cannot hang the wait. Updates re-saved without a state change are
 // ignored implicitly: only terminal states end the wait.
-func awaitTerminal(ctx context.Context,id string,get func()(Delivery,error),watch func(context.Context,string)(nats.KeyWatcher,error),pause time.Duration)(Delivery,error){
+func awaitTerminal(ctx context.Context,id string,get func()(Delivery,error),watch func(context.Context,string)(nats.KeyWatcher,error),pause time.Duration,done func(string)bool)(Delivery,error){
 	var last Delivery
 	for{
 		if w,err:=watch(ctx,id);err==nil{
@@ -62,21 +85,25 @@ func awaitTerminal(ctx context.Context,id string,get func()(Delivery,error),watc
 			switch{
 			case gerr==nil:
 				last=d
-				if terminalState(d.State){_ = w.Stop();return d,nil}
+				if done(d.State){_ = w.Stop();return d,nil}
 			case errors.Is(gerr,ErrNotFound):_ = w.Stop();return last,gerr
 			default:_ = w.Stop();w=nil
 			}
+			var watchErrors <-chan error
+			if w!=nil{watchErrors=w.Error()}
 			for w!=nil{
 				select{
 				case <-ctx.Done():_ = w.Stop();return last,ctx.Err()
+				case err,ok:=<-watchErrors:
+					if !ok{watchErrors=nil}else if err!=nil{_ = w.Stop();w=nil}
 				case e,ok:=<-w.Updates():
-					if !ok{w=nil;break}
+					if !ok{_ = w.Stop();w=nil;break}
 					if e==nil{continue}
 					if e.Operation()!=nats.KeyValuePut{_ = w.Stop();return last,ErrNotFound}
 					var nd Delivery
 					if json.Unmarshal(e.Value(),&nd)==nil{
 						last=nd
-						if terminalState(nd.State){_ = w.Stop();return nd,nil}
+						if done(nd.State){_ = w.Stop();return nd,nil}
 					}
 				}
 			}

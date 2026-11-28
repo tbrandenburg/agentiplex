@@ -263,3 +263,28 @@ func TestAutonomousObjectiveIsBounded(t *testing.T) {
 		t.Fatalf("autonomous-team/objective.md must be non-empty and within the 4096-byte submission limit (%d bytes)", n)
 	}
 }
+
+func TestDiscussionExampleReadOnly(t *testing.T) {
+	for _,name:=range []string{"lead","expert","critic"}{
+		prompt:=bytes.TrimSpace(read(t,"discussion-team","roles",name+".md"))
+		if len(prompt)==0||len(prompt)>64*1024||!bytes.Contains(prompt,[]byte("discussion"))||!bytes.Contains(prompt,[]byte("agentiplex_note")){
+			t.Fatalf("invalid discussion role %s",name)
+		}
+	}
+	for _,name:=range []string{"coordinator","reader"}{
+		base,tools:=policyResources(t,"discussion-team",name)
+		if base!="read-only"{t.Fatal("discussion must be read-only")}
+		expected:=[]string{"agentiplex","note","read_notes"}
+		if name=="coordinator"{expected=append(expected,"discover_agents","get_delivery","ask")}
+		slices.Sort(expected)
+		slices.Sort(tools)
+		if !slices.Equal(tools,expected){t.Fatalf("%s unexpected grants %v",name,tools)}
+	}
+	var cfg struct{
+		MCP struct{Servers map[string]struct{URL string; Codemode bool}}
+	}
+	if err:=json.Unmarshal(read(t,"discussion-team","workspace","opencode.json"),&cfg);err!=nil{t.Fatal(err)}
+	if len(cfg.MCP.Servers)!=1||cfg.MCP.Servers["agentiplex"].URL!="http://127.0.0.1:8080/mcp"||cfg.MCP.Servers["agentiplex"].Codemode{
+		t.Fatal("discussion example must use the default loopback MCP endpoint and individual tools")
+	}
+}

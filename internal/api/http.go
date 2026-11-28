@@ -82,6 +82,18 @@ func handlerMode(b *core.Bus,u *dashboard.UI,secured bool,publicURL ...string)ht
 	mux.HandleFunc("GET /api/v1/deliveries/{id}",func(w http.ResponseWriter,r *http.Request){
 		d,err:=b.DeliveryFor(r.Context(),r.PathValue("id"));respond(w,200,d,err)
 	})
+	mux.HandleFunc("GET /api/v1/deliveries/{id}/wait",func(w http.ResponseWriter,r *http.Request){
+		w.Header().Set("Cache-Control","no-store")
+		rc:=http.NewResponseController(w)
+		// This is an observation of durable work, not a long execution
+		// request. Clear the normal request deadline only on this route.
+		_ = rc.SetReadDeadline(time.Time{})
+		_ = rc.SetWriteDeadline(time.Time{})
+		d,err:=b.WaitDelivery(r.Context(),r.PathValue("id"))
+		if r.Context().Err()!=nil{return}
+		_ = rc.SetWriteDeadline(time.Now().Add(10*time.Second))
+		respond(w,200,d,err)
+	})
 	mux.HandleFunc("POST /api/v1/deliveries/{id}/abandon",func(w http.ResponseWriter,r *http.Request){
 		var in struct{TaskID string `json:"taskId"`;RemoteStopped bool `json:"remoteStopped"`}
 		if !decode(w,r,&in){return}

@@ -63,7 +63,7 @@ func Command()*cobra.Command{
 	&cobra.Command{Use:"remove ID",Args:cobra.ExactArgs(1),RunE:func(c *cobra.Command,a []string)error{return print(c,"DELETE","/api/v1/agents/"+url.PathEscape(a[0]),nil)}},
 	&cobra.Command{Use:"health ID",Args:cobra.ExactArgs(1),RunE:func(c *cobra.Command,a []string)error{return print(c,"POST","/api/v1/agents/"+url.PathEscape(a[0])+"/health",nil)}})
 	root.AddCommand(agents)
-	root.AddCommand(stateCommand(r,print))
+	root.AddCommand(stateCommand(r,print),notesCommand(r))
 	var skill,tag,group string
 	discover:=&cobra.Command{Use:"discover",Args:cobra.NoArgs,RunE:func(c *cobra.Command,a []string)error{
 		q:=url.Values{"skill":{skill},"tag":{tag},"group":{group}}
@@ -77,10 +77,19 @@ func Command()*cobra.Command{
 	catalog.AddCommand(&cobra.Command{Use:"get",Args:cobra.NoArgs,RunE:func(c *cobra.Command,a []string)error{return print(c,"GET","/.well-known/ai-catalog.json",nil)}})
 	root.AddCommand(catalog)
 	var key string
+	var sendWait bool
 	send:=&cobra.Command{Use:"send TARGET TEXT",Args:cobra.ExactArgs(2),RunE:func(c *cobra.Command,a []string)error{
-		return print(c,"POST","/api/v1/messages",map[string]string{"target":a[0],"text":a[1],"idempotencyKey":key})
+		in:=map[string]string{"target":a[0],"text":a[1],"idempotencyKey":key}
+		if !sendWait{return print(c,"POST","/api/v1/messages",in)}
+		raw,err:=r.call(c.Context(),"POST","/api/v1/messages",in);if err!=nil{return err}
+		var receipt struct{ID string}
+		if err=json.Unmarshal(raw,&receipt);err!=nil{return err}
+		if receipt.ID==""{return fmt.Errorf("invalid delivery receipt")}
+		fmt.Fprintf(c.ErrOrStderr(),"Delivery %s admitted; waiting (Ctrl-C detaches, not cancels).\n",receipt.ID)
+		return waitAndPrint(c,r,receipt.ID,false)
 	}}
 	send.Flags().StringVar(&key,"idempotency-key","","required stable caller-generated key, created once per intended operation and reused only to retry")
+	send.Flags().BoolVar(&sendWait,"wait",false,"wait for the admitted delivery and print its verdict")
 	_ = send.MarkFlagRequired("idempotency-key")
 	root.AddCommand(send)
 	for _,kind:=range []string{"group","pool"}{
@@ -111,7 +120,7 @@ func Command()*cobra.Command{
 		return print(c,"POST","/api/v1/deliveries/"+url.PathEscape(a[0])+"/abandon",map[string]any{"taskId":a[1],"remoteStopped":true})
 	}}
 	abandon.Flags().BoolVar(&remoteStopped,"confirm-remote-stopped",false,"confirm independently that remote execution stopped; no cancellation or replay")
-	messages.AddCommand(abandon)
+	messages.AddCommand(abandon,waitCommand(r))
 	root.AddCommand(messages)
 	root.AddCommand(&cobra.Command{Use:"status",Args:cobra.NoArgs,RunE:func(c *cobra.Command,a []string)error{return print(c,"GET","/readyz",nil)}})
 	root.AddCommand(&cobra.Command{Use:"health",Args:cobra.NoArgs,RunE:func(c *cobra.Command,a []string)error{return print(c,"GET","/healthz",nil)}})

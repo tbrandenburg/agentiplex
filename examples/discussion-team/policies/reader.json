@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "base": "read-only",
+  "policies": [
+    {
+      "action": "mcp.use",
+      "resource": "agentiplex",
+      "effect": "allow"
+    },
+    {
+      "action": "tool.use",
+      "resource": "agentiplex_note:*",
+      "effect": "allow"
+    },
+    {
+      "action": "tool.use",
+      "resource": "agentiplex_read_notes:*",
+      "effect": "allow"
+    }
+  ]
+}

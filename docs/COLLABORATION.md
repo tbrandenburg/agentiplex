@@ -21,11 +21,19 @@ agentiplex discover --group engineering
 agentiplex broadcast engineering "Contract updated" --idempotency-key release-1
 agentiplex dispatch testers "Verify requirement 42" --idempotency-key verify-42
 agentiplex messages status DELIVERY_ID
+agentiplex messages wait DELIVERY_ID
+agentiplex send architect "Review this proposal" --idempotency-key proposal-1 --wait
 agentiplex events --follow
 agentiplex events --follow --after 12 --kind delivery.state
 ```
 
 Groups/pools set is an upsert. Members must already be registered. The idempotency key is required; use a fresh key for each new operation; repeating the same key and payload returns the same receipt while the record is retained (7 days after it finishes by default). A conflicting payload is rejected. Keys are scoped to the caller and operation.
+
+## Waiting for results
+
+`messages wait ID` waits for a terminal delivery without submitting work. It prints the state, ID and downstream text (or structured result); `--json` returns the full record. For broadcast parents it waits for all admitted children and reports their states and IDs. `send --wait` submits once under the same required idempotency key and prints the receipt ID to stderr before blocking. Normal `send` and `messages status` keep their JSON output. Any terminal state other than completed exits nonzero; completed is transport-level success, not an engineering verdict.
+
+The wait is event-driven on the durable delivery KV record, using the same watcher as MCP `ask`; broadcast admission and each child use their own existing record. No server lifetime cap or per-waiter polling of agents. Ctrl-C, a lost connection or a daemon restart ends the observation, not the work. Run `messages wait ID` again against the restarted daemon on the same storage. A failed submission response may be retried only with the same key and payload while retained; never blindly resubmit uncertain work. Normal authentication and per-caller visibility apply. Raw result text is untrusted.
 
 ## HTTP / A2A
 
@@ -33,6 +41,7 @@ Groups/pools set is an upsert. Members must already be registered. The idempoten
 - GET /api/v1/groups or /pools, and /{id}: inspect definitions.
 - POST /api/v1/broadcasts and /api/v1/dispatches: body {"target":"engineering","text":"Contract updated","idempotencyKey":"release-1"} (use pool ID for dispatch).
 - GET /api/v1/deliveries/{id}: parent or individual delivery. A broadcast parent includes child IDs, targets, states and details; fetch child IDs for full downstream results.
+- GET /api/v1/deliveries/{id}/wait: blocking, read-only terminal delivery (same record and authorization as status); reconnect by the original ID.
 - GET /api/v1/agents?group=engineering: combine group membership with existing skill/tag filters.
 - A2A: SendMessage structured data part with operation broadcast or dispatch, target collection ID and text. GetTask exposes aggregate broadcast status or the dispatch assignment and original result. Use a fresh messageId, reuse it only for identical retries.
 
