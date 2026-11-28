@@ -35,7 +35,9 @@ def fake_cli(args):
         return {"id": key, "target": owner, "text": text,
                 "state": "completed", "result": {"fixture": True}}
 
-    if args[:2] == ["state", "get"]:
+    if args[0] == "fake-curl":
+        print(json.dumps(list(db["deliveries"].values())))
+    elif args[:2] == ["state", "get"]:
         print(json.dumps(db["state"][args[3]]))
     elif args[:2] == ["state", "put"]:
         key, value, flag, revision = args[3:]
@@ -78,6 +80,10 @@ def fake_cli(args):
             verify(1, "repair", "fixed candidate")
             verify(2, "test-repaired", "original test exit 0")
             verify(3, "review", "scope accepted")
+            if os.environ.get("CONTRACT_FAKE_EXTRA_PM") == "1":
+                extra = delivery("unsolicited-pm", "pm")
+                extra["state"] = "queued"
+                db["deliveries"][extra["id"]] = extra
             put("contract", json.dumps(contract))
         print(json.dumps(db["deliveries"][key]))
     else:
@@ -95,8 +101,13 @@ class RunnerTest(unittest.TestCase):
         cli.write_text("#!/bin/sh\nexec " + shlex.quote(sys.executable) + " "
                        + shlex.quote(str(Path(__file__).resolve())) + ' "$@"\n')
         cli.chmod(0o700)
+        curl = root / "curl"
+        curl.write_text("#!/bin/sh\nexec " + shlex.quote(sys.executable) + " "
+                        + shlex.quote(str(Path(__file__).resolve())) + ' fake-curl "$@"\n')
+        curl.chmod(0o700)
         self.env = dict(os.environ, AGENTIPLEX_BIN=str(cli),
-                        CONTRACT_FAKE_DB=str(self.db))
+                        CONTRACT_FAKE_DB=str(self.db),
+                        PATH=str(root) + os.pathsep + os.environ["PATH"])
         self.invoke("init")
 
     def invoke(self, mode, ok=True):
@@ -136,6 +147,20 @@ class RunnerTest(unittest.TestCase):
         self.db.write_text(json.dumps(db))
         self.assertIn("human decision required", self.invoke("run", ok=False))
         self.assertEqual(self.state()["submits"], [])
+
+    def test_verified_checklist_with_queued_pm_is_not_fulfilled(self):
+        self.env["CONTRACT_FAKE_EXTRA_PM"] = "1"
+        self.invoke("run", ok=False)  # Lost response after round one.
+        self.assertIn("unexpected PM activation", self.invoke("run", ok=False))
+        db = self.state()
+        self.assertEqual(json.loads(db["state"]["contract-run"]["value"])["round"], 2)
+        self.assertTrue(all(c["status"] == "verified" for c in
+                            json.loads(db["state"]["contract"]["value"])["criteria"]))
+        self.assertEqual(db["deliveries"]["unsolicited-pm"]["state"], "queued")
+        # Even if the unexpected activation completes, do not accept it.
+        db["deliveries"]["unsolicited-pm"]["state"] = "completed"
+        self.db.write_text(json.dumps(db))
+        self.assertIn("unexpected PM activation", self.invoke("run", ok=False))
 
     def test_budget_exhaustion_is_not_fulfillment(self):
         self.env["CONTRACT_FAKE_STALL"] = "1"
