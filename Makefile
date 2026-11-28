@@ -76,10 +76,10 @@ examples-check: dashboard-assets
 	python3 -B tests/examples/repository-team/test_verify.py
 	python3 -B tests/examples/autonomous-team/test_live_check.py
 
-live-check:
+live-check: dashboard-assets
 	python3 -B tests/examples/autonomous-team/live_check.py $(if $(MODEL),--model $(MODEL)) $(LIVE_ARGS)
 
-repository-provision-check:
+repository-provision-check: dashboard-assets
 	python3 -B tests/examples/repository-team/provision_check.py
 
 docker:
