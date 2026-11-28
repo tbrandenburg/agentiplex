@@ -40,10 +40,10 @@ func runDiscussionActors(l *liveTeam,dir string) {
 		b,err:=os.ReadFile(filepath.Join(dir,name));if err!=nil{t.Fatal(err)};return string(b)
 	}
 	var objective,initial core.StateEntry
-	if err:=l.get(l.api+"/api/v1/state/discussion-actors/objective",&objective);err!=nil || objective.Value==nil || *objective.Value!=read("contract-actors.md") || objective.Revision==0{t.Fatal("wrong approved objective",err)}
-	if err:=l.get(l.api+"/api/v1/state/discussion-actors/contract",&initial);err!=nil || initial.Value==nil || *initial.Value!=read("contract-actors.json"){t.Fatal("wrong approved contract",err)}
-	var current discussionActorContract
-	if json.Unmarshal([]byte(*initial.Value),&current)!=nil || !initialDiscussionActors(current){t.Fatal("invalid initial contract")}
+	if err:=l.get(l.api+"/api/v1/state/discussion-actors/objective",&objective);err!=nil || objective.Value==nil || *objective.Value!=read("objective-actors.md") || objective.Revision==0{t.Fatal("wrong approved objective",err)}
+	if err:=l.get(l.api+"/api/v1/state/discussion-actors/contract",&initial);err!=nil || initial.Value==nil || *initial.Value!=read("contract-actors.md"){t.Fatal("wrong approved contract",err)}
+	current,err:=parseDiscussionActorMarkdown(*initial.Value)
+	if err!=nil || !initialDiscussionActors(current){t.Fatal("invalid initial Markdown contract",err)}
 	revision:=initial.Revision
 	ctx,cancel:=context.WithTimeout(context.Background(),12*time.Minute);defer cancel()
 	ready:=make(chan struct{},1)
@@ -85,10 +85,10 @@ func runDiscussionActors(l *liveTeam,dir string) {
 		case entry:=<-updates:
 			if entry.Value==nil{t.Fatal("contract deleted")}
 			if entry.Revision==revision{continue}
-			var next discussionActorContract
-			if entry.Revision<revision || json.Unmarshal([]byte(*entry.Value),&next)!=nil{t.Fatal("invalid actor contract revision")}
+			next,err:=parseDiscussionActorMarkdown(*entry.Value)
+			if entry.Revision<revision || err!=nil{t.Fatal("invalid actor Markdown revision",err)}
 			if err:=verifyDiscussionActorTransition(current,next);err!=nil{t.Fatal(err)}
-			t.Logf("Actor contract revision %d: %s -> %s (%s, draft %d, review %s)",entry.Revision,current.Owner,next.Owner,next.Status,next.Draft.Version,next.Review.Decision)
+			t.Logf("Actor contract revision %d: %s -> %s (%s, draft %d, review %s, checked %v)",entry.Revision,current.Owner,next.Owner,next.Status,next.Draft.Version,next.Review.Decision,next.Checked)
 			current,revision=next,entry.Revision
 		}
 	}
@@ -117,14 +117,15 @@ func runDiscussionActors(l *liveTeam,dir string) {
 	}
 	if err:=verifyDiscussionActorReceipts(current,deliveries,*objective.Value);err!=nil{t.Fatal(err)}
 	var final core.StateEntry
-	var closed discussionActorContract
-	if err:=l.get(l.api+"/api/v1/state/discussion-actors/contract",&final);err!=nil || final.Value==nil || final.Revision!=revision ||
-		json.Unmarshal([]byte(*final.Value),&closed)!=nil || !reflect.DeepEqual(closed,current){t.Fatal("closed contract rewritten",err)}
+	if err:=l.get(l.api+"/api/v1/state/discussion-actors/contract",&final);err!=nil || final.Value==nil || final.Revision!=revision{t.Fatal("closed contract rewritten",err)}
+	closed,err:=parseDiscussionActorMarkdown(*final.Value)
+	if err!=nil || !reflect.DeepEqual(closed,current){t.Fatal("closed Markdown contract rewritten",err)}
+	t.Logf("Final living Markdown contract:\n%s",*final.Value)
 	var unchanged core.StateEntry
 	if err:=l.get(l.api+"/api/v1/state/discussion-actors/objective",&unchanged);err!=nil || unchanged.Value==nil || *unchanged.Value!=*objective.Value || unchanged.Revision!=objective.Revision{t.Fatal("approved objective changed",err)}
 	run(lines[2],30*time.Second)
 	var after []core.DeliverySummary
 	if err:=l.get(l.api+"/api/v1/deliveries?limit=100",&after);err!=nil || len(after)!=len(prior)+len(deliveries){t.Fatal("reattachment created additional work",err)}
 	if err:=l.get(l.api+"/api/v1/state/discussion-actors/contract",&unchanged);err!=nil || unchanged.Revision!=revision || unchanged.Value==nil || *unchanged.Value!=*final.Value{t.Fatal("closed contract changed after reattachment",err)}
-	t.Log("PASS: same three read-only actors, observed direct ownership handovers, missing recovery rejection, revised draft and independent acceptance; no orchestration or middleware continuation.")
+	t.Log("PASS: same three read-only actors, observed evidence-backed Markdown checkboxes, direct ownership handovers, missing recovery rejection, revised draft and independent acceptance; no orchestration or middleware continuation.")
 }
