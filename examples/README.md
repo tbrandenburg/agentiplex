@@ -1,6 +1,6 @@
 # Examples: running real OpenCode agents
 
-New here? Start with [three-agent discussion](discussion-team/README.md), a read-only topic discussion with no launcher script. The sections below describe the larger engineering examples.
+New here? Start with the [three-agent README quickstart](../README.md#three-real-agents) (gateway 0.9.3), a read-only topic discussion with no launcher script. The sections below describe the larger engineering examples.
 
 Applies to `repository-team` and `autonomous-team`. These start real, partly
 full-access OpenCode agents with their **native commands**; each example has one `team.yaml` that is passed unchanged to
@@ -16,7 +16,7 @@ explicit `ACCEPT_FULL_ACCESS=yes` and a disposable Git workspace. The former six
 
 ## Setup
 - Go 1.26+, Git, Make, Node/npm, and Bun 1.4.4 (the gateway needs `bun` on PATH). The acceptance tests use the same Go toolchain; live verification requires explicit opt-in.
-- Use `opencode` 2.4.1 and gateway 0.9.2, the upstream verified native-role pair; both and `bun` must be on PATH:
+- For the two larger engineering examples below, use `opencode` 2.4.1 and gateway 0.9.2, the upstream verified native-role pair; both and `bun` must be on PATH:
   ```sh
   npm install --global @opencode/cli@2.4.1 @tbrandenburg/opencode-a2a-lite@0.9.2
   ```
@@ -108,6 +108,23 @@ weak evidence of collaboration; review actual results.
   A model turn that was in flight in an agent is not resumed.
 - Automated verification (not the normal usage path) lives in [tests/examples](../tests/examples): `make examples-check`,
   `make repository-provision-check`, `make live-check` (inference with a free model).
+
+## Failed repository-team live runs
+
+The repository-team CI job uploads `repository-team-<objective>-failure-<attempt>`
+on failure (seven-day retention). Open the run's Artifacts section to download
+`failure-diagnostics.json`. It records the scenario/model, bounded daemon and
+per-gateway process-log tails including startup attempts, exit status, durable
+delivery IDs and task IDs, polling counters, downstream failure status/message,
+note topics and sizes, and the first 300 retained events. Non-completed delivery
+summaries also appear in the job log. Collection is best-effort before process
+cleanup, with a 15-second API budget; hard runner termination or early build
+failure may leave no artifact. The synthetic fixture is credential-free; do not
+use this export for private workloads. Raw task histories/artifacts, notes text,
+provider payloads, runtime homes, environment and broker data are not exported.
+The gateway may expose only a sanitized phase-level error rather than a provider
+root cause. Local failed repository tests keep the report in the private run
+directory. Acceptance criteria and retry policy are unchanged.
 
 ## Known issue: flaky startup preflight
 The gateway checks the private policy with `opencode --standalone debug agents`. OpenCode

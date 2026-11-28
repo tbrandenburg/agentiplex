@@ -24,17 +24,20 @@ import (
 )
 
 // Explicit opt-in; ordinary go test ./... never starts real model runtimes.
-var liveScenario = flag.String("live", "", "provision, docs, defect, integration or autonomous")
+var liveScenario = flag.String("live", "", "provision, docs, defect, integration, autonomous or discussion")
 var liveModel = flag.String("model", "", "OpenCode provider/model")
 var liveSeconds = flag.Int("seconds", 0, "objective deadline in seconds (default: 900 hybrid, 1200 repository)")
 var livePromptTimeout = flag.String("prompt-timeout", "", "gateway prompt deadline")
 var liveStartupRetries = flag.Int("startup-retries", 4, "retry exited gateway startup probes")
 var liveProvisionOnly = flag.Bool("provision-only", false, "start and register without inference")
+var liveDiagnosticsDir = flag.String("diagnostics-dir", "", "optional export directory for synthetic live-test failure diagnostics")
 
 type liveProcess struct {
 	cmd *exec.Cmd
 	done chan struct{}
 	log string
+	started time.Time
+	exitErr error // read only after done is closed
 }
 
 type liveTeam struct {
@@ -43,9 +46,10 @@ type liveTeam struct {
 	env []string
 	client *http.Client
 	daemon *liveProcess
+	processes []*liveProcess
 }
 
-func newLiveTeam(t *testing.T, example string) *liveTeam {
+func newLiveRun(t *testing.T, example string) *liveTeam {
 	t.Helper()
 	root, err := filepath.Abs("../..")
 	if err != nil { t.Fatal(err) }
@@ -64,6 +68,13 @@ func newLiveTeam(t *testing.T, example string) *liveTeam {
 		env=append(env,key+"="+strings.TrimSpace(string(out)))
 	}
 	l := &liveTeam{t:t,root:root,run:run,example:filepath.Join(root,"examples",example),env:env,client:&http.Client{Timeout:3*time.Second,Transport:&http.Transport{Proxy:nil}}}
+	return l
+}
+
+func newLiveTeam(t *testing.T, example string) *liveTeam {
+	t.Helper()
+	l := newLiveRun(t,example)
+	run := l.run
 	var cfg struct{ Server struct{ Listen string } }
 	if err := yaml.Unmarshal(l.read("team.yaml"),&cfg); err != nil { t.Fatal(err) }
 	host, _, err := net.SplitHostPort(cfg.Server.Listen)
@@ -104,8 +115,9 @@ func (l *liveTeam) spawn(name,dir string, env []string, args ...string) *livePro
 	err=cmd.Start()
 	f.Close()
 	if err != nil { l.t.Fatal(err) }
-	p:=&liveProcess{cmd:cmd,done:make(chan struct{}),log:path}
-	go func(){ _=cmd.Wait(); close(p.done) }()
+	p:=&liveProcess{cmd:cmd,done:make(chan struct{}),log:path,started:time.Now().UTC()}
+	l.processes=append(l.processes,p)
+	go func(){ p.exitErr=cmd.Wait(); close(p.done) }()
 	l.t.Cleanup(func(){
 		select { case <-p.done: return; default: }
 		_ = syscall.Kill(-cmd.Process.Pid,syscall.SIGTERM)
@@ -250,6 +262,7 @@ func (l *liveTeam) awaitEvidence(id,namespace,objective string,revision uint64,s
 }
 
 func (l *liveTeam) repository(scenario,prompt string,seconds int) {
+	defer l.reportFailure("repository",scenario)
 	ws:=filepath.Join(l.run,"workspace")
 	writeTeamFile(l.t,filepath.Join(ws,"opencode.json"),string(l.read("opencode.json")))
 	l.configureModel(filepath.Join(ws,"opencode.json"))
@@ -331,6 +344,8 @@ func TestLiveTeam(t *testing.T) {
 	if *liveStartupRetries<0 || *liveStartupRetries>4 || *liveSeconds<0 || *liveSeconds>2400 { t.Fatal("invalid bounded live test arguments") }
 	prompt,seconds:=*livePromptTimeout,*liveSeconds
 	switch *liveScenario {
+	case "discussion":
+		runDiscussionQuickstart(t)
 	case "autonomous":
 		if prompt=="" { prompt="10m" }; if seconds==0 { seconds=900 }
 		newLiveTeam(t,"autonomous-team").autonomous(prompt,seconds)
