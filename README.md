@@ -124,18 +124,18 @@ and [Contract Driven Development](https://github.com/enthali/syspilot/blob/main/
 
 ### Actor-owned contract (direct handovers)
 
-Use the same three running agents after the previous deliveries have settled; review the [actor-owned objective](examples/discussion-team/contract-actors.md) and [living contract](examples/discussion-team/contract-actors.json) in the private quickstart directory.
+Use the same three running agents after the previous deliveries have settled; review the [actor-owned objective](examples/discussion-team/objective-actors.md) and [living Markdown contract](examples/discussion-team/contract-actors.md) in the private quickstart directory.
 
 <!-- discussion-actors:start -->
 ```sh
-agentiplex state put discussion-actors objective --file contract-actors.md --revision 0
-agentiplex state put discussion-actors contract --file contract-actors.json --revision 0
-agentiplex send lead --file contract-actors.md --idempotency-key discussion-actors-1 --wait
+agentiplex state put discussion-actors objective --file objective-actors.md --revision 0
+agentiplex state put discussion-actors contract --file contract-actors.md --revision 0
+agentiplex send lead --file objective-actors.md --idempotency-key discussion-actors-1 --wait
 ```
 <!-- discussion-actors:end -->
 
-The expert owns the draft, the critic owns review, and responsibility moves directly between them via ordinary messages after revision-checked state writes. The lead initiates and closes; no coordinator relay, extra setup or middleware mode.
-Observe `agentiplex state watch discussion-actors` and `agentiplex messages list`. Here --wait observes only the initial delivery; look for contract status done and all deliveries completed. See [recovery limits and verification](examples/discussion-team/README.md#actor-owned-contract-direct-handovers).
+The expert owns the draft, the critic owns review, and actors advance unchecked Markdown boxes with evidence before passing responsibility via ordinary messages after revision-checked state writes. The local Markdown template is unchanged; the living document is in shared state. The lead initiates and closes; no coordinator relay, extra setup or middleware mode.
+Observe `agentiplex state watch discussion-actors` and `agentiplex messages list`. Here --wait observes only the initial delivery; look for all five boxes checked, contract status done and all deliveries completed. See [recovery limits and verification](examples/discussion-team/README.md#actor-owned-contract-direct-handovers).
 
 ### Simulated team (no model or API key)
 

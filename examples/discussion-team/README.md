@@ -46,8 +46,10 @@ Follow the [native commands in the main README](../../README.md#actor-owned-cont
 There is no contract-mode setting, new daemon, gateway restart or launcher.
 The initial objective and subsequent contract-reference messages select the
 actor-owned behavior in the same three role prompts. The expert owns the
-draft and critic owns the review. The current actor updates the living
-contract with its observed revision and then sends the next actor a normal
+draft and critic owns the review. The immutable objective is separate from the
+living Markdown checklist. Each actor works on unchecked criteria it owns and
+blocking findings, checks a box only with evidence, and updates the document
+with its observed revision before sending the next actor a normal
 asynchronous message. An intentional incomplete draft makes the critic
 reject it and return work directly to the expert; the lead closes after
 independent acceptance of the revised draft.
@@ -61,7 +63,9 @@ but only lead has blocking ask and resolve_request grants. No OS write access
 is added.
 
 The initial send --wait is not an overall completion receipt. Watch contract
-status and delivery records; require status done and all deliveries completed.
+status and delivery records; require all five boxes checked, status done and
+all deliveries completed. The local Markdown file is only the initial template;
+inspect the actual shared document with `agentiplex state get discussion-actors contract`.
 A contract write and its subsequent message admission are separate durable
 operations. If the sender crashes between them, the new owner may not be
 activated. Inspect the last handoff and durable receipts; only if the
@@ -78,7 +82,7 @@ the actual setup-copy, daemon, gateway, registration, send/wait and notes
 commands from the main README, runs them in an isolated private home and
 verifies the durable deliveries and notes plus readable CLI output.
 It requires real results from the lead, expert and critic, and no failed
-or pending deliveries. The same live test then executes the until-done command from the main README, checks the recorded incomplete checkpoint, multiple coordinator activations, distinct expert and critic evidence before and after revision, and explicit final resolution. The same agents then execute the actor-owned commands and the observer checks each contract revision, direct expert-to-critic-to-expert rework, accepted current draft and all distinct ordinary delivery receipts, without scheduling any work. Startup alone is not a pass. It does not attest
+or pending deliveries. The same live test then executes the until-done command from the main README, checks the recorded incomplete checkpoint, multiple coordinator activations, distinct expert and critic evidence before and after revision, and explicit final resolution. The same agents then execute the actor-owned commands and the observer checks every Markdown revision, immutable criterion labels, ownership of checkbox changes, evidence-backed checks, direct expert-to-critic-to-expert rework, accepted current draft and all distinct ordinary delivery receipts, without scheduling any work. Startup alone is not a pass. It does not attest
 individual tool calls, note authorship or semantic correctness.
 
 After the README setup's build and install commands, run locally on a
