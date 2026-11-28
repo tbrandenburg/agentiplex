@@ -315,6 +315,8 @@ agentiplex/
 
 The `core/` package exposes the small embeddable Go API and constructs built-in integrations. Its import path is `github.com/tbrandenburg/agentiplex/core` (previously `github.com/tbrandenburg/agentiplex`); existing Go consumers must update imports and package qualifiers. The module path and runtime protocols are unchanged. Keep shared implementation types in a leaf package if required to avoid import cycles; internal packages must not import `core` if `core` imports them. CLI calls the remote API, not embedded storage. Unit tests live beside code; integration/e2e tests use real broker/agents. No empty placeholders for future adapters. Add AHP (host control), ACP (runtime integration) and MCP (collaboration tools) under adapters only when needed.
 
+Within `core/`, `bus.go` owns construction and shutdown; `agent.go`, `collections.go`, `delivery.go` and `events.go` own their domain types. `messaging.go` handles durable admission and publication, while `delivery_worker.go` handles consumer subscriptions, leases, delivery execution and task observation. Delivery records and metadata queries live together in `delivery.go`; event publication, replay and subscription live together in `events.go`. These are file-level responsibilities within a single package, not additional architectural layers.
+
 ## 10. Dependencies and implementation order
 
 | Existing dependency | Use |

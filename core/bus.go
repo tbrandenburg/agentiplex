@@ -5,10 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"log/slog"
 	"sync"
-	"sort"
-	"time"
 
 	adapter "github.com/tbrandenburg/agentiplex/internal/adapters/a2a"
 	store "github.com/tbrandenburg/agentiplex/internal/nats"
@@ -72,51 +69,4 @@ func keys(kv nats.KeyValue)([]string,error){
 	k,err:=kv.Keys()
 	if errors.Is(err,nats.ErrNoKeysFound){return nil,nil}
 	return k,err
-}
-
-func (b *Bus) emit(kind,id,state,caller string){
-	data,err:=json.Marshal(Event{Kind:kind,ID:id,State:state,Caller:caller,At:time.Now().UTC()})
-	if err==nil{_,err=b.store.JS.Publish(b.store.EventSubject,data)}
-	if err!=nil{slog.Warn("event publication failed","kind",kind,"id",id)}
-}
-
-func (b *Bus) Events(after uint64)([]Event,error){
-	out:=[]Event{}
-	info,err:=b.store.JS.StreamInfo(b.store.EventStream)
-	if err!=nil{return nil,err}
-	if info.State.Msgs==0||after>=info.State.LastSeq{return out,nil}
-	seq:=max(after+1,info.State.FirstSeq)
-	for ;seq<=info.State.LastSeq&&len(out)<100;seq++{
-		m,err:=b.store.JS.GetMsg(b.store.EventStream,seq)
-		if errors.Is(err,nats.ErrMsgNotFound){continue}
-		if err!=nil{return nil,err}
-		var e Event
-		if err=json.Unmarshal(m.Data,&e);err!=nil{return nil,err}
-		e.Sequence=m.Sequence
-		out=append(out,e)
-	}
-	return out,nil
-}
-
-func (b *Bus) workSubscriptions() []*nats.Subscription {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	ids:=make([]string,0,len(b.poolConsumers))
-	for id:=range b.poolConsumers{ids=append(ids,id)}
-	sort.Strings(ids)
-	out:=[]*nats.Subscription{b.store.Work}
-	for _,id:=range ids{out=append(out,b.poolConsumers[id])}
-	return out
-}
-
-// RecentEvents returns the newest retained events in reverse sequence order.
-func (b *Bus) RecentEvents(limit int)([]Event,error){
-	if limit<1||limit>100{return nil,ErrInvalid}
-	info,err:=b.store.JS.StreamInfo(b.store.EventStream)
-	if err!=nil{return nil,err}
-	after:=uint64(0)
-	if info.State.LastSeq>uint64(limit){after=info.State.LastSeq-uint64(limit)}
-	events,err:=b.Events(after);if err!=nil{return nil,err}
-	for i,j:=0,len(events)-1;i<j;i,j=i+1,j-1{events[i],events[j]=events[j],events[i]}
-	return events,nil
 }

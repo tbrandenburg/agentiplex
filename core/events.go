@@ -2,10 +2,58 @@ package core
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
+	"log/slog"
 	"time"
 
 	"github.com/nats-io/nats.go"
 )
+
+type Event struct {
+	Sequence uint64 `json:"sequence"`
+	Kind string `json:"kind"`
+	ID string `json:"id"`
+	State string `json:"state,omitempty"`
+	Caller string `json:"caller,omitempty"`
+	At time.Time `json:"at"`
+}
+
+func (b *Bus) emit(kind,id,state,caller string){
+	data,err:=json.Marshal(Event{Kind:kind,ID:id,State:state,Caller:caller,At:time.Now().UTC()})
+	if err==nil{_,err=b.store.JS.Publish(b.store.EventSubject,data)}
+	if err!=nil{slog.Warn("event publication failed","kind",kind,"id",id)}
+}
+
+func (b *Bus) Events(after uint64)([]Event,error){
+	out:=[]Event{}
+	info,err:=b.store.JS.StreamInfo(b.store.EventStream)
+	if err!=nil{return nil,err}
+	if info.State.Msgs==0||after>=info.State.LastSeq{return out,nil}
+	seq:=max(after+1,info.State.FirstSeq)
+	for ;seq<=info.State.LastSeq&&len(out)<100;seq++{
+		m,err:=b.store.JS.GetMsg(b.store.EventStream,seq)
+		if errors.Is(err,nats.ErrMsgNotFound){continue}
+		if err!=nil{return nil,err}
+		var e Event
+		if err=json.Unmarshal(m.Data,&e);err!=nil{return nil,err}
+		e.Sequence=m.Sequence
+		out=append(out,e)
+	}
+	return out,nil
+}
+
+// RecentEvents returns the newest retained events in reverse sequence order.
+func (b *Bus) RecentEvents(limit int)([]Event,error){
+	if limit<1||limit>100{return nil,ErrInvalid}
+	info,err:=b.store.JS.StreamInfo(b.store.EventStream)
+	if err!=nil{return nil,err}
+	after:=uint64(0)
+	if info.State.LastSeq>uint64(limit){after=info.State.LastSeq-uint64(limit)}
+	events,err:=b.Events(after);if err!=nil{return nil,err}
+	for i,j:=0,len(events)-1;i<j;i,j=i+1,j-1{events[i],events[j]=events[j],events[i]}
+	return events,nil
+}
 
 // SubscribeEvents replays the retained JetStream event log, then follows
 // it. Core NATS notifications only wake the reader; the durable stream

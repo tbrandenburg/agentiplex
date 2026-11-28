@@ -9,6 +9,13 @@ import (
 	"time"
 )
 
+type Collection struct {
+	ID string `json:"id"`
+	Kind string `json:"kind"`
+	Members []string `json:"members"`
+	UpdatedAt time.Time `json:"updatedAt"`
+}
+
 const maxCollections = 32
 const maxMembers = 32
 
