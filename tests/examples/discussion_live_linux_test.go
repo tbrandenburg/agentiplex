@@ -1,0 +1,125 @@
+//go:build linux
+
+package examples_test
+
+import (
+	"encoding/json"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/tbrandenburg/agentiplex/core"
+)
+
+// Execute the README's exact foreground commands under a private HOME.
+// The test owns process lifetime/readiness only; the lead owns collaboration.
+func runDiscussionQuickstart(t *testing.T) {
+	t.Helper()
+	blocks := discussionCommands(t)
+	l := newLiveRun(t, "discussion-team")
+	l.api = "http://127.0.0.1:8080"
+	for i, v := range l.env {
+		if strings.HasPrefix(v, "PATH=") {
+			l.env[i] = "PATH="+filepath.Join(l.root, "bin")+string(os.PathListSeparator)+strings.TrimPrefix(v, "PATH=")
+		}
+	}
+	// The workflow ran the README's build/install block. The test deliberately
+	// does not install global packages on an operator's local machine.
+	for _, name := range []string{"agentiplex", "agentiplexd"} {
+		if _, err := os.Stat(filepath.Join(l.root, "bin", name)); err != nil {
+			t.Fatal("run the README setup first: ", err)
+		}
+	}
+	if out, err := commandOutput(l.root, 30*time.Second, l.env, "bash", "-ec", "umask 077\n"+strings.Join(blocks[1], "\n")); err != nil {
+		t.Fatalf("README private copy: %v: %.1000q", err, out)
+	}
+	dir := filepath.Join(l.run, "home", "agentiplex-discussion")
+	for _, addr := range []string{"127.0.0.1:8080", "127.0.0.1:8001", "127.0.0.1:8002", "127.0.0.1:8003"} {
+		assertFreeTeamPort(t, addr)
+	}
+
+	l.daemon = l.spawn("daemon", dir, l.env, "bash", "-c", "exec "+blocks[2][0])
+	if err := l.waitReady(l.daemon, l.api+"/readyz", 2*time.Minute); err != nil {
+		t.Fatal(err)
+	}
+	procs := make([]*liveProcess, len(discussionRoles))
+	// These are the three independent terminals in the README.
+	for i, role := range discussionRoles {
+		t.Log("README start:", role)
+		procs[i] = l.spawn(role, dir, l.env, "bash", "-c", "exec "+blocks[3][i])
+	}
+	ports := []string{"8001", "8002", "8003"}
+	for i, role := range discussionRoles {
+		endpoint := "http://127.0.0.1:"+ports[i]+"/.well-known/agent-card.json"
+		if err := l.waitReady(procs[i], endpoint, 5*time.Minute); err != nil {
+			t.Fatalf("%s readiness: %v", role, err)
+		}
+		var card struct{ Name string }
+		if err := l.get(endpoint, &card); err != nil || card.Name != role {
+			t.Fatalf("expected ready Agent Card %s, got %q: %v", role, card.Name, err)
+		}
+		t.Log("Ready:", role)
+	}
+	for _, line := range blocks[4][:3] {
+		if out, err := commandOutput(dir, 30*time.Second, l.env, "bash", "-c", "exec "+line); err != nil {
+			t.Fatalf("README registration: %v: %.1000q", err, out)
+		}
+	}
+	var agents []core.Agent
+	if err := l.get(l.api+"/api/v1/agents", &agents); err != nil {
+		t.Fatal(err)
+	}
+	if len(agents) != 3 {
+		t.Fatalf("expected exactly three registered real agents, got %d", len(agents))
+	}
+	// Readiness is not collaboration evidence. Execute the actual README
+	// send --wait and notes list, including their ordinary readable output.
+	t.Log("README send --wait: ", discussionTopic)
+	verdict, sendErr := commandOutput(dir, 10*time.Minute, l.env, "bash", "-c", "exec "+blocks[4][3])
+	printed, notesErr := commandOutput(dir, 30*time.Second, l.env, "bash", "-c", "exec "+blocks[4][4])
+	writeTeamFile(t, filepath.Join(l.run,"verdict.txt"), string(verdict))
+	writeTeamFile(t, filepath.Join(l.run,"notes.txt"), string(printed))
+	t.Logf("README verdict output: %.4000q", verdict)
+	t.Logf("README notes output: %.6000q", printed)
+
+	var summaries []core.DeliverySummary
+	if err := l.get(l.api+"/api/v1/deliveries?limit=100", &summaries); err != nil {
+		t.Fatal(err)
+	}
+	var deliveries []core.Delivery
+	for _, s := range summaries {
+		var d core.Delivery
+		if err := l.get(l.api+"/api/v1/deliveries/"+s.ID, &d); err != nil {
+			t.Fatal(err)
+		}
+		deliveries = append(deliveries, d)
+		t.Logf("Delivery %s target=%s state=%s has_result=%t detail=%.200q", d.ID,d.Target,d.State,(teamDelivery{Result:d.Result}).hasResult(),d.Detail)
+	}
+	// A second, read-only JSON view is independent evidence, not a replacement
+	// for either of the documented human-facing commands.
+	raw, err := commandOutput(dir, 30*time.Second, l.env, "bash", "-c", "exec "+blocks[4][4]+" --json")
+	if err != nil {
+		t.Fatalf("notes JSON: %v", err)
+	}
+	var notes []core.Note
+	if err := json.Unmarshal(raw, &notes); err != nil {
+		t.Fatal("invalid notes JSON: ",err)
+	}
+	for _, n := range notes {
+		t.Logf("Note topic=%s key=%s bytes=%d",n.Topic,n.Key,len(n.Text))
+	}
+	evidence, err := json.MarshalIndent(map[string]any{"deliveries":deliveries,"notes":notes},"","  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeTeamFile(t,filepath.Join(l.run,"evidence.json"),string(evidence))
+	if sendErr != nil || notesErr != nil {
+		t.Fatalf("README commands failed: send --wait: %v; notes list: %v",sendErr,notesErr)
+	}
+	if err := verifyDiscussion(deliveries,notes,string(verdict),string(printed)); err != nil {
+		t.Fatal(err)
+	}
+	t.Log("PASS: exact README commands, three real completed agents, readable verdict and all three durable note topics.")
+}

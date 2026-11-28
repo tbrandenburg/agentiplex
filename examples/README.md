@@ -1,6 +1,6 @@
 # Examples: running real OpenCode agents
 
-New here? Start with [three-agent discussion](discussion-team/README.md), a read-only topic discussion with no launcher script. The sections below describe the larger engineering examples.
+New here? Start with the [three-agent README quickstart](../README.md#three-real-agents) (gateway 0.9.3), a read-only topic discussion with no launcher script. The sections below describe the larger engineering examples.
 
 Applies to `repository-team` and `autonomous-team`. These start real, partly
 full-access OpenCode agents with their **native commands**; each example has one `team.yaml` that is passed unchanged to
@@ -16,7 +16,7 @@ explicit `ACCEPT_FULL_ACCESS=yes` and a disposable Git workspace. The former six
 
 ## Setup
 - Go 1.26+, Git, Make, Node/npm, and Bun 1.4.4 (the gateway needs `bun` on PATH). The acceptance tests use the same Go toolchain; live verification requires explicit opt-in.
-- Use `opencode` 2.4.1 and gateway 0.9.2, the upstream verified native-role pair; both and `bun` must be on PATH:
+- For the two larger engineering examples below, use `opencode` 2.4.1 and gateway 0.9.2, the upstream verified native-role pair; both and `bun` must be on PATH:
   ```sh
   npm install --global @opencode/cli@2.4.1 @tbrandenburg/opencode-a2a-lite@0.9.2
   ```

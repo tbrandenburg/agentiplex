@@ -24,7 +24,7 @@ import (
 )
 
 // Explicit opt-in; ordinary go test ./... never starts real model runtimes.
-var liveScenario = flag.String("live", "", "provision, docs, defect, integration or autonomous")
+var liveScenario = flag.String("live", "", "provision, docs, defect, integration, autonomous or discussion")
 var liveModel = flag.String("model", "", "OpenCode provider/model")
 var liveSeconds = flag.Int("seconds", 0, "objective deadline in seconds (default: 900 hybrid, 1200 repository)")
 var livePromptTimeout = flag.String("prompt-timeout", "", "gateway prompt deadline")
@@ -45,7 +45,7 @@ type liveTeam struct {
 	daemon *liveProcess
 }
 
-func newLiveTeam(t *testing.T, example string) *liveTeam {
+func newLiveRun(t *testing.T, example string) *liveTeam {
 	t.Helper()
 	root, err := filepath.Abs("../..")
 	if err != nil { t.Fatal(err) }
@@ -64,6 +64,13 @@ func newLiveTeam(t *testing.T, example string) *liveTeam {
 		env=append(env,key+"="+strings.TrimSpace(string(out)))
 	}
 	l := &liveTeam{t:t,root:root,run:run,example:filepath.Join(root,"examples",example),env:env,client:&http.Client{Timeout:3*time.Second,Transport:&http.Transport{Proxy:nil}}}
+	return l
+}
+
+func newLiveTeam(t *testing.T, example string) *liveTeam {
+	t.Helper()
+	l := newLiveRun(t,example)
+	run := l.run
 	var cfg struct{ Server struct{ Listen string } }
 	if err := yaml.Unmarshal(l.read("team.yaml"),&cfg); err != nil { t.Fatal(err) }
 	host, _, err := net.SplitHostPort(cfg.Server.Listen)
@@ -331,6 +338,8 @@ func TestLiveTeam(t *testing.T) {
 	if *liveStartupRetries<0 || *liveStartupRetries>4 || *liveSeconds<0 || *liveSeconds>2400 { t.Fatal("invalid bounded live test arguments") }
 	prompt,seconds:=*livePromptTimeout,*liveSeconds
 	switch *liveScenario {
+	case "discussion":
+		runDiscussionQuickstart(t)
 	case "autonomous":
 		if prompt=="" { prompt="10m" }; if seconds==0 { seconds=900 }
 		newLiveTeam(t,"autonomous-team").autonomous(prompt,seconds)

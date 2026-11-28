@@ -35,6 +35,74 @@ own models, tools, workflows, workspaces and permissions.
 
 ## Quick start
 
+### Three real agents
+
+[![Three-agent quickstart](https://github.com/tbrandenburg/agentiplex/actions/workflows/discussion-quickstart.yaml/badge.svg?branch=main)](https://github.com/tbrandenburg/agentiplex/actions/workflows/discussion-quickstart.yaml)
+
+Discuss a topic with a lead, an expert and a critic. Each runs in its own
+[OpenCode A2A gateway](https://github.com/tbrandenburg/opencode-a2a-lite);
+Agentiplex supplies discovery, durable messaging and shared notes.
+The badge links to a live CI test that executes the command blocks below,
+checks the returned verdict, both worker deliveries and all three notes topics.
+Model output is not deterministic; the check does not grade the correctness of the verdict.
+
+<!-- discussion-quickstart:start -->
+**Setup once.** On Linux with Git, Go 1.26+, Make, Bash, curl, Node 22+ and
+Bun 1.4.4, clone this repository and run from its root:
+
+```sh
+make build
+npm install --global @opencode/cli@2.4.1 @tbrandenburg/opencode-a2a-lite@0.9.3
+```
+
+Put the checkout's `bin/` directory on PATH in all terminals. Copy the prepared
+[role prompts, MCP configuration and read-only policies](examples/discussion-team/) to a fresh private directory:
+
+```sh
+mkdir -m 700 ~/agentiplex-discussion
+cp -R examples/discussion-team/. ~/agentiplex-discussion/
+```
+
+**Start.** Open four terminals in `~/agentiplex-discussion`. Start the daemon
+first and wait for its ready log:
+
+```sh
+agentiplexd --mcp --storage data
+```
+
+Run one gateway command per other terminal, and wait for all three ready URLs:
+
+```sh
+opencode-a2a-lite --name lead --port 8001 --workspace workspace --system-prompt-file roles/lead.md --policy-file policies/coordinator.json --no-env
+opencode-a2a-lite --name expert --port 8002 --workspace workspace --system-prompt-file roles/expert.md --policy-file policies/reader.json --no-env
+opencode-a2a-lite --name critic --port 8003 --workspace workspace --system-prompt-file roles/critic.md --policy-file policies/reader.json --no-env
+```
+
+**Discuss.** From another terminal:
+
+```sh
+agentiplex register lead http://127.0.0.1:8001
+agentiplex register expert http://127.0.0.1:8002
+agentiplex register critic http://127.0.0.1:8003
+agentiplex send lead "Should we use event sourcing?" --idempotency-key discussion-1 --wait
+agentiplex notes list discussion
+```
+<!-- discussion-quickstart:end -->
+
+The lead returns its verdict; the notes command prints the shared findings.
+Follow the conversation on the [dashboard](http://127.0.0.1:8080/ui/). Ctrl-C
+while waiting detaches without cancelling work; reattach with
+`agentiplex messages wait DELIVERY_ID`. Stop the gateways and daemon with
+Ctrl-C in their terminals. The data remains durable.
+
+Use a fresh private directory with no symlink or shared-writable ancestors,
+reviewed configuration, free ports 8080 and 8001–8003, and public topics only
+(the example uses a free model). The gateway's default read access is not
+an OS sandbox. Unauthenticated local ports must not be exposed. See the
+[discussion example](examples/discussion-team/README.md) for limitations and verification.
+
+### Simulated team (no model or API key)
+
 Try the complete collaboration demo locally, without an LLM or API key.
 
 **Prerequisites:** Git, Go 1.26+, GNU Make, Bash, curl, jq and Node/npm
@@ -103,12 +171,11 @@ Agents, groups and pools can be declared in the YAML `registry` block and are ap
 
 ## Examples
 
-Start with the [three-agent discussion](examples/discussion-team/README.md): three read-only agents, one topic, shared notes and a verdict, using native commands only.
-
 Choose the level of collaboration you want to explore.
 
 | Example | Command | What it demonstrates |
 | --- | --- | --- |
+| [Three-agent discussion](#three-real-agents) | [native commands](#three-real-agents) | Three real read-only agents, shared notes and a verdict. [![Three-agent quickstart](https://github.com/tbrandenburg/agentiplex/actions/workflows/discussion-quickstart.yaml/badge.svg?branch=main)](https://github.com/tbrandenburg/agentiplex/actions/workflows/discussion-quickstart.yaml) |
 | [Engineering team](docs/DEMO.md) | `make demo-team` | Six simulated agents; deterministic communication, persistence and recovery. |
 | [Autonomous team](examples/autonomous-team/README.md) | [native commands](examples/autonomous-team/README.md) | Real model-driven delegation through A2A and MCP using synthetic fixtures. |
 | [Repository team](examples/repository-team/README.md) | [native commands](examples/repository-team/README.md) | Five real agents working on the same Git worktree, with implementation and executable verification. |
