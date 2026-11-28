@@ -28,6 +28,7 @@ own models, tools, workflows, workspaces and permissions.
 | --- | --- |
 | **Discover** | Register existing A2A endpoints, publish an AI Catalog and find agents by skill, tag or group. |
 | **Send** | Queue a task durably, track its downstream result and retry safe transient failures. |
+| **Follow through** | Continue a durable objective across agent turns until explicit resolution or intervention, without prescribing a workflow. |
 | **Broadcast** | Deliver an update to every member of a configured group. |
 | **Dispatch** | Assign work to one eligible member of a worker pool. |
 | **Share state** | Store bounded, namespaced key/value context with revision checks. |
@@ -99,7 +100,27 @@ Use a fresh private directory with no symlink or shared-writable ancestors,
 reviewed configuration, free ports 8080 and 8001–8003, and public topics only
 (the example uses a free model). The gateway's default read access is not
 an OS sandbox. Unauthenticated local ports must not be exposed. See the
-[discussion example](examples/discussion-team/README.md) for limitations and verification. To pursue a collaborative objective across multiple turns, use the same agents with [native until-done messaging](examples/discussion-team/README.md#continue-until-the-objective-is-done).
+[discussion example](examples/discussion-team/README.md) for limitations and verification.
+
+### Contract-driven collaboration
+
+With the same three running agents and no outstanding deliveries, review the [decision contract](examples/discussion-team/contract.md) in the private quickstart directory.
+Specify what must become true; the agents decide how to get there, review evidence and revise their work.
+
+<!-- discussion-contract:start -->
+```sh
+agentiplex send lead --file contract.md --idempotency-key discussion-contract-1 --until-done --max-turns 6 --timeout 12m --wait
+```
+<!-- discussion-contract:end -->
+
+The daemon continues across completed turns until explicit resolution and known work is settled, or intervention is required.
+Follow the living progress with `agentiplex state watch discussion-contract` or `agentiplex messages list` in another terminal.
+CLI disconnects do not stop work; daemon restart with the same storage recovers it. No runner or inactivity nudge is required.
+Use one open request on a dedicated, initially idle daemon. See [lifecycle and limits](docs/COLLABORATION.md#durable-follow-through-until-done). The live three-agent CI above also checks the incomplete checkpoint, independent review, rework and final resolution.
+
+Related work: [Building with AI Agents](https://mikkosniemela.com/build-with-agents-2026-10-09) (Niemelä, October 2026),
+[Meta-Engineering Harnesses for AI-Native Software Production](https://arxiv.org/abs/2605.25665) (Sengupta et al., May 2026, preprint),
+and [Contract Driven Development](https://github.com/enthali/syspilot/blob/main/docs/methodology.md) (Syspilot's methodology). These are conceptual references, not protocol-conformance claims.
 
 ### Simulated team (no model or API key)
 
@@ -176,6 +197,7 @@ Choose the level of collaboration you want to explore.
 | Example | Command | What it demonstrates |
 | --- | --- | --- |
 | [Three-agent discussion](#three-real-agents) | [native commands](#three-real-agents) | Three real read-only agents, shared notes and a verdict. [![Three-agent quickstart](https://github.com/tbrandenburg/agentiplex/actions/workflows/discussion-quickstart.yaml/badge.svg?branch=main)](https://github.com/tbrandenburg/agentiplex/actions/workflows/discussion-quickstart.yaml) |
+| [Three-agent contract](#contract-driven-collaboration) | [native command](#contract-driven-collaboration) | Same read-only agents, living acceptance criteria, independent review and durable continuation. |
 | [Engineering team](docs/DEMO.md) | `make demo-team` | Six simulated agents; deterministic communication, persistence and recovery. |
 | [Autonomous team](examples/autonomous-team/README.md) | [native commands](examples/autonomous-team/README.md) | Real model-driven delegation through A2A and MCP using synthetic fixtures. |
 | [Repository team](examples/repository-team/README.md) | [native commands](examples/repository-team/README.md) | Five real agents working on the same Git worktree, with implementation and executable verification. |

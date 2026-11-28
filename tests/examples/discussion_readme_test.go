@@ -68,6 +68,37 @@ func discussionCommands(t *testing.T) [][]string {
 	return blocks
 }
 
+// The contract quickstart is documented alongside the ordinary discussion.
+func discussionContractCommand(t *testing.T) string {
+	t.Helper()
+	raw, err := os.ReadFile("../../README.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, tail, ok := strings.Cut(string(raw), "<!-- discussion-contract:start -->")
+	block, _, end := strings.Cut(tail, "<!-- discussion-contract:end -->")
+	if !ok || !end {
+		t.Fatal("missing README until-done quickstart")
+	}
+	command := strings.TrimSpace(block)
+	if !strings.HasPrefix(command, "\x60\x60\x60sh\n") || !strings.HasSuffix(command, "\n\x60\x60\x60") {
+		t.Fatal("expected a single README shell block")
+	}
+	command = strings.TrimPrefix(command, "\x60\x60\x60sh\n")
+	command = strings.TrimSuffix(command, "\n\x60\x60\x60")
+	if strings.Contains(command, "\n") || !strings.HasPrefix(command, "agentiplex send lead --file contract.md ") ||
+		!strings.Contains(command, " --idempotency-key discussion-contract-1 ") ||
+		!strings.Contains(command, " --until-done ") ||
+		!strings.HasSuffix(command, " --wait") || strings.Contains(command, "--nudge-after") {
+		t.Fatal("unexpected native contract quickstart")
+	}
+	return command
+}
+
+func TestDiscussionContractREADMECommand(t *testing.T) {
+	discussionContractCommand(t)
+}
+
 func TestDiscussionREADMECommands(t *testing.T) {
 	blocks := discussionCommands(t)
 	raw, err := os.ReadFile("../../.github/workflows/discussion-quickstart.yaml")

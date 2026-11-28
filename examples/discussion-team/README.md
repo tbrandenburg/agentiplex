@@ -29,15 +29,7 @@ configuration or orchestration code is needed.
 
 ## Continue until the objective is done
 
-With the same three running read-only agents and after ordinary deliveries have
-completed, review the synthetic [decision contract](contract.md) in the private
-copy created by the quickstart. From that directory, run:
-
-<!-- discussion-contract:start -->
-```sh
-agentiplex send lead --file contract.md --idempotency-key discussion-contract-1 --until-done --max-turns 6 --timeout 12m --wait
-```
-<!-- discussion-contract:end -->
+Follow the [contract-driven collaboration quickstart](../../README.md#contract-driven-collaboration) in the main README. It owns the executable command; review the [decision contract](contract.md) before submitting it.
 
 No runner or inactivity nudge is required. The initial incomplete analysis and
 independent critique are recorded in state; the lead returns from the first
@@ -56,7 +48,7 @@ the actual setup-copy, daemon, gateway, registration, send/wait and notes
 commands from the main README, runs them in an isolated private home and
 verifies the durable deliveries and notes plus readable CLI output.
 It requires real results from the lead, expert and critic, and no failed
-or pending deliveries. The same live test then executes the until-done command above, checks the recorded incomplete checkpoint, multiple coordinator activations, distinct expert and critic evidence before and after revision, and explicit final resolution. Startup alone is not a pass. It does not attest
+or pending deliveries. The same live test then executes the until-done command from the main README, checks the recorded incomplete checkpoint, multiple coordinator activations, distinct expert and critic evidence before and after revision, and explicit final resolution. Startup alone is not a pass. It does not attest
 individual tool calls, note authorship or semantic correctness.
 
 After the README setup's build and install commands, run locally on a
