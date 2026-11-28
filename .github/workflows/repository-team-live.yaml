@@ -49,7 +49,17 @@ jobs:
         shell: bash
         run: |
           home=$(mktemp -d)
+          diagnostics="$RUNNER_TEMP/repository-team-diagnostics"
+          mkdir -m 700 "$diagnostics"
           trap 'rm -rf "$home"' EXIT
           env -i PATH="$PATH" HOME="$home" LANG=C.UTF-8 USER="$(id -un)" \
             GOMODCACHE="$(go env GOMODCACHE)" GOCACHE="$(go env GOCACHE)" \
-            go test -count=1 -v -timeout 45m ./tests/examples -run '^TestLiveTeam$' -args -live "$OBJECTIVE" -model opencode/big-pickle
+            go test -count=1 -v -timeout 45m ./tests/examples -run '^TestLiveTeam$' -args -live "$OBJECTIVE" -model opencode/big-pickle -diagnostics-dir "$diagnostics"
+      - name: Retain synthetic failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: repository-team-${{ matrix.objective }}-failure-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/repository-team-diagnostics/failure-diagnostics.json
+          if-no-files-found: warn
+          retention-days: 7

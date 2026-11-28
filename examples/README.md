@@ -109,6 +109,23 @@ weak evidence of collaboration; review actual results.
 - Automated verification (not the normal usage path) lives in [tests/examples](../tests/examples): `make examples-check`,
   `make repository-provision-check`, `make live-check` (inference with a free model).
 
+## Failed repository-team live runs
+
+The repository-team CI job uploads `repository-team-<objective>-failure-<attempt>`
+on failure (seven-day retention). Open the run's Artifacts section to download
+`failure-diagnostics.json`. It records the scenario/model, bounded daemon and
+per-gateway process-log tails including startup attempts, exit status, durable
+delivery IDs and task IDs, polling counters, downstream failure status/message,
+note topics and sizes, and the first 300 retained events. Non-completed delivery
+summaries also appear in the job log. Collection is best-effort before process
+cleanup, with a 15-second API budget; hard runner termination or early build
+failure may leave no artifact. The synthetic fixture is credential-free; do not
+use this export for private workloads. Raw task histories/artifacts, notes text,
+provider payloads, runtime homes, environment and broker data are not exported.
+The gateway may expose only a sanitized phase-level error rather than a provider
+root cause. Local failed repository tests keep the report in the private run
+directory. Acceptance criteria and retry policy are unchanged.
+
 ## Known issue: flaky startup preflight
 The gateway checks the private policy with `opencode --standalone debug agents`. OpenCode
 intermittently omits the policy, and the gateway retries within a bounded startup budget (improved in 0.9.1 and 0.9.2). Historical 0.9.0 probe pass

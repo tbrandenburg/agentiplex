@@ -30,11 +30,14 @@ var liveSeconds = flag.Int("seconds", 0, "objective deadline in seconds (default
 var livePromptTimeout = flag.String("prompt-timeout", "", "gateway prompt deadline")
 var liveStartupRetries = flag.Int("startup-retries", 4, "retry exited gateway startup probes")
 var liveProvisionOnly = flag.Bool("provision-only", false, "start and register without inference")
+var liveDiagnosticsDir = flag.String("diagnostics-dir", "", "optional export directory for synthetic live-test failure diagnostics")
 
 type liveProcess struct {
 	cmd *exec.Cmd
 	done chan struct{}
 	log string
+	started time.Time
+	exitErr error // read only after done is closed
 }
 
 type liveTeam struct {
@@ -43,6 +46,7 @@ type liveTeam struct {
 	env []string
 	client *http.Client
 	daemon *liveProcess
+	processes []*liveProcess
 }
 
 func newLiveRun(t *testing.T, example string) *liveTeam {
@@ -111,8 +115,9 @@ func (l *liveTeam) spawn(name,dir string, env []string, args ...string) *livePro
 	err=cmd.Start()
 	f.Close()
 	if err != nil { l.t.Fatal(err) }
-	p:=&liveProcess{cmd:cmd,done:make(chan struct{}),log:path}
-	go func(){ _=cmd.Wait(); close(p.done) }()
+	p:=&liveProcess{cmd:cmd,done:make(chan struct{}),log:path,started:time.Now().UTC()}
+	l.processes=append(l.processes,p)
+	go func(){ p.exitErr=cmd.Wait(); close(p.done) }()
 	l.t.Cleanup(func(){
 		select { case <-p.done: return; default: }
 		_ = syscall.Kill(-cmd.Process.Pid,syscall.SIGTERM)
@@ -257,6 +262,7 @@ func (l *liveTeam) awaitEvidence(id,namespace,objective string,revision uint64,s
 }
 
 func (l *liveTeam) repository(scenario,prompt string,seconds int) {
+	defer l.reportFailure("repository",scenario)
 	ws:=filepath.Join(l.run,"workspace")
 	writeTeamFile(l.t,filepath.Join(ws,"opencode.json"),string(l.read("opencode.json")))
 	l.configureModel(filepath.Join(ws,"opencode.json"))
