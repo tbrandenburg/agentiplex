@@ -4,6 +4,7 @@ set -euo pipefail
 EX=$(cd "$(dirname "$0")" && pwd)
 CLI=${AGENTIPLEX_BIN:-$EX/../../bin/agentiplex}
 NS=repository
+export AGENTIPLEX_SERVER=${AGENTIPLEX_SERVER:-http://127.0.0.1:19080}
 mode=${1:-run}
 fail() { echo "Contract paused: $*" >&2; exit 1; }
 get() { "$CLI" state get "$NS" "$1"; }
@@ -17,7 +18,7 @@ if [[ $mode == init ]]; then
   approved=$(get objective)
   objective_revision=$(jq -er .revision <<<"$approved")
   put contract "$template" 0
-  put contract-run "$(jq -cn --argjson started "$(date +%s)" --argjson approved "$objective_revision" '{round:1,started:$started,approved:$approved}')" 0
+  put contract-run "$(jq -cn --argjson started "$(date +%s)" --argjson approved "$objective_revision" '{round:1,started:$started,approved:$approved,completed:[]}')" 0
   echo "Contract approved. Run: bash $EX/run-contract.sh run"
   exit 0
 fi
@@ -47,11 +48,28 @@ check_evidence() {
   done < <(jq -r '.criteria[] | select(.status=="verified") | [.delivery,.owner] | @tsv' <<<"$contract")
 }
 
+# The dedicated demo daemon starts empty. Before advancing or closing, every
+# delivery must have returned and only the runner's recorded PM turns may exist.
+# Do not hide or silently drain unsolicited work; it may mutate the workspace.
+check_quiescence() {
+  local deliveries
+  deliveries=$(curl --noproxy '*' -fsS --max-time 10 "${AGENTIPLEX_SERVER%/}/api/v1/deliveries?limit=100") || fail "cannot inspect durable deliveries"
+  jq -e --argjson expected "$completed" '
+    type=="array" and length<100 and
+    all(.[]; .state=="completed" and ((.children // [])|length==0)) and
+    (([.[] | select(.target=="pm") | .id] | sort) == ($expected | sort))
+  ' <<<"$deliveries" >/dev/null || {
+    jq -c '[.[] | {id,target,state}]' <<<"$deliveries" >&2
+    fail "unexpected PM activation or unfinished delivery; inspect the run before continuing"
+  }
+}
+
 while true; do
   cursor=$(get contract-run)
   round=$(jq -er '.value | fromjson | .round' <<<"$cursor")
   started=$(jq -er '.value | fromjson | .started' <<<"$cursor")
   revision=$(jq -er .revision <<<"$cursor")
+  completed=$(jq -ec '.value | fromjson | .completed | select(type=="array" and all(.[];type=="string") and length==(unique|length))' <<<"$cursor") || fail "invalid completed-round history"
   # Default terminal receipt retention is seven days; never replay old intent.
   (( $(date +%s) - started >= 0 && $(date +%s) - started < 86400 )) || fail "run too old for automatic recovery"
   [[ $(jq -er '.value | fromjson | .approved' <<<"$cursor") == "$objective_revision" ]] || fail "approved objective revision changed"
@@ -59,6 +77,7 @@ while true; do
   if [[ $round == 0 ]]; then
     jq -e '(.blocker=="") and all(.criteria[]; .status=="verified")' <<<"$contract" >/dev/null || fail "closed checklist changed"
     check_evidence
+    check_quiescence
     show
     echo "Checklist fulfilled; independently verify the actual patch before acceptance."
     exit 0
@@ -74,6 +93,8 @@ while true; do
   [[ $(jq -r .value <<<"$current") == "$objective" && $(jq -r .revision <<<"$current") == "$objective_revision" ]] || fail "objective changed during run"
   read_contract
   check_evidence
+  completed=$(jq -c --arg id "$id" '. + [$id]' <<<"$completed")
+  check_quiescence
   show
   [[ $(jq -r .blocker <<<"$contract") == "" ]] || fail "$(jq -r .blocker <<<"$contract")"
   if (( round == 1 )); then
@@ -85,5 +106,5 @@ while true; do
     next=$((round + 1))
   fi
   # Only advance after observing a terminal PM delivery and validating the checklist.
-  put contract-run "$(jq -cn --argjson round "$next" --argjson started "$started" --argjson approved "$objective_revision" '{round:$round,started:$started,approved:$approved}')" "$revision"
+  put contract-run "$(jq -cn --argjson round "$next" --argjson started "$started" --argjson approved "$objective_revision" --argjson completed "$completed" '{round:$round,started:$started,approved:$approved,completed:$completed}')" "$revision"
 done
