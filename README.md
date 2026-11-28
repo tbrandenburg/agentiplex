@@ -80,19 +80,17 @@ make build
 npm install --global @opencode/cli@2.4.1 @tbrandenburg/opencode-a2a-lite@0.9.3
 ```
 
-Put the checkout's `bin/` directory on PATH in all terminals. Copy the prepared
-[role prompts, MCP configuration and read-only policies](examples/discussion-team/) to a fresh private directory:
+Use the prepared [example directory](examples/discussion-team/) directly. In each terminal, from the checkout root:
 
 ```sh
-mkdir -m 700 ~/agentiplex-discussion
-cp -R examples/discussion-team/. ~/agentiplex-discussion/
+cd examples/discussion-team
 ```
 
-**Start.** Open four terminals in `~/agentiplex-discussion`. Start the daemon
-first; wait for its ready log:
+**Start.** Run the daemon in one terminal and wait for its ready log.
+Use a new storage directory for a fresh discussion; the example keeps state outside the checkout:
 
 ```sh
-agentiplexd --mcp --storage data
+../../bin/agentiplexd --mcp --storage "$HOME/.local/state/agentiplex-discussion"
 ```
 
 Run one gateway command per other terminal, and wait for all three ready URLs:
@@ -103,33 +101,33 @@ opencode-a2a-lite --name expert --port 8002 --workspace workspace --system-promp
 opencode-a2a-lite --name critic --port 8003 --workspace workspace --system-prompt-file roles/critic.md --policy-file policies/reader.json --no-env
 ```
 
-**Discuss.** From another terminal:
+**Discuss.** From another terminal in the same example directory:
 
 ```sh
-agentiplex register lead http://127.0.0.1:8001
-agentiplex register expert http://127.0.0.1:8002
-agentiplex register critic http://127.0.0.1:8003
-agentiplex send lead "Should we use event sourcing?" --idempotency-key discussion-1 --wait
-agentiplex notes list discussion
+../../bin/agentiplex register lead http://127.0.0.1:8001
+../../bin/agentiplex register expert http://127.0.0.1:8002
+../../bin/agentiplex register critic http://127.0.0.1:8003
+../../bin/agentiplex send lead "Should we use event sourcing?" --idempotency-key discussion-1 --wait
+../../bin/agentiplex notes list discussion
 ```
 <!-- discussion-quickstart:end -->
 
 The lead returns a verdict, and notes show the shared findings.
 Open [the dashboard](http://127.0.0.1:8080/ui/).
 Ctrl-C detaches a waiting CLI or stops a foreground gateway/daemon;
-`agentiplex messages wait DELIVERY_ID` reattaches to durable work.
-Use free ports 8080 and 8001–8003 and a fresh private directory without
-symlink or shared-writable ancestors. [Operating notes and verification](examples/discussion-team/README.md).
+`../../bin/agentiplex messages wait DELIVERY_ID` reattaches to durable work.
+Use free ports 8080 and 8001–8003 and a trusted, disposable checkout with
+operator-owned, non-shared-writable policy paths outside the agent workspace. [Operating notes and verification](examples/discussion-team/README.md).
 
 ### Contract-driven collaboration
 
 **Specify what must become true, not every step to get there.**
-Use the same three running agents after outstanding deliveries settle.
+Use the same three running agents and example directory after outstanding deliveries settle.
 Review the [decision contract](examples/discussion-team/contract.md) first.
 
 <!-- discussion-contract:start -->
 ```sh
-agentiplex send lead --file contract.md --idempotency-key discussion-contract-1 --until-done --max-turns 6 --timeout 12m --wait
+../../bin/agentiplex send lead --file contract.md --idempotency-key discussion-contract-1 --until-done --max-turns 6 --timeout 12m --wait
 ```
 <!-- discussion-contract:end -->
 
@@ -138,8 +136,8 @@ the objective and known work settles, or intervention is needed.
 Progress survives CLI disconnect and daemon restart with the same storage.
 No runner or inactivity nudge is needed.
 
-Watch with `agentiplex state watch discussion-contract` or
-`agentiplex messages list`. Use a dedicated, initially idle daemon with one
+Watch with `../../bin/agentiplex state watch discussion-contract` or
+`../../bin/agentiplex messages list`. Use a dedicated, initially idle daemon with one
 open until-done request. [Lifecycle and limits](docs/COLLABORATION.md#durable-follow-through-until-done).
 
 ### Actor-owned contract (direct handovers)
@@ -155,16 +153,16 @@ With the same three running agents and no outstanding deliveries, review the
 
 <!-- discussion-actors:start -->
 ```sh
-agentiplex state put discussion-actors objective --file objective-actors.md --revision 0
-agentiplex state put discussion-actors contract --file contract-actors.md --revision 0
-agentiplex send lead --file objective-actors.md --idempotency-key discussion-actors-1 --wait
+../../bin/agentiplex state put discussion-actors objective --file objective-actors.md --revision 0
+../../bin/agentiplex state put discussion-actors contract --file contract-actors.md --revision 0
+../../bin/agentiplex send lead --file objective-actors.md --idempotency-key discussion-actors-1 --wait
 ```
 <!-- discussion-actors:end -->
 
 Watch the living document:
 
 ```sh
-agentiplex state watch discussion-actors
+../../bin/agentiplex state watch discussion-actors
 ```
 
 The initial `--wait` observes only the first delivery. Overall completion means
