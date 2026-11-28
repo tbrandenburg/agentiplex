@@ -44,7 +44,12 @@ def fixture(ws, model):
     # A real, visible failing check that the agents can reproduce. The
     # independent verifier separately owns its assertions outside the workspace.
     (ws / "test_calc.py").write_text(
-        "from calc import clamp\n\n"\n        "assert [clamp(v, 0, 10) for v in (-3, 0, 4, 10, 12)] == [0, 0, 4, 10, 10]\n"\n        "assert clamp(-2, -5, -1) == -2\n"\n        "assert clamp(5, 2, 2) == 2\n"\n        "print('clamp checks passed')\n"\n    )
+        "from calc import clamp\n\n"
+        "assert [clamp(v, 0, 10) for v in (-3, 0, 4, 10, 12)] == [0, 0, 4, 10, 10]\n"
+        "assert clamp(-2, -5, -1) == -2\n"
+        "assert clamp(5, 2, 2) == 2\n"
+        "print('clamp checks passed')\n"
+    )
     (ws / ".gitignore").write_text("__pycache__/\n")
     cfg = json.loads((EX / "opencode.json").read_text())
     if model:
