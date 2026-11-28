@@ -37,6 +37,7 @@ func isNoteKey(namespace,k string)bool{
 
 type Note struct {
 	Key string `json:"key"`
+	Topic string `json:"topic"`
 	Author string `json:"author,omitempty"`
 	Text string `json:"text"`
 	At time.Time `json:"at"`
@@ -71,17 +72,42 @@ func (b *Bus) Note(ctx context.Context,namespace,topic,text string)(Note,error){
 		return Note{},fmt.Errorf("note refused (value limit %d bytes or bucket MaxBytes reached): %w",MaxStateValueBytes,err)
 	}
 	b.emit("state.updated",k,"",author)
-	return Note{Key:strings.TrimPrefix(k,namespace+"."),Author:author,Text:text,At:now},nil
+	return Note{Key:strings.TrimPrefix(k,namespace+"."),Topic:topic,Author:author,Text:text,At:now},nil
 }
 
-// ReadNotes returns the last limit notes of a topic in key (time) order.
-func (b *Bus) ReadNotes(namespace,topic string,limit int)([]Note,error){
-	prefix,err:=noteTopic(namespace,topic);if err!=nil{return nil,err}
-	if limit<=0||limit>MaxNotesRead{limit=MaxNotesRead}
-	ks,err:=keys(b.store.State);if err!=nil{return nil,err}
-	m:=[]string{}
-	for _,k:=range ks{if s,ok:=strings.CutPrefix(k,prefix);ok&&noteSuffix.MatchString(s){m=append(m,k)}}
-	sort.Strings(m)
+// ReadNotes returns the last limit notes of a single topic in key (time) order.
+func (b *Bus) ReadNotes(namespace, topic string, limit int) ([]Note, error) {
+	if _, err := noteTopic(namespace, topic); err != nil { return nil, err }
+	return b.listNotes(namespace, topic, limit)
+}
+
+// ListNotes returns the most recent notes across all topics in a namespace,
+// in timestamp order. No separate note store or namespace access policy.
+func (b *Bus) ListNotes(namespace string, limit int) ([]Note, error) {
+	if !validID.MatchString(namespace) { return nil, ErrInvalid }
+	return b.listNotes(namespace, "", limit)
+}
+
+func (b *Bus) listNotes(namespace, topic string, limit int) ([]Note, error) {
+	if limit <= 0 || limit > MaxNotesRead { limit = MaxNotesRead }
+	ks, err := keys(b.store.State)
+	if err != nil { return nil, err }
+	prefix := namespace+"."+notePrefix
+	m := []string{}
+	for _, k := range ks {
+		if !isNoteKey(namespace,k) { continue }
+		rest := strings.TrimPrefix(k,prefix)
+		t := rest[:len(rest)-30]
+		if len(t)>MaxNoteTopic || !validTopic.MatchString(t) || (topic!="" && t!=topic) { continue }
+		m=append(m,k)
+	}
+	// The suffix contains the timestamp and random tie-breaker. Sorting full
+	// keys would group by topic rather than time.
+	sort.Slice(m,func(i,j int)bool{
+		a,b:=m[i][len(m[i])-29:],m[j][len(m[j])-29:]
+		if a==b{return m[i]<m[j]}
+		return a<b
+	})
 	if len(m)>limit{m=m[len(m)-limit:]}
 	out:=[]Note{}
 	for _,k:=range m{
@@ -90,7 +116,8 @@ func (b *Bus) ReadNotes(namespace,topic string,limit int)([]Note,error){
 		if err!=nil{return nil,err}
 		var v noteValue
 		if err=json.Unmarshal(e.Value(),&v);err!=nil{continue}
-		out=append(out,Note{Key:strings.TrimPrefix(k,namespace+"."),Author:v.Author,Text:v.Text,At:v.At})
+		rest:=strings.TrimPrefix(k,prefix)
+		out=append(out,Note{Key:strings.TrimPrefix(k,namespace+"."),Topic:rest[:len(rest)-30],Author:v.Author,Text:v.Text,At:v.At})
 	}
 	return out,nil
 }

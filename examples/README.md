@@ -1,5 +1,7 @@
 # Examples: running real OpenCode agents
 
+New here? Start with [three-agent discussion](discussion-team/README.md), a read-only topic discussion with no launcher script. The sections below describe the larger engineering examples.
+
 Applies to `repository-team` and `autonomous-team`. These start real, partly
 full-access OpenCode agents with their **native commands**; each example has one `team.yaml` that is passed unchanged to
 `agentiplexd --config team.yaml`. The prompted repository-team starts MCP first and registers live gateways with native CLI commands; autonomous-team uses declarative registry provisioning. No orchestration layer is needed: follow the example README. The core middleware does not depend on any of this.

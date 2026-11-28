@@ -115,7 +115,7 @@ func run(ctx context.Context,cfg core.Config,listen,publicURL string,trusted,das
 	return nil
 }
 
-// NewServer applies the daemon's HTTP deadlines; /mcp clears its own per request.
+// NewServer applies the daemon's HTTP deadlines; explicit MCP and wait/stream handlers clear their own deadlines.
 func NewServer(h http.Handler,tlsConfig *tls.Config,timeout time.Duration)*http.Server{
 	return &http.Server{Handler:h,TLSConfig:tlsConfig,ReadHeaderTimeout:5*time.Second,ReadTimeout:15*time.Second,WriteTimeout:timeout+15*time.Second,IdleTimeout:30*time.Second}
 }

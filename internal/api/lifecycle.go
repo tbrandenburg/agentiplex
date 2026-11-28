@@ -24,6 +24,18 @@ func mountLifecycle(mux *http.ServeMux,b *core.Bus){
 	mux.HandleFunc("POST /api/v1/agents/{id}/health",func(w http.ResponseWriter,r *http.Request){
 		h,err:=b.ProbeAgent(r.Context(),r.PathValue("id"));respond(w,200,h,err)
 	})
+	mux.HandleFunc("GET /api/v1/notes/{namespace}",func(w http.ResponseWriter,r *http.Request){
+		w.Header().Set("Cache-Control","no-store")
+		limit:=core.MaxNotesRead
+		if raw:=r.URL.Query().Get("limit");raw!=""{
+			n,err:=strconv.Atoi(raw);if err!=nil||n<1||n>core.MaxNotesRead{respond(w,200,nil,core.ErrInvalid);return};limit=n
+		}
+		ns,topic:=r.PathValue("namespace"),r.URL.Query().Get("topic")
+		var notes []core.Note
+		var err error
+		if topic==""{notes,err=b.ListNotes(ns,limit)}else{notes,err=b.ReadNotes(ns,topic,limit)}
+		respond(w,200,notes,err)
+	})
 	mux.HandleFunc("GET /api/v1/state/{namespace}",func(w http.ResponseWriter,r *http.Request){
 		w.Header().Set("Cache-Control","no-store")
 		s,err:=b.ListState(r.PathValue("namespace"));respond(w,200,s,err)

@@ -132,11 +132,13 @@ func roleAllowed(role,method,path string)bool{
 	case "agents","groups","pools","usage":
 		return read
 	case "deliveries":
-		return read&&len(parts)==4 // own record by ID; no global listing
+		return read&&(len(parts)==4||len(parts)==5&&parts[4]=="wait") // own record by ID; no global listing
 	case "messages","broadcasts","dispatches":
 		return method=="POST"&&len(parts)==3
 	case "state":
 		return read||method=="PUT"&&len(parts)==5
+	case "notes":
+		return read&&len(parts)==4 // same shared namespace access as state
 	case "state-watch":
 		return read
 	default:return false // includes the global event feed

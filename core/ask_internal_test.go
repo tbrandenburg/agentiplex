@@ -38,7 +38,7 @@ func TestAwaitTerminalRecoversFromWatchInterruption(t *testing.T){
 		return Delivery{ID:"x",State:"completed"},nil // the terminal update was never delivered
 	}
 	ctx,cancel:=context.WithTimeout(context.Background(),5*time.Second);defer cancel()
-	d,err:=awaitTerminal(ctx,"x",get,watch,10*time.Millisecond)
+	d,err:=awaitTerminal(ctx,"x",get,watch,10*time.Millisecond,terminalState)
 	if err!=nil||d.State!="completed"||watches!=3{t.Fatalf("%+v %v watches=%d",d,err,watches)}
 }
 
@@ -48,6 +48,6 @@ func TestAwaitTerminalIgnoresNonTerminalUpdatesAndHonoursContext(t *testing.T){
 	watch:=func(context.Context,string)(nats.KeyWatcher,error){return fakeWatcher{ch},nil}
 	get:=func()(Delivery,error){return Delivery{ID:"x",State:"accepted"},nil}
 	ctx,cancel:=context.WithTimeout(context.Background(),300*time.Millisecond);defer cancel()
-	d,err:=awaitTerminal(ctx,"x",get,watch,10*time.Millisecond)
+	d,err:=awaitTerminal(ctx,"x",get,watch,10*time.Millisecond,terminalState)
 	if !errors.Is(err,context.DeadlineExceeded)||d.State!="accepted"{t.Fatalf("%+v %v",d,err)}
 }

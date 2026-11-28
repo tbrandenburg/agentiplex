@@ -103,6 +103,8 @@ Agents, groups and pools can be declared in the YAML `registry` block and are ap
 
 ## Examples
 
+Start with the [three-agent discussion](examples/discussion-team/README.md): three read-only agents, one topic, shared notes and a verdict, using native commands only.
+
 Choose the level of collaboration you want to explore.
 
 | Example | Command | What it demonstrates |

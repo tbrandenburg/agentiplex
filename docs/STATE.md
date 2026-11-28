@@ -30,6 +30,16 @@ Values are UTF-8 strings (JSON can be stored as text), max 16 KiB. Namespace and
 
 List shows metadata only; get and watch explicitly return values. Watch uses native KV snapshot and updates: put/delete operations carry the revision, and ready marks snapshot completion. A watch is not a durable historical event subscription; on disconnect or five-minute HTTP stream expiry reconnect for a fresh snapshot, not exactly-once change replay. Existing administrative event feed includes state.updated/state.deleted metadata without values.
 
+## Shared notes
+
+```sh
+agentiplex notes list discussion
+agentiplex notes list discussion expert
+agentiplex notes list discussion --limit 10 --json
+```
+
+Read the latest 100 notes across a namespace or filter to an exact topic. `--limit` accepts 1–100; results are in time order, not grouped by topic. The default renders topic, author, timestamp and text; `--json` prints the array. Authors are authenticated IDs in secure mode; trusted-local notes have no attested author. The same shared-state trust boundary applies. Notes are appended using the existing MCP `note` tool or Go API, not a second store.
+
 ## API
 
 - POST /api/v1/agents/{id}/refresh; DELETE /api/v1/agents/{id}
@@ -37,6 +47,7 @@ List shows metadata only; get and watch explicitly return values. Watch uses nat
 - GET /api/v1/state/{namespace} (metadata); GET /api/v1/state/{namespace}/{key}
 - PUT /api/v1/state/{namespace}/{key} with {"value":"text","revision":0} to create, or current revision to update
 - DELETE /api/v1/state/{namespace}/{key}?revision=N
+- GET /api/v1/notes/{namespace}?topic=expert&limit=10 (omit topic for all topics; default limit 100)
 - GET /api/v1/state-watch/{namespace} (SSE; snapshot + updates)
 
 The Go API uses the same semantics. The AMIS dashboard adds reachability timestamp and busy columns, without custom visual components. State values are not included in dashboard snapshots or default logs. No MCP tools, automatic model memory, secrets management, authenticated namespace isolation, workflow engine or distributed ownership in this slice. Trusted-local only; do not store secrets in unauthenticated state.
