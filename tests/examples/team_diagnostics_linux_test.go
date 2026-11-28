@@ -36,7 +36,7 @@ type diagnosticDelivery struct {
 func deliveryDiagnostic(d core.Delivery) diagnosticDelivery {
 	out := diagnosticDelivery{
 		ID:d.ID, Target:d.Target, State:d.State, Detail:boundedDiagnostic(d.Detail,2048),
-		Kind:d.Kind, Caller:d.Caller, ContractRound:strings.HasPrefix(d.Text,"Contract round "),
+		Kind:d.Kind, Caller:d.Caller, ContractRound:strings.HasPrefix(d.Text,"Agentiplex until-done request "),
 		TaskID:string(d.TaskID), ContextID:d.ContextID, Attempts:d.Attempts, Polls:d.Polls,
 		PollFailures:d.PollFailures, UpdatedAt:d.UpdatedAt, LastObservedAt:d.LastObservedAt,
 	}

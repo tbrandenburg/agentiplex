@@ -77,7 +77,7 @@ demo-check:
 examples-check: dashboard-assets contract-check
 	go test $(GO_TEST_FLAGS) ./tests/examples/
 
-contract-check:
+contract-check: dashboard-assets
 	go test $(GO_TEST_FLAGS) ./tests/integration -run '^TestUntilDone'
 
 live-check: dashboard-assets
