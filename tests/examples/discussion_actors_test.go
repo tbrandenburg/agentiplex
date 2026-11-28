@@ -241,8 +241,14 @@ func verifyDiscussionActorTransition(old, next discussionActorContract) error {
 			return fmt.Errorf("correction must address the current rejected review")
 		}
 	case "critic":
-		if next.Draft!=old.Draft || next.Review.Version!=old.Draft.Version || strings.TrimSpace(next.Review.Finding)=="" {
-			return fmt.Errorf("critic must independently review the current draft")
+		if next.Draft!=old.Draft {
+			return fmt.Errorf("critic changed expert-owned draft: previous=%+v observed=%+v",old.Draft,next.Draft)
+		}
+		if next.Review.Version!=old.Draft.Version {
+			return fmt.Errorf("critic reviewed wrong draft version: got %d want %d",next.Review.Version,old.Draft.Version)
+		}
+		if strings.TrimSpace(next.Review.Finding)=="" {
+			return fmt.Errorf("critic review finding is missing")
 		}
 		if old.Draft.Version==1 && (next.Checked[3] || next.Review.Decision!="rejected" || !strings.Contains(strings.ToLower(next.Review.Finding),"recovery")) {
 			return fmt.Errorf("critic did not reject missing recovery")
@@ -310,6 +316,20 @@ func TestDiscussionActorContractTransitions(t *testing.T) {
 	})
 	bad:=a;bad.Status="done";bad.Owner="lead"
 	if verifyDiscussionActorTransition(a,bad)==nil{t.Fatal("accepted premature closure")}
+	// A critic must not rewrite expert-owned evidence or approve/reject a
+	// different version. Keep these checks strict despite model variation.
+	for _,mutate:=range []func(*discussionActorContract){
+		func(n *discussionActorContract){n.Draft.Comparison+=" rewritten"},
+		func(n *discussionActorContract){n.Review.Version=0},
+		func(n *discussionActorContract){n.Review.Finding=""},
+	}{
+		bad:=a
+		bad.Owner="expert"
+		bad.Handoffs=append(append([]discussionActorHandoff(nil),a.Handoffs...),discussionActorHandoff{len(a.Handoffs)+1,"critic","expert","missing recovery"})
+		bad.Review=discussionActorReview{1,"rejected","missing recovery"}
+		mutate(&bad)
+		if verifyDiscussionActorTransition(a,bad)==nil{t.Fatal("accepted invalid critic review")}
+	}
 	advance("expert",func(n *discussionActorContract){n.Review=discussionActorReview{1,"rejected","missing recovery"}})
 	advance("critic",func(n *discussionActorContract){
 		n.Draft=discussionActorDraft{2,"comparison","consistency","restore and replay"}

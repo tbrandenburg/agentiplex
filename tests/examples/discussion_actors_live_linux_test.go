@@ -46,6 +46,7 @@ func runDiscussionActors(l *liveTeam,dir string) {
 	current,err:=parseDiscussionActorMarkdown(*initial.Value)
 	if err!=nil || !initialDiscussionActors(current){t.Fatal("invalid initial Markdown contract",err)}
 	revision:=initial.Revision
+	t.Logf("Initial living Markdown contract (revision %d):\n%s",revision,*initial.Value)
 	ctx,cancel:=context.WithTimeout(context.Background(),12*time.Minute);defer cancel()
 	ready:=make(chan struct{},1)
 	updates:=make(chan core.StateEntry,32)
@@ -98,6 +99,9 @@ func runDiscussionActors(l *liveTeam,dir string) {
 		case entry:=<-updates:
 			if entry.Value==nil{t.Fatal("contract deleted")}
 			if entry.Revision==revision{continue}
+			// Log the raw observed value before validation, including a rejected
+			// update. Otherwise a failed ownership check hides its evidence.
+			t.Logf("Observed living Markdown contract (revision %d):\n%s",entry.Revision,*entry.Value)
 			next,err:=parseDiscussionActorMarkdown(*entry.Value)
 			if entry.Revision<revision || err!=nil{t.Fatal("invalid actor Markdown revision",err)}
 			if err:=verifyDiscussionActorTransition(current,next);err!=nil{t.Fatal(err)}
