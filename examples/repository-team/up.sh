@@ -9,12 +9,17 @@ RUN=$(mktemp -d); P=$RUN/policies            # mode 0700; the gateway rejects gr
 [[ -e $W/opencode.json ]] || cp "$EX/opencode.json" "$W/opencode.json"   # never overwrite an operator-owned config
 echo /opencode.json >> "$W/.git/info/exclude"
 cp -r "$EX/policies" "$P" && chmod 700 "$P" && chmod 600 "$P"/*
+# Compose the existing PM persona with the opt-in contract-mode instructions.
+cat "$EX/roles/pm.md" "$EX/roles/contract-kernel.md" > "$RUN/pm.md"
+chmod 600 "$RUN/pm.md"
 make -C "$ROOT" build >/dev/null
 setsid "$ROOT/bin/agentiplexd" --config "$EX/team.yaml" --storage "$RUN/jetstream" >"$RUN/daemon.log" 2>&1 &
 echo $! >> "$RUN/pids"
 curl -fs -o /dev/null --retry 60 --retry-delay 1 --retry-connrefused http://127.0.0.1:19080/readyz || { echo "daemon failed; see $RUN/daemon.log" >&2; exit 1; }
 gw() {  # name port access policy description [extra gateway flags]
-  setsid opencode-a2a-lite --name "$1" --description "$5" --workspace "$W" --system-prompt-file "$EX/roles/$1.md" --port "$2" --access "$3" --policy-file "$P/$4.json" --prompt-timeout 45m "${@:6}" >"$RUN/$1.log" 2>&1 &
+  local role="$EX/roles/$1.md"
+  [[ $1 != pm ]] || role="$RUN/pm.md"
+  setsid opencode-a2a-lite --name "$1" --description "$5" --workspace "$W" --system-prompt-file "$role" --port "$2" --access "$3" --policy-file "$P/$4.json" --prompt-timeout 45m "${@:6}" >"$RUN/$1.log" 2>&1 &
   echo $! >> "$RUN/pids"
   curl -fs -o /dev/null --retry 120 --retry-delay 2 --retry-connrefused "http://127.0.0.1:$2/.well-known/agent-card.json" \
     || { echo "gateway $1 did not start; see $RUN/$1.log; stop with bash examples/down.sh $RUN" >&2; exit 1; }
@@ -27,4 +32,5 @@ gw tester 19084 danger-full-access writer "Independent executable verification" 
 gw quality 19085 read reader "Independent acceptance review" --no-env
 printf 'Team up (dashboard http://127.0.0.1:19080/ui/).\nRUN=%q\n' "$RUN"
 printf '%s\n' 'From the repository root, publish and submit the same objective:' '  OBJECTIVE="$(cat examples/repository-team/objective.md)"' '  bin/agentiplex --server http://127.0.0.1:19080 state put repository objective "$OBJECTIVE" --revision 0 &&' '  bin/agentiplex --server http://127.0.0.1:19080 send pm "$OBJECTIVE" --idempotency-key repository-objective --wait' '  bin/agentiplex --server http://127.0.0.1:19080 notes list repository'
+printf 'For contract mode (fresh storage): export AGENTIPLEX_SERVER=http://127.0.0.1:19080; bash examples/repository-team/run-contract.sh init; bash examples/repository-team/run-contract.sh run\n'
 printf 'Stop with: bash examples/down.sh %q\n' "$RUN"
