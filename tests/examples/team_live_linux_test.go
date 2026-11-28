@@ -286,11 +286,19 @@ func (l *liveTeam) repository(scenario,prompt string,seconds int) {
 	want:=map[string]bool{}
 	for _,r:=range roles {
 		rolePath:=filepath.Join(l.example,"roles",r.name+".md")
-		if scenario=="contract" && r.name=="pm" {
-			rolePath=filepath.Join(l.run,"pm.md")
-			writeTeamFile(l.t,rolePath,string(l.read("roles","pm.md"))+"\n"+string(l.read("roles","contract-kernel.md")))
+		policy:=r.policy
+		if scenario=="contract" {
+			extra:=""
+			switch r.name {
+			case "pm": extra="contract-kernel.md"
+			case "developer","tester": extra="contract-worker.md"; policy="contract-worker"
+			}
+			if extra!="" {
+				rolePath=filepath.Join(l.run,r.name+".md")
+				writeTeamFile(l.t,rolePath,string(l.read("roles",r.name+".md"))+"\n"+string(l.read("roles",extra)))
+			}
 		}
-		l.gateway(r.name,r.desc,ws,r.access,r.policy,r.port,prompt,"--system-prompt-file",rolePath)
+		l.gateway(r.name,r.desc,ws,r.access,policy,r.port,prompt,"--system-prompt-file",rolePath)
 		teamCLI[json.RawMessage](l,"register",r.name,"http://127.0.0.1:"+r.port)
 		want[r.name]=true
 	}
