@@ -20,11 +20,14 @@ func runDiscussionQuickstart(t *testing.T) {
 	blocks := discussionCommands(t)
 	l := newLiveRun(t, "discussion-team")
 	l.api = "http://127.0.0.1:8080"
-	// The workflow ran the README's build/install block. The test deliberately
-	// does not install global packages on an operator's local machine.
+	// The workflow executes the README's build/install commands. Ensure
+	// native commands resolve to the binaries from this checkout, not an
+	// unrelated older system install. Do not modify PATH or install here.
 	for _, name := range []string{"agentiplex", "agentiplexd"} {
-		if _, err := os.Stat(filepath.Join(l.root, "bin", name)); err != nil {
-			t.Fatal("run the README setup first: ", err)
+		out, err := commandOutput(l.root, 30*time.Second, l.env, "bash", "-ec",
+			"cmp "+filepath.Join("bin", name)+" \"$(command -v "+name+")\"")
+		if err != nil {
+			t.Fatalf("run the README build/install first (%s): %v: %.1000q", name, err, out)
 		}
 	}
 	// Execute the documented cd in a shell and use that actual directory for

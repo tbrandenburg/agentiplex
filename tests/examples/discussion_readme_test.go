@@ -86,7 +86,7 @@ func discussionContractCommand(t *testing.T) string {
 	}
 	command = strings.TrimPrefix(command, "\x60\x60\x60sh\n")
 	command = strings.TrimSuffix(command, "\n\x60\x60\x60")
-	if strings.Contains(command, "\n") || !strings.HasPrefix(command, "../../bin/agentiplex send lead --file contract.md ") ||
+	if strings.Contains(command, "\n") || !strings.HasPrefix(command, "agentiplex send lead --file contract.md ") ||
 		!strings.Contains(command, " --idempotency-key discussion-contract-1 ") ||
 		!strings.Contains(command, " --until-done ") ||
 		!strings.HasSuffix(command, " --wait") || strings.Contains(command, "--nudge-after") {
@@ -125,7 +125,7 @@ func TestDiscussionREADMECommands(t *testing.T) {
 	if !strings.HasPrefix(setup, strings.Join(blocks[0], "\n")+"\n") {
 		t.Fatal("CI setup commands differ from the README")
 	}
-	if blocks[1][0] != "cd examples/discussion-team" || blocks[2][0] != `../../bin/agentiplexd --mcp --storage "$HOME/.local/state/agentiplex-discussion"` {
+	if blocks[1][0] != "cd examples/discussion-team" || blocks[2][0] != `agentiplexd --mcp --storage "$HOME/.local/state/agentiplex-discussion"` {
 		t.Fatal("quickstart must use the existing example directory and private HOME storage")
 	}
 	for i, role := range discussionRoles {
@@ -133,13 +133,13 @@ func TestDiscussionREADMECommands(t *testing.T) {
 			!strings.Contains(blocks[3][i], " --no-env") {
 			t.Fatalf("README gateway %s must have explicit identity and no credential forwarding", role)
 		}
-		if !strings.HasPrefix(blocks[4][i], "../../bin/agentiplex register "+role+" ") {
+		if !strings.HasPrefix(blocks[4][i], "agentiplex register "+role+" ") {
 			t.Fatalf("README missing registration for %s", role)
 		}
 	}
 	if !strings.Contains(blocks[4][3], "send lead \""+discussionTopic+"\"") ||
 		!strings.Contains(blocks[4][3], " --wait") ||
-		blocks[4][4] != "../../bin/agentiplex notes list discussion" {
+		blocks[4][4] != "agentiplex notes list discussion" {
 		t.Fatal("README must submit the test topic and retrieve the verdict and notes using the native CLI")
 	}
 }
