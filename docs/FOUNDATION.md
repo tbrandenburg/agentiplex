@@ -50,7 +50,7 @@ Container: build `docker build -t agentiplex:dev .`, run `docker run --rm -p 127
 
 ## Merge gates
 
-The `Checks` workflow runs independent unit/build/vet, integration, provider-free examples, container/Compose, Helm/kind, release packaging and multiarch image jobs on separate runners. `Checks / test` is the aggregate gate and succeeds only if all seven jobs succeed. Keep the Go race tests enabled; the example Go tests run once, alongside the example Python checks. Local `make check` still runs the full Go suite, vet, Python checks and release-script tests.
+The `Checks` workflow runs independent unit/build/vet, integration, provider-free examples, container/Compose, Helm/kind, release packaging and multiarch image jobs on separate runners. `Checks / test` is the aggregate gate and succeeds only if all seven jobs succeed. Keep the Go race tests enabled; the provider-free example checks run once in the Go test suite. Local `make check` runs the full Go suite, vet and release-script tests. Real-model tests require explicit opt-in.
 
 - CI build, vet and race/integration tests pass.
 - Verify committed go.mod/go.sum remain unchanged after go mod tidy; format Go source with gofmt.

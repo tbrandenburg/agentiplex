@@ -7,7 +7,7 @@ tag=${1:?release tag (vMAJOR.MINOR.PATCH[-prerelease]) required}
 version=${tag#v}
 # Prereleases retain the existing packaging override; stable tags must match source metadata.
 if [[ "$version" != *-* ]]; then
-  python3 scripts/chart-version.py check "$version"
+  go run scripts/chart-version.go check "$version"
 fi
 mkdir -p dist
 go generate ./internal/dashboard

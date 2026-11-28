@@ -1,6 +1,6 @@
 # Repair and integrate a failing check
 
-The local repository is disposable, has no remote, and starts on main. Fix the defective clamp(value, lower, upper) in calc.py for lower <= upper, preserving its signature. The existing command python3 -B test_calc.py must pass; do not modify that check or unrelated files.
+The local repository is disposable, has no remote, and starts on main. Fix the defective Clamp(value, lower, upper int) int in calc.go for lower <= upper, preserving its signature. The existing command go test -count=1 ./... must pass; do not modify that check or unrelated files.
 
 Acceptance criteria:
 - The fix is committed on a feature branch, independently tested and reviewed before integration. Keep the candidate branch for inspection.

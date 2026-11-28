@@ -205,7 +205,7 @@ For larger changes, discuss the proposed scope and verification plan first.
 make help       # All development and example targets
 make fmt        # Format tracked Go source
 make build      # Build daemon and CLI
-make check      # Go tests, vet, Python and release-script tests
+make check      # Go tests, vet and release-script tests
 make demo-check # Deterministic end-to-end demo
 ```
 

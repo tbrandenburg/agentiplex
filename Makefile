@@ -1,4 +1,4 @@
-.PHONY: help fmt lint dashboard-assets build test check examples-python-check clean run demo-agent demo-team demo-check examples-check live-check repository-provision-check docker compose-up compose-down release release-plan
+.PHONY: help fmt lint dashboard-assets build test check clean run demo-agent demo-team demo-check examples-check live-check repository-provision-check docker compose-up compose-down release release-plan
 .DEFAULT_GOAL := help
 export bump
 
@@ -7,7 +7,7 @@ GO_TEST_FLAGS ?= -race -count=1
 GO_TEST_PACKAGES ?= ./...
 RUN_ARGS ?= --mcp
 DEMO_ARGS ?=
-LIVE_ARGS ?= --prompt-timeout 10m --seconds 900
+LIVE_ARGS ?= -prompt-timeout 10m -seconds 900
 IMAGE ?= agentiplex:dev
 
 help:
@@ -17,7 +17,7 @@ help:
 		'  make lint             Run go vet' \
 		'  make build            Build daemon and CLI into bin/' \
 		'  make test             Race-enabled Go tests (GO_TEST_PACKAGES=./... by default)' \
-		'  make check            Tests, vet, Python and release-script tests' \
+		'  make check            Go tests, vet and release-script tests' \
 		'  make clean            Remove generated binaries, dist and AMIS assets' \
 		'  make run              Start local daemon with MCP' \
 		'  make dashboard-assets Generate embedded AMIS assets' \
@@ -55,7 +55,7 @@ test: dashboard-assets
 lint: dashboard-assets
 	go vet ./...
 
-check: test lint examples-python-check
+check: test lint
 	bash scripts/test-release.sh
 
 clean:
@@ -73,18 +73,14 @@ demo-team:
 demo-check:
 	bash examples/engineering-team/demo.sh --check $(DEMO_ARGS)
 
-examples-check: dashboard-assets examples-python-check
+examples-check: dashboard-assets
 	go test $(GO_TEST_FLAGS) ./tests/examples/
 
-examples-python-check:
-	python3 -B tests/examples/repository-team/test_verify.py
-	python3 -B tests/examples/autonomous-team/test_live_check.py
-
 live-check: dashboard-assets
-	python3 -B tests/examples/autonomous-team/live_check.py $(if $(MODEL),--model $(MODEL)) $(LIVE_ARGS)
+	go test -count=1 -v -timeout 45m ./tests/examples -run '^TestLiveTeam$$' -args -live autonomous $(if $(MODEL),-model $(MODEL)) $(LIVE_ARGS)
 
 repository-provision-check: dashboard-assets
-	python3 -B tests/examples/repository-team/provision_check.py
+	go test -count=1 -v -timeout 45m ./tests/examples -run '^TestLiveTeam$$' -args -live provision
 
 docker:
 	docker build -t $(IMAGE) .

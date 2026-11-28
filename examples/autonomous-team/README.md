@@ -110,10 +110,10 @@ simulated agents are plain loopback HTTP endpoints and need no token themselves)
 ## Provider-free verification (no model)
 ```sh
 make examples-check                          # real daemon + simulated agents on each team.yaml, policy checks
-make live-check LIVE_ARGS=--provision-only   # real PM + architect gateways registered, no model task
+make live-check LIVE_ARGS=-provision-only   # real PM + architect gateways registered, no model task
 make live-check                              # real free-model run with independent evidence check (uses inference)
 ```
-The harness in [tests/examples/autonomous-team](../../tests/examples/autonomous-team) starts the processes above and
+The harness in [tests/examples](../../tests/examples) starts the processes above and
 verifies from the daemon's records that the PM completed, at least one real worker produced a result, no delivery is
 unresolved and the PM and a worker persisted state. It is test infrastructure, not the normal usage path. Delivery records
 show who was asked, not which MCP tool was used, and a model claiming a result without a completed delivery fails.
