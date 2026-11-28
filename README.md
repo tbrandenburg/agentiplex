@@ -137,6 +137,31 @@ agentiplex send lead --file objective-actors.md --idempotency-key discussion-act
 The expert owns the draft, the critic owns review, and actors advance unchecked Markdown boxes with evidence before passing responsibility via ordinary messages after revision-checked state writes. The local Markdown template is unchanged; the living document is in shared state. The lead initiates and closes; no coordinator relay, extra setup or middleware mode.
 Observe `agentiplex state watch discussion-actors` and `agentiplex messages list`. Here --wait observes only the initial delivery; look for all five boxes checked, contract status done and all deliveries completed. See [recovery limits and verification](examples/discussion-team/README.md#actor-owned-contract-direct-handovers).
 
+#### Actual observed contract progression
+
+Three real agents completed this contract in approximately two minutes in the
+[successful live CI run](https://github.com/tbrandenburg/agentiplex/actions/runs/46176104788).
+Each row is an observed shared-state revision, not a scripted step.
+
+| Revision | Responsibility | Observed outcome | Acceptance checklist | Progress |
+| ---: | --- | --- | --- | ---: |
+| 13 | Lead → Expert | Initial assignment | ⬜ ⬜ ⬜ ⬜ ⬜ | 0/5 |
+| 14 | Expert → Critic | Initial draft | ✅ ✅ ⬜ ⬜ ⬜ | 2/5 |
+| 16 | Critic → Expert | Rejected: missing recovery | ✅ ✅ ⬜ ⬜ ⬜ | 2/5 |
+| 18 | Expert → Critic | Recovery evidence added | ✅ ✅ ✅ ⬜ ⬜ | 3/5 |
+| 20 | Critic → Lead | Independent acceptance | ✅ ✅ ✅ ✅ ⬜ | 4/5 |
+| 21 | Lead | Contract closed | ✅ ✅ ✅ ✅ ✅ | **5/5** |
+
+Checkboxes, in order: architecture comparison, consistency trade-offs, failure
+recovery, independent review, final acceptance.
+
+The final living Markdown contract was printed in CI with all five criteria
+checked, `Status: done`, and both draft and accepted review at version 2.
+The intentionally incomplete first draft demonstrates that rejection drives
+corrective work rather than premature completion. The test observes the
+contract and ordinary delivery receipts; it does not schedule the handovers.
+No request correlation or contract-specific middleware is required.
+
 ### Simulated team (no model or API key)
 
 Try the complete collaboration demo locally, without an LLM or API key.
