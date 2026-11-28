@@ -14,8 +14,8 @@ Use `Examples / Live / <scenario>` for model-dependent example workflows. Keep d
 
 ## Contract verification
 
-`make contract-check` exercises the shell runner with an explicit fake CLI: approval, a lost wait response and stable-key reattachment, checklist integrity, blockers and budget exhaustion.
+`make contract-check` exercises the shell runner with an explicit fake CLI: approval, a lost wait response and stable-key reattachment, checklist integrity, blockers, budget exhaustion and rejection of unsolicited PM deliveries even when the checklist is fully verified.
 
-The repository engineering team live matrix includes `contract`. It runs the actual example with five native-role agents, requires a first failed-verification checkpoint, distinct owner evidence, and more than one completed PM delivery, then independently verifies the actual patch. A second invocation must not schedule more work after closure. It uses synthetic inputs and the same credential-free runtime as the other live examples; it is not deterministic and provider availability can affect the outcome.
+The repository engineering team live matrix includes `contract`. It runs the actual example with five native-role agents, requires a first failed-verification checkpoint, distinct owner evidence, and multiple completed PM deliveries matching the runner's persisted IDs, then independently verifies the actual patch. The executable workers have no MCP exceptions; the read-only coordinator delegates with blocking ask only. A second invocation must not schedule more work after closure. It uses synthetic inputs and the same credential-free runtime as the other live examples; it is not deterministic and provider availability can affect the outcome.
 
 For commands and operational limits, see [contract-driven mode](../examples/repository-team/README.md#contract-driven-mode-opt-in).
