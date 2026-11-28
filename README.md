@@ -8,44 +8,68 @@
 [![Go](https://img.shields.io/badge/Go-1.26%2B-00ADD8?logo=go&logoColor=white)](https://go.dev/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-Lightweight, open-source middleware for autonomous agent collaboration.
-Discover agents, deliver tasks reliably, distribute work across teams and
-share durable application state — independently of any model, IDE or agent framework.
+**Discover, message and coordinate independent agents — with durable state and delivery.**
+Agentiplex is lightweight, open-source collaboration middleware. Bring any A2A agent,
+connect MCP tools, and let your agents own their work.
 
-[Quick start](#quick-start) · [Examples](#examples) · [Architecture](#architecture) · [Documentation](#documentation) · [Contributing](#contributing)
+[Quick start](#quick-start) · [Contract collaboration](#contract-driven-collaboration) · [Examples](#examples) · [Architecture](#architecture) · [Deploy](#installation-and-deployment) · [Docs](#documentation)
 
 ## Why Agentiplex?
 
-Direct agent-to-agent communication is useful when every endpoint is known and
-available. A team of independent agents also needs discovery, durable delivery,
-shared context and visibility into what actually happened.
+**One small CLI. No prescribed workflow, model or agent runtime.**
 
-Agentiplex provides that infrastructure without deciding what agents should do,
-how they should reason or where they should execute. Agents and their operators
-own models, tools, workflows, workspaces and permissions.
+```sh
+agentiplex discover --skill architecture
+agentiplex send architect "Review requirement 42" --idempotency-key review-42 --wait
+agentiplex messages list
+```
 
-| Capability | What it provides |
-| --- | --- |
-| **Discover** | Register existing A2A endpoints, publish an AI Catalog and find agents by skill, tag or group. |
-| **Send** | Queue a task durably, track its downstream result and retry safe transient failures. |
-| **Follow through** | Continue a durable objective across agent turns until explicit resolution or intervention, without prescribing a workflow. |
-| **Broadcast** | Deliver an update to every member of a configured group. |
-| **Dispatch** | Assign work to one eligible member of a worker pool. |
-| **Share state** | Store bounded, namespaced key/value context with revision checks. |
-| **Observe** | Inspect agent health, delivery receipts and events through a remote CLI or live dashboard. |
+With registered agents, configured groups and pools, you can also:
+
+```sh
+agentiplex broadcast engineering "Contract updated" --idempotency-key release-1
+agentiplex dispatch testers "Verify requirement 42" --idempotency-key verify-42
+agentiplex state watch engineering
+```
+
+- **Connect:** agent discovery, AI Catalog, A2A and MCP.
+- **Collaborate:** durable direct messages, broadcasts, worker pools and follow-through.
+- **Share:** persistent notes and revision-checked shared state.
+- **Observe:** delivery receipts, agent health and a live dashboard.
+
+Agents own reasoning, models, tools and workspaces. Agentiplex owns the
+communication and persistence. See [collaboration primitives](docs/COLLABORATION.md).
 
 ## Quick start
+
+### Simulated team (no model or API key)
+
+Start six deterministic A2A agents and the dashboard in three lines.
+
+```sh
+git clone https://github.com/tbrandenburg/agentiplex.git
+cd agentiplex
+make demo-team
+```
+
+Open [the dashboard](http://127.0.0.1:18080/ui/). Try direct messages, broadcast,
+pool dispatch, offline delivery and restart recovery. Ctrl-C stops the demo;
+`make demo-check` runs it noninteractively.
+Requires Git, Go 1.26+, GNU Make, Bash, curl, jq and Node/npm.
+[Demo guide](docs/DEMO.md).
+
+> [!IMPORTANT]
+> Run local examples only on loopback in a trusted, disposable environment.
+> Use public or synthetic inputs with the free model. Read-only gateway policies
+> are not OS sandboxes. For network deployment use [authenticated TLS and approved origins](docs/DEPLOYMENT.md).
 
 ### Three real agents
 
 [![Live three-agent quickstart](https://github.com/tbrandenburg/agentiplex/actions/workflows/discussion-quickstart.yaml/badge.svg?branch=main)](https://github.com/tbrandenburg/agentiplex/actions/workflows/discussion-quickstart.yaml)
 
-Discuss a topic with a lead, an expert and a critic. Each runs in its own
-[OpenCode A2A gateway](https://github.com/tbrandenburg/opencode-a2a-lite);
-Agentiplex supplies discovery, durable messaging and shared notes.
-The badge links to a live CI test that executes the command blocks below,
-checks the returned verdict, both worker deliveries and all three notes topics.
-Model output is not deterministic; the check does not grade the correctness of the verdict.
+A **lead, expert and critic** discuss a topic using native
+[OpenCode A2A gateways](https://github.com/tbrandenburg/opencode-a2a-lite).
+No launcher or orchestration code. The live CI test executes these exact commands.
 
 <!-- discussion-quickstart:start -->
 **Setup once.** On Linux with Git, Go 1.26+, Make, Bash, curl, Node 22+ and
@@ -65,7 +89,7 @@ cp -R examples/discussion-team/. ~/agentiplex-discussion/
 ```
 
 **Start.** Open four terminals in `~/agentiplex-discussion`. Start the daemon
-first and wait for its ready log:
+first; wait for its ready log:
 
 ```sh
 agentiplexd --mcp --storage data
@@ -90,22 +114,18 @@ agentiplex notes list discussion
 ```
 <!-- discussion-quickstart:end -->
 
-The lead returns its verdict; the notes command prints the shared findings.
-Follow the conversation on the [dashboard](http://127.0.0.1:8080/ui/). Ctrl-C
-while waiting detaches without cancelling work; reattach with
-`agentiplex messages wait DELIVERY_ID`. Stop the gateways and daemon with
-Ctrl-C in their terminals. The data remains durable.
-
-Use a fresh private directory with no symlink or shared-writable ancestors,
-reviewed configuration, free ports 8080 and 8001–8003, and public topics only
-(the example uses a free model). The gateway's default read access is not
-an OS sandbox. Unauthenticated local ports must not be exposed. See the
-[discussion example](examples/discussion-team/README.md) for limitations and verification.
+The lead returns a verdict, and notes show the shared findings.
+Open [the dashboard](http://127.0.0.1:8080/ui/).
+Ctrl-C detaches a waiting CLI or stops a foreground gateway/daemon;
+`agentiplex messages wait DELIVERY_ID` reattaches to durable work.
+Use free ports 8080 and 8001–8003 and a fresh private directory without
+symlink or shared-writable ancestors. [Operating notes and verification](examples/discussion-team/README.md).
 
 ### Contract-driven collaboration
 
-With the same three running agents and no outstanding deliveries, review the [decision contract](examples/discussion-team/contract.md) in the private quickstart directory.
-Specify what must become true; the agents decide how to get there, review evidence and revise their work.
+**Specify what must become true, not every step to get there.**
+Use the same three running agents after outstanding deliveries settle.
+Review the [decision contract](examples/discussion-team/contract.md) first.
 
 <!-- discussion-contract:start -->
 ```sh
@@ -113,18 +133,25 @@ agentiplex send lead --file contract.md --idempotency-key discussion-contract-1 
 ```
 <!-- discussion-contract:end -->
 
-The daemon continues across completed turns until explicit resolution and known work is settled, or intervention is required.
-Follow the living progress with `agentiplex state watch discussion-contract` or `agentiplex messages list` in another terminal.
-CLI disconnects do not stop work; daemon restart with the same storage recovers it. No runner or inactivity nudge is required.
-Use one open request on a dedicated, initially idle daemon. See [lifecycle and limits](docs/COLLABORATION.md#durable-follow-through-until-done). The live three-agent CI above also checks the incomplete checkpoint, independent review, rework and final resolution.
+Agentiplex reactivates the lead across completed turns until it explicitly resolves
+the objective and known work settles, or intervention is needed.
+Progress survives CLI disconnect and daemon restart with the same storage.
+No runner or inactivity nudge is needed.
 
-Related work: [Building with AI Agents](https://mikkosniemela.com/build-with-agents-2026-10-09) (Niemelä, October 2026),
-[Meta-Engineering Harnesses for AI-Native Software Production](https://arxiv.org/abs/2605.25665) (Sengupta et al., May 2026, preprint),
-and [Contract Driven Development](https://github.com/enthali/syspilot/blob/main/docs/methodology.md) (Syspilot's methodology). These are conceptual references, not protocol-conformance claims.
+Watch with `agentiplex state watch discussion-contract` or
+`agentiplex messages list`. Use a dedicated, initially idle daemon with one
+open until-done request. [Lifecycle and limits](docs/COLLABORATION.md#durable-follow-through-until-done).
 
 ### Actor-owned contract (direct handovers)
 
-Use the same three running agents after the previous deliveries have settled; review the [actor-owned objective](examples/discussion-team/objective-actors.md) and [living Markdown contract](examples/discussion-team/contract-actors.md) in the private quickstart directory.
+**A living Markdown checklist becomes the team's shared source of truth.**
+The expert owns draft criteria, the critic owns review, the lead owns acceptance.
+Actors work on unchecked boxes, record evidence, and pass responsibility directly
+to the next actor. No permanent coordinator, workflow engine or new middleware mode.
+
+With the same three running agents and no outstanding deliveries, review the
+[approved objective](examples/discussion-team/objective-actors.md) and
+[living Markdown template](examples/discussion-team/contract-actors.md).
 
 <!-- discussion-actors:start -->
 ```sh
@@ -134,14 +161,21 @@ agentiplex send lead --file objective-actors.md --idempotency-key discussion-act
 ```
 <!-- discussion-actors:end -->
 
-The expert owns the draft, the critic owns review, and actors advance unchecked Markdown boxes with evidence before passing responsibility via ordinary messages after revision-checked state writes. The local Markdown template is unchanged; the living document is in shared state. The lead initiates and closes; no coordinator relay, extra setup or middleware mode.
-Observe `agentiplex state watch discussion-actors` and `agentiplex messages list`. Here --wait observes only the initial delivery; look for all five boxes checked, contract status done and all deliveries completed. See [recovery limits and verification](examples/discussion-team/README.md#actor-owned-contract-direct-handovers).
+Watch the living document:
+
+```sh
+agentiplex state watch discussion-actors
+```
+
+The initial `--wait` observes only the first delivery. Overall completion means
+all five boxes checked, `Status: done`, and all deliveries completed.
+The local template stays unchanged; the living document is in shared state.
 
 #### Actual observed contract progression
 
-Three real agents completed this contract in approximately two minutes in the
+Three real agents completed this contract in about two minutes in the
 [successful live CI run](https://github.com/tbrandenburg/agentiplex/actions/runs/46176104788).
-Each row is an observed shared-state revision, not a scripted step.
+These are actual observed revisions, not a scripted sequence.
 
 | Revision | Responsibility | Observed outcome | Acceptance checklist | Progress |
 | ---: | --- | --- | --- | ---: |
@@ -152,103 +186,59 @@ Each row is an observed shared-state revision, not a scripted step.
 | 20 | Critic → Lead | Independent acceptance | ✅ ✅ ✅ ✅ ⬜ | 4/5 |
 | 21 | Lead | Contract closed | ✅ ✅ ✅ ✅ ✅ | **5/5** |
 
-Checkboxes, in order: architecture comparison, consistency trade-offs, failure
-recovery, independent review, final acceptance.
+Checkbox order: architecture comparison, consistency, failure recovery,
+independent review, final acceptance.
 
-The final living Markdown contract was printed in CI with all five criteria
-checked, `Status: done`, and both draft and accepted review at version 2.
-The intentionally incomplete first draft demonstrates that rejection drives
-corrective work rather than premature completion. The test observes the
-contract and ordinary delivery receipts; it does not schedule the handovers.
-No request correlation or contract-specific middleware is required.
+The first draft deliberately omitted recovery. The critic rejected it, the
+expert corrected it, and the critic accepted draft v2. The lead closed with
+all five boxes checked. CI logs include the final Markdown and verify the
+actual handovers and delivery receipts.
 
-### Simulated team (no model or API key)
+The contract determines whether work is done; the agents choose the next
+action within its constraints. State updates and message admission are separate
+operations, so a crash between them can stall a handover.
+[Recovery limits and verification](examples/discussion-team/README.md#actor-owned-contract-direct-handovers).
 
-Try the complete collaboration demo locally, without an LLM or API key.
-
-**Prerequisites:** Git, Go 1.26+, GNU Make, Bash, curl, jq and Node/npm
-(for packaging dashboard assets at build time).
-
-```sh
-git clone https://github.com/tbrandenburg/agentiplex.git
-cd agentiplex
-make demo-team
-```
-
-Open [the collaboration dashboard](http://127.0.0.1:18080/ui/).
-Six independent simulated A2A agents demonstrate discovery, direct messages,
-broadcast, pool dispatch, offline delivery and recovery across a daemon restart.
-Press Ctrl+C to stop the demo, or use `make demo-check` for a noninteractive run.
-
-The responses are deterministic fixtures, not model-generated engineering results.
-See the [demo guide](docs/DEMO.md) for the scenario and how to attach a real agent.
+Inspired by [Syspilot's Contract Driven Development](https://github.com/enthali/syspilot/blob/main/docs/methodology.md),
+[Building with AI Agents](https://mikkosniemela.com/build-with-agents-2026-10-09)
+and [Meta-Engineering Harnesses for AI-Native Software Production](https://arxiv.org/abs/2605.25665).
+Conceptual references, not protocol-conformance claims.
 
 ### Connect your own agents
 
-Run the daemon with its embedded broker and MCP endpoint:
+Start a daemon with embedded NATS and MCP, then a sample A2A agent in a separate terminal:
 
 ```sh
 make run
 ```
 
-In a separate terminal, start a sample A2A endpoint:
-
 ```sh
 make demo-agent
 ```
 
-Register that endpoint and send a task from another terminal:
-
 ```sh
 ./bin/agentiplex register architect http://127.0.0.1:8001
-./bin/agentiplex discover --skill architecture
-./bin/agentiplex send architect "Review requirement 42" --idempotency-key demo-42
-./bin/agentiplex messages status DELIVERY_ID
+./bin/agentiplex send architect "Review requirement 42" --idempotency-key demo-42 --wait
 ```
 
-Replace `DELIVERY_ID` with the receipt ID returned by the send command.
-The CLI talks to the daemon over HTTP; it never needs direct access to broker storage.
-
-Existing A2A agents can be registered the same way. An MCP host can use
-`http://127.0.0.1:8080/mcp` for discovery, messaging and shared state.
-See the [A2A contract](docs/A2A.md) and [MCP tools](docs/MCP.md).
-
-> [!IMPORTANT]
-> Local examples are unauthenticated. Keep them on loopback in a trusted
-> environment. For network deployment, configure authenticated TLS and
-> approved outbound agent origins using the [deployment guide](docs/DEPLOYMENT.md).
->
-> **Agent identity:** in secure mode every agent has its own bearer credential
-> (`registry.agents.<id>.token_file` or `security.agent_token_files`); the server resolves it to the caller across A2A,
-> MCP and REST. Agents see only their own deliveries and results, idempotency
-> keys (required on every MCP/REST submission) are per agent, and note authors are set by the server. The former shared
-> collaborator credential is removed (breaking change; see the principal model,
-> access matrix, rotation and upgrade notes in [deployment](docs/DEPLOYMENT.md)).
-> Shared team state is not tenant isolation.
-
-## Static registry
-
-Agents, groups and pools can be declared in the YAML `registry` block and are applied additively at startup before the daemon reports ready; see [deployment](docs/DEPLOYMENT.md#static-registry-declarative-provisioning) for schema, credentials and conflict/offline/omission semantics. Dynamic CLI/API registration remains available.
+Use the same registration command with any existing A2A endpoint.
+Connect MCP hosts to `http://127.0.0.1:8080/mcp`.
+[A2A](docs/A2A.md) · [MCP tools](docs/MCP.md).
 
 ## Examples
 
-Choose the level of collaboration you want to explore.
+| Example | What it demonstrates |
+| --- | --- |
+| [Simulated team](#simulated-team-no-model-or-api-key) | Deterministic communication, persistence and recovery (`make demo-team`). |
+| [Three-agent discussion](#three-real-agents) | Real agents, shared notes and a verdict. |
+| [Contract-driven collaboration](#contract-driven-collaboration) | Durable continuation until the lead resolves the objective. |
+| [Actor-owned contract](#actor-owned-contract-direct-handovers) | Living Markdown, direct handovers and independently reviewed rework. |
+| [Autonomous team](examples/autonomous-team/README.md) | Model-driven delegation through A2A and MCP. |
+| [Repository team](examples/repository-team/README.md) | Five real agents, one Git worktree, executable verification. |
+| [Contract-driven repository team](examples/repository-team/README.md#contract-driven-mode-opt-in) | Living checklist, bounded continuation and independent verification. |
 
-| Example | Command | What it demonstrates |
-| --- | --- | --- |
-| [Three-agent discussion](#three-real-agents) | [native commands](#three-real-agents) | Three real read-only agents, shared notes and a verdict. [![Three-agent quickstart](https://github.com/tbrandenburg/agentiplex/actions/workflows/discussion-quickstart.yaml/badge.svg?branch=main)](https://github.com/tbrandenburg/agentiplex/actions/workflows/discussion-quickstart.yaml) |
-| [Three-agent contract](#contract-driven-collaboration) | [native command](#contract-driven-collaboration) | Same read-only agents, living acceptance criteria, independent review and durable continuation. |
-| [Actor-owned contract](#actor-owned-contract-direct-handovers) | [native commands](#actor-owned-contract-direct-handovers) | Three read-only agents, direct responsibility transfers and independently reviewed rework. |
-| [Engineering team](docs/DEMO.md) | `make demo-team` | Six simulated agents; deterministic communication, persistence and recovery. |
-| [Autonomous team](examples/autonomous-team/README.md) | [native commands](examples/autonomous-team/README.md) | Real model-driven delegation through A2A and MCP using synthetic fixtures. |
-| [Repository team](examples/repository-team/README.md) | [native commands](examples/repository-team/README.md) | Five real agents working on the same Git worktree, with implementation and executable verification. |
-| [Contract-driven repository team](examples/repository-team/README.md#contract-driven-mode-opt-in) | [approve and run](examples/repository-team/README.md#contract-driven-mode-opt-in) | Living checklist, bounded continuation, rework and independent verification. |
-
-The core is agent-runtime independent. The real-agent examples use an off-the-shelf
-A2A agent driver; any A2A agent can be registered instead. Setup, prerequisites and
-safety notes are in the [examples guide](examples/README.md). Real-agent runs
-may transmit project content to the selected model provider and give agents
-unrestricted shell access, so use a disposable environment.
+[All examples and safety notes](examples/README.md). Real-agent runs may send
+workspace content to model providers and grant shell access.
 
 ## Architecture
 
@@ -272,87 +262,75 @@ flowchart LR
     Agents -->|Optional MCP| API
 ```
 
-- **`agentiplexd`** owns the registry, queues, shared state, delivery workers and optional dashboard.
-- **`agentiplex`** administers the daemon remotely.
-- **Agent runtimes** own task execution, sessions, tools and workspace access.
-- **NATS JetStream** provides durable messaging and KV storage; use embedded or external NATS.
+**`agentiplexd`** owns the broker-backed registry, queues, shared state and delivery
+workers; **`agentiplex`** is a remote HTTP CLI. Independent runtimes execute tasks.
+NATS JetStream provides durable messaging and KV storage, embedded or external.
 
-Implemented in Go with the official [A2A Go SDK](https://github.com/a2aproject/a2a-go),
-[MCP Go SDK](https://github.com/modelcontextprotocol/go-sdk),
+Built in Go with the [A2A SDK](https://github.com/a2aproject/a2a-go),
+[MCP SDK](https://github.com/modelcontextprotocol/go-sdk),
 [AI Catalog SDK](https://github.com/Agent-Card/ai-catalog-go) and
 [NATS JetStream](https://docs.nats.io/nats-concepts/jetstream).
 
-Durable delivery is not exactly-once external execution. Ambiguous remote
-outcomes remain visible instead of being silently replayed. Parallel outbound
-operations are bounded by `agentiplexd --workers 4`; use one for serial execution.
-See [architecture](docs/ARCH.md), [collaboration](docs/COLLABORATION.md) and
-[lifecycle and state](docs/STATE.md) for the precise contracts.
+Durable delivery is not exactly-once external execution: ambiguous outcomes are
+visible rather than silently replayed. [Architecture](docs/ARCH.md) ·
+[Delivery lifecycle](docs/COLLABORATION.md) · [State](docs/STATE.md).
 
 ## Installation and deployment
 
-Download versioned native binaries and Helm packages from
-[GitHub Releases](https://github.com/tbrandenburg/agentiplex/releases), or build
-from source using `make build` (binaries in `bin/`).
+Download native binaries and Helm packages from [GitHub Releases](https://github.com/tbrandenburg/agentiplex/releases),
+or build with `make build` (outputs in `bin/`).
 
-| Deployment | Guide |
+| Deploy | Guide |
 | --- | --- |
-| Native daemon with embedded or external NATS | [Configuration and deployment](docs/DEPLOYMENT.md) |
-| OCI image and secure Docker Compose | [Container deployment](docs/DEPLOYMENT.md), [Compose fixture](examples/engineering-team/) |
-| Agents on other hosts (routed network/VPN, one daemon) | [Distributed deployment](docs/DEPLOYMENT.md#distributed-deployment-agents-on-other-hosts) |
-| Single-replica Kubernetes / Helm | [Helm chart](deploy/helm/agentiplex/) and [deployment guide](docs/DEPLOYMENT.md) |
+| Native daemon, embedded or external NATS | [Deployment](docs/DEPLOYMENT.md) |
+| OCI image / secure Docker Compose | [Deployment](docs/DEPLOYMENT.md#compose) · [Compose example](examples/engineering-team/) |
+| Agents on other hosts / VPN | [Distributed deployment](docs/DEPLOYMENT.md#distributed-deployment-agents-on-other-hosts) |
+| Single-replica Kubernetes | [Helm chart](deploy/helm/agentiplex/) |
 
-Agentiplex supports authenticated TLS deployments. Multiple replicas sharing
-one namespace are not supported.
+Secure mode uses distinct per-agent credentials, caller-scoped delivery access and
+idempotency keys, and server-attributed note authors. Shared state is not tenant
+isolation. Multiple daemons sharing one namespace are not supported.
+[Principal model, migration and security limits](docs/DEPLOYMENT.md).
+
+### Static registry
+
+Declare agents, groups and pools in YAML or register dynamically using the CLI/API.
+[Declarative provisioning](docs/DEPLOYMENT.md#static-registry-declarative-provisioning).
 
 ## Project status
 
-**v0.1 — MVP stabilization.** A2A and MCP collaboration, durable state, the dashboard
-and single-daemon deployment are implemented. AHP and ACP adapters are future
-work, as are distributed ownership, production high availability and per-agent
-or tenant isolation.
-
-Agentiplex is a collaboration layer, not a model runtime, workflow engine,
-filesystem sandbox or exactly-once execution system.
+**v0.1 — MVP stabilization.** Native A2A and MCP, durable state, dashboard and
+single-daemon deployment are implemented. AHP, ACP, distributed ownership, HA
+and tenant isolation are future work. Agentiplex is not a model runtime,
+workflow engine, filesystem sandbox or exactly-once execution system.
 
 ## Documentation
 
 | Topic | Guide |
 | --- | --- |
-| Product direction and scope | [Requirements](docs/PRD.md) · [Architecture](docs/ARCH.md) |
-| Protocols | [Native A2A](docs/A2A.md) · [MCP](docs/MCP.md) |
-| Collaboration and operations | [Messaging, groups and pools](docs/COLLABORATION.md) · [Lifecycle and state](docs/STATE.md) |
-| Dashboard and deployment | [Dashboard](docs/DASHBOARD.md) · [Secure deployment](docs/DEPLOYMENT.md) |
-| Verification and history | [Foundation](docs/FOUNDATION.md) · [Engineering demo](docs/DEMO.md) |
-| Maintainer tasks | [Release and packaging](docs/RELEASE.md) |
-
-For workflow categories, triggers and local equivalents, see [CI workflows](docs/CI.md).
+| Direction and design | [Requirements](docs/PRD.md) · [Architecture](docs/ARCH.md) |
+| Protocols | [A2A](docs/A2A.md) · [MCP](docs/MCP.md) |
+| Collaboration | [Messaging, groups and pools](docs/COLLABORATION.md) · [Lifecycle and state](docs/STATE.md) |
+| Operations | [Dashboard](docs/DASHBOARD.md) · [Secure deployment](docs/DEPLOYMENT.md) |
+| Verification | [Foundation](docs/FOUNDATION.md) · [Demo](docs/DEMO.md) · [CI](docs/CI.md) |
+| Maintainers | [Release and packaging](docs/RELEASE.md) |
 
 ## Contributing
 
-The public Go library lives in `core/` (`github.com/tbrandenburg/agentiplex/core`). This replaces the former root-package import; the module path and CLI/daemon interfaces are unchanged. See [architecture](docs/ARCH.md#9-repository-layout).
-
-Bug reports and focused improvements are welcome. Open an
-[issue](https://github.com/tbrandenburg/agentiplex/issues) or submit a
-[pull request](https://github.com/tbrandenburg/agentiplex/pulls).
-For larger changes, discuss the proposed scope and verification plan first.
+Open an [issue](https://github.com/tbrandenburg/agentiplex/issues) or
+[pull request](https://github.com/tbrandenburg/agentiplex/pulls). For larger changes,
+discuss scope and verification first.
 
 ```sh
-make help       # All development and example targets
-make fmt        # Format tracked Go source
-make build      # Build daemon and CLI
-make check      # Go tests, vet and release-script tests
-make demo-check # Deterministic end-to-end demo
+make help
+make build
+make check
+make demo-check
 ```
 
-For focused integration checks, use `make examples-check`,
-`make repository-provision-check` or the explicitly opt-in `make live-check`.
-The Go dependencies are pinned in `go.mod` and `go.sum`.
-Make is the single development entry point.
-
-See [release and packaging](docs/RELEASE.md) for publishing a version.
-To stop monitoring an unresolved accepted task, follow the operator procedure
-in the [deployment guide](docs/DEPLOYMENT.md); never assume an uncertain outcome
-is safe to replay.
+The public Go library is `github.com/tbrandenburg/agentiplex/core`.
+See [repository layout](docs/ARCH.md#9-repository-layout) and
+[CI workflows](docs/CI.md) for focused checks.
 
 ## License
 
