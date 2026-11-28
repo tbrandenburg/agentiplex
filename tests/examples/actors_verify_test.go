@@ -62,8 +62,8 @@ func TestActorREADMECommands(t *testing.T) {
 		}
 		found := false
 		for _, tool := range tools {
-			if tool == "agentiplex_send_message:*" { found = true }
-			if tool == "agentiplex_ask:*" || tool == "agentiplex_resolve_request:*" {
+			if tool == "send_message" { found = true }
+			if tool == "ask" || tool == "resolve_request" {
 				t.Fatal("unexpected explicit coordinator grant", name, tool)
 			}
 		}
@@ -231,6 +231,61 @@ func TestActorTransitionRejectsInvalidOwnership(t *testing.T) {
 		t.Run(tc.name,func(t *testing.T){
 			bad:=clone(checkpoint);tc.mutate(&bad)
 			if verifyActorTransition(first,bad)==nil{t.Fatal("accepted invalid transition")}
+		})
+	}
+}
+
+func TestActorClosureAndReceipts(t *testing.T) {
+	raw, err := os.ReadFile("../../examples/repository-team/contract.actors.json")
+	if err != nil { t.Fatal(err) }
+	for _, order := range [][]string{{"tester","quality"},{"quality","tester"}} {
+		t.Run(strings.Join(order,"-"),func(t *testing.T){
+			var a actorContractState
+			if err:=json.Unmarshal(raw,&a);err!=nil {t.Fatal(err)}
+			const objective="approved objective"
+			digest:=fmt.Sprintf("%x",sha256.Sum256([]byte("candidate")))
+			clone:=func()actorContractState{
+				b,_:=json.Marshal(a);var x actorContractState
+				if err:=json.Unmarshal(b,&x);err!=nil {t.Fatal(err)}
+				return x
+			}
+			advance:=func(to string, update func(*actorContractState)){
+				n:=clone()
+				if update!=nil {update(&n)}
+				n.Handoffs=append(n.Handoffs,actorHandoff{len(n.Handoffs)+1,a.Owner,to,"open criterion"})
+				n.Owner=to
+				if err:=verifyActorTransition(a,n);err!=nil {t.Fatal(err)}
+				a=n
+			}
+			advance("tester",nil)
+			advance("developer",func(n *actorContractState){
+				n.Criteria[0].Status,n.Criteria[0].Turn,n.Criteria[0].Evidence="verified",1,"go test -count=1 ./... exit 1 TestClamp"
+				n.Criteria[2].Status,n.Criteria[2].Turn,n.Criteria[2].Evidence="rework",1,n.Criteria[0].Evidence
+			})
+			advance(order[0],func(n *actorContractState){
+				n.Criteria[1].Status,n.Criteria[1].Turn,n.Criteria[1].Evidence,n.Criteria[1].Candidate="verified",2,"actual diff",digest
+			})
+			review:=func(n *actorContractState){
+				i:=2
+				if a.Owner=="quality" {i=3}
+				n.Criteria[i].Status,n.Criteria[i].Turn,n.Criteria[i].Evidence,n.Criteria[i].Candidate="verified",len(a.Handoffs),"go test -count=1 ./... exit 0; reviewed candidate",digest
+			}
+			advance(order[1],review)
+			advance("pm",review)
+			closed:=clone();closed.Status="done"
+			if err:=verifyActorTransition(a,closed);err!=nil {t.Fatal(err)}
+			result:=json.RawMessage(`{"parts":[{"text":"result"}]}`)
+			ds:=[]core.Delivery{{ID:actorReceiptID("actors-objective"),Target:"pm",Text:objective,State:"completed",Result:result}}
+			for _,h:=range closed.Handoffs{
+				ds=append(ds,core.Delivery{ID:actorReceiptID(fmt.Sprintf("actors-handoff-%d",h.Seq)),Target:h.To,Text:actorMessage(h.Seq),State:"completed",Result:result})
+			}
+			if err:=verifyActorReceipts(closed,ds,objective);err!=nil {t.Fatal(err)}
+			ds[1].State="uncertain"
+			if verifyActorReceipts(closed,ds,objective)==nil {t.Fatal("accepted uncertain delivery")}
+			ds[1].State="completed";ds[1].ID=ds[0].ID
+			if verifyActorReceipts(closed,ds,objective)==nil {t.Fatal("accepted duplicate receipt")}
+			closed.Criteria[2].Candidate=fmt.Sprintf("%x",sha256.Sum256([]byte("stale")))
+			if verifyActorFinal(closed)==nil {t.Fatal("accepted stale verification")}
 		})
 	}
 }
