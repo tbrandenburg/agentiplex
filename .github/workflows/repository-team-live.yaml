@@ -3,8 +3,10 @@ on:
   pull_request:
     paths:
       - 'examples/repository-team/**'
-      - 'tests/examples/repository-team/**'
-      - 'tests/examples/procs.py'
+      - 'tests/examples/**'
+      - 'Makefile'
+      - 'go.mod'
+      - 'go.sum'
       - '.github/workflows/repository-team-live.yaml'
   workflow_dispatch:
 permissions:
@@ -50,4 +52,5 @@ jobs:
           trap 'rm -rf "$home"' EXIT
           env -i PATH="$PATH" HOME="$home" LANG=C.UTF-8 USER="$(id -un)" \
             GOMODCACHE="$(go env GOMODCACHE)" GOCACHE="$(go env GOCACHE)" \
-            python3 -B tests/examples/repository-team/provision_check.py --live "$OBJECTIVE" --model opencode/big-pickle
+            go test -count=1 -v -timeout 45m ./tests/examples -run '^TestLiveTeam
+ -args -live "$OBJECTIVE" -model opencode/big-pickle

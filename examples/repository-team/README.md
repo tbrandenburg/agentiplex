@@ -107,11 +107,9 @@ an agent, not agent execution (see [A2A](../../docs/A2A.md)). Live acceptance ha
 For a patch-only objective, inspect the working-tree diff as below. For an authorized integration objective, record the starting commit (`BASE=$(git -C "$W" rev-parse HEAD)`) before submission and inspect `git -C "$W" log --graph --oneline "$BASE"..HEAD` and `git -C "$W" diff "$BASE" HEAD` afterwards; a clean merged tree has no uncommitted diff.
 ```sh
 git -C $W status --short && git -C $W diff HEAD     # the actual change; review untracked files separately
-python3 -B tests/examples/repository-team/verify.py --workspace $W --accept-run-code -- <your project's test command>
+(cd "$W" && go test ./...) # example: independently run the project's own trusted checks
 ```
-`verify.py` is an optional independent check: it runs **your** test command (an explicit argv, not a model-generated one)
-in the workspace and fails on a nonzero exit, timeout or a change of the Git-visible state. It executes repository code
-as your user; run it only after reviewing the diff. Agent-reported test results are not attested; review them.
+Run your own approved test command independently, not a command supplied by an agent. Inspect Git status and diff before and after the check; do not accept changes from the verification command without review. Executing repository code runs as your OS user. The automated synthetic-fixture acceptance tests perform the same checks in Go, including a bounded command timeout and Git-state comparison. Agent-reported results are not attested.
 
 Delivery records show which recipient was asked and whether it completed, not which MCP tool was used or whether a command passed. In trusted-local mode note topics are not authenticated authors; the system prompt is not a security boundary.
 
@@ -138,9 +136,24 @@ Full real-model acceptance is separate, in the path-filtered `Repository team li
 
 ```sh
 make dashboard-assets
-python3 -B tests/examples/repository-team/provision_check.py --live docs --model opencode/big-pickle
-python3 -B tests/examples/repository-team/provision_check.py --live defect --model opencode/big-pickle
-python3 -B tests/examples/repository-team/provision_check.py --live integration --model opencode/big-pickle
+go test -count=1 -v -timeout 45m ./tests/examples -run '^TestLiveTeamdocs -model opencode/big-pickle
+python3 -B tests/examples/repository-team/provision_check.py --live defect -model opencode/big-pickle
+python3 -B tests/examples/repository-team/provision_check.py --live integration -model opencode/big-pickle
+```
+
+A failed or timed-out run is not successful collaboration. Inspect the retained private evidence, actual Git diff and observed checks. These live scenarios are skipped by ordinary `make check`; the provider-free Go verifier cases still run there.
+ -args -live docs -model opencode/big-pickle
+go test -count=1 -v -timeout 45m ./tests/examples -run '^TestLiveTeamdefect -model opencode/big-pickle
+python3 -B tests/examples/repository-team/provision_check.py --live integration -model opencode/big-pickle
+```
+
+A failed or timed-out run is not successful collaboration. Inspect the retained private evidence, actual Git diff and observed checks. These live scenarios are not part of `make check`.
+ -args -live defect -model opencode/big-pickle
+go test -count=1 -v -timeout 45m ./tests/examples -run '^TestLiveTeamintegration -model opencode/big-pickle
+```
+
+A failed or timed-out run is not successful collaboration. Inspect the retained private evidence, actual Git diff and observed checks. These live scenarios are not part of `make check`.
+ -args -live integration -model opencode/big-pickle
 ```
 
 A failed or timed-out run is not successful collaboration. Inspect the retained private evidence, actual Git diff and observed checks. These live scenarios are not part of `make check`.

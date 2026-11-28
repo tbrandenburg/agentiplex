@@ -34,14 +34,14 @@ echo "Release $latest -> $next at $(git rev-parse --short HEAD)"
 chart=deploy/helm/agentiplex/Chart.yaml
 version=${next#v}
 git ls-files --error-unmatch "$chart" >/dev/null
-python3 "$script_dir/chart-version.py" preview "$version"
+go run "$script_dir/chart-version.go" preview "$version"
 if [[ "${1:-}" == --dry-run ]]; then exit 0; fi
-python3 "$script_dir/chart-version.py" update "$version"
+go run "$script_dir/chart-version.go" update "$version"
 if ! git diff --quiet -- "$chart"; then
   git add -- "$chart"
   git commit -m "chore(release): $next" -- "$chart"
 fi
-python3 "$script_dir/chart-version.py" check "$version"
+go run "$script_dir/chart-version.go" check "$version"
 [[ -z "$(git status --porcelain)" ]] || die 'Release requires a clean tree after metadata commit'
 git tag -a "$next" -m "Release $next"
 if ! git push --atomic origin HEAD:refs/heads/main "refs/tags/$next:refs/tags/$next"; then

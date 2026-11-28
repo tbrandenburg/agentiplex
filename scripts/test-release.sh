@@ -37,8 +37,8 @@ bump=MINOR bash "$script"
 grep -qx 'version: 0.1.0' "$chart"
 grep -qx 'appVersion: "0.1.0"' "$chart"
 grep -qx 'description: Keep this metadata unchanged' "$chart"
-python3 "$script_dir/chart-version.py" check 0.1.0
-if python3 "$script_dir/chart-version.py" check 0.1.1; then exit 1; fi
+go run "$script_dir/chart-version.go" check 0.1.0
+if go run "$script_dir/chart-version.go" check 0.1.1; then exit 1; fi
 bump=PATCH bash "$script" --dry-run | grep 'v0.1.0 -> v0.1.1' >/dev/null
 bump=MAJOR bash "$script" --dry-run | grep 'v0.1.0 -> v1.0.0' >/dev/null
 git tag v0.1.1
@@ -61,7 +61,7 @@ git reset --hard -q origin/main
 # Malformed or duplicate version fields must fail without editing the chart.
 printf 'version: 0.1.0\n' >> "$chart"
 before=$(git hash-object "$chart")
-if python3 "$script_dir/chart-version.py" update 0.1.1; then exit 1; fi
+if go run "$script_dir/chart-version.go" update 0.1.1; then exit 1; fi
 [[ "$(git hash-object "$chart")" == "$before" ]]
 git restore "$chart"
 
@@ -77,7 +77,7 @@ if bump=PATCH bash "$script"; then exit 1; fi
 [[ "$(git --git-dir="$tmp/remote.git" rev-parse main)" == "$before" ]]
 if git --git-dir="$tmp/remote.git" show-ref --verify --quiet refs/tags/v0.1.1; then exit 1; fi
 [[ "$(git rev-parse 'v0.1.1^{commit}')" == "$(git rev-parse HEAD)" ]]
-python3 "$script_dir/chart-version.py" check 0.1.1
+go run "$script_dir/chart-version.go" check 0.1.1
 [[ -z "$(git status --porcelain)" ]]
 # Only the isolated test repository is reset; real release failures retain local state.
 git tag -d v0.1.1 >/dev/null
@@ -85,16 +85,16 @@ git reset --hard -q "$before"
 rm "$tmp/remote.git/hooks/update"
 
 bump=PATCH bash "$script"
-python3 "$script_dir/chart-version.py" check 0.1.1
+go run "$script_dir/chart-version.go" check 0.1.1
 bump=MINOR bash "$script"
-python3 "$script_dir/chart-version.py" check 0.2.0
+go run "$script_dir/chart-version.go" check 0.2.0
 bump=MAJOR bash "$script"
-python3 "$script_dir/chart-version.py" check 1.0.0
+go run "$script_dir/chart-version.go" check 1.0.0
 [[ "$(git --git-dir="$tmp/remote.git" rev-parse main)" == "$(git rev-parse 'v1.0.0^{commit}')" ]]
 [[ -z "$(git status --porcelain)" ]]
 
 # Already synchronized metadata should not create an empty release commit.
-python3 "$script_dir/chart-version.py" update 1.0.1
+go run "$script_dir/chart-version.go" update 1.0.1
 git add "$chart"
 git commit -qm 'Prepare metadata'
 git push -q origin main
