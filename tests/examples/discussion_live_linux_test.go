@@ -20,11 +20,6 @@ func runDiscussionQuickstart(t *testing.T) {
 	blocks := discussionCommands(t)
 	l := newLiveRun(t, "discussion-team")
 	l.api = "http://127.0.0.1:8080"
-	for i, v := range l.env {
-		if strings.HasPrefix(v, "PATH=") {
-			l.env[i] = "PATH="+filepath.Join(l.root, "bin")+string(os.PathListSeparator)+strings.TrimPrefix(v, "PATH=")
-		}
-	}
 	// The workflow ran the README's build/install block. The test deliberately
 	// does not install global packages on an operator's local machine.
 	for _, name := range []string{"agentiplex", "agentiplexd"} {
@@ -32,10 +27,18 @@ func runDiscussionQuickstart(t *testing.T) {
 			t.Fatal("run the README setup first: ", err)
 		}
 	}
-	if out, err := commandOutput(l.root, 30*time.Second, l.env, "bash", "-ec", "umask 077\n"+strings.Join(blocks[1], "\n")); err != nil {
-		t.Fatalf("README private copy: %v: %.1000q", err, out)
+	// Execute the documented cd in a shell and use that actual directory for
+	// every subsequent terminal. The test's private HOME isolates daemon
+	// storage and runtime state; no copied example or PATH override is needed.
+	out, err := commandOutput(l.root, 30*time.Second, l.env, "bash", "-ec", blocks[1][0]+"\npwd -P")
+	if err != nil {
+		t.Fatalf("README example directory: %v: %.1000q", err, out)
 	}
-	dir := filepath.Join(l.run, "home", "agentiplex-discussion")
+	dir := strings.TrimSpace(string(out))
+	wantDir, err := filepath.EvalSymlinks(l.example)
+	if err != nil || dir != wantDir {
+		t.Fatalf("README directory %q differs from checkout example %q: %v", dir, wantDir, err)
+	}
 	for _, addr := range []string{"127.0.0.1:8080", "127.0.0.1:8001", "127.0.0.1:8002", "127.0.0.1:8003"} {
 		assertFreeTeamPort(t, addr)
 	}

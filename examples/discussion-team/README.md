@@ -19,7 +19,9 @@ configuration or orchestration code is needed.
   use only public or synthetic topics in a trusted, disposable environment.
   A read-only profile is not an OS sandbox. Policies must be outside the
   workspace, operator-owned, canonical and not group/world-writable.
-- For another discussion, use a fresh private copy and storage, or choose
+- Run directly from a trusted, disposable checkout. The daemon stores data in
+  the explicit directory under HOME, not in the agent workspace. For another
+  discussion, choose a fresh storage path and restart the daemon, or choose
   a different note namespace in all role prompts and use a new idempotency key.
   Repeating an identical key/payload while retained reattaches to the same
   work; it does not start a new discussion.
@@ -78,8 +80,9 @@ promised. This is methodology-level evidence, not full Jarvis/Syspilot parity.
 
 The [dedicated workflow](../../.github/workflows/discussion-quickstart.yaml)
 installs the pinned runtime and builds the binaries. The opt-in Go test reads
-the actual setup-copy, daemon, gateway, registration, send/wait and notes
-commands from the main README, runs them in an isolated private home and
+the actual setup-directory, daemon, gateway, registration, send/wait and notes
+commands from the main README, runs directly in the checkout example with an
+isolated private HOME and
 verifies the durable deliveries and notes plus readable CLI output.
 It requires real results from the lead, expert and critic, and no failed
 or pending deliveries. The same live test then executes the until-done command from the main README, checks the recorded incomplete checkpoint, multiple coordinator activations, distinct expert and critic evidence before and after revision, and explicit final resolution. The same agents then execute the actor-owned commands and the observer checks every Markdown revision, immutable criterion labels, ownership of checkbox changes, evidence-backed checks, direct expert-to-critic-to-expert rework, accepted current draft and all distinct ordinary delivery receipts, without scheduling any work. Startup alone is not a pass. It does not attest
