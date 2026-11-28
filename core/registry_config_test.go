@@ -50,3 +50,35 @@ func TestRegistryCredentialMerging(t *testing.T){
 	if _,err=r.AgentTokenFiles(map[string]string{"pm":"/in/other"},false);err==nil{t.Fatal("agent credentialed twice accepted")}
 	if _,err=r.AgentTokenFiles(nil,true);err==nil{t.Fatal("missing token_file accepted in secure mode")}
 }
+
+func TestRegistryOutboundCredentialOriginConflicts(t *testing.T) {
+	dir := t.TempDir()
+	a, b, same := filepath.Join(dir, "a"), filepath.Join(dir, "b"), filepath.Join(dir, "same")
+	for p, value := range map[string]string{a: strings.Repeat("a", 48), b: strings.Repeat("b", 48), same: strings.Repeat("a", 48)} {
+		if err := os.WriteFile(p, []byte(value), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	r := Registry{Agents: map[string]AgentSpec{"pm": {URL: "https://agent.example/card", OutboundTokenFile: a}}}
+	for _, existing := range []map[string]string{
+		{"https://Agent.example": a, "https://agent.example:443/": b},
+		{"https://agent.example/card": a},
+		{"https://agent.example:443": b},
+		{"https://agent.example": filepath.Join(dir, "missing")},
+	} {
+		out, err := r.OutboundTokenFiles(existing)
+		if err == nil || out != nil {
+			t.Fatal("ambiguous or invalid credentials did not fail closed")
+		}
+	}
+	out, err := r.OutboundTokenFiles(map[string]string{"https://Agent.example:443/": same, "https://agent.example": a})
+	if err != nil || len(out) != 1 || out["https://agent.example:443"] != same {
+		t.Fatal("same credential aliases did not merge deterministically")
+	}
+	for _, raw := range []string{"not-a-url", "http://agent.example", "https://agent.example/?q=1"} {
+		r.Agents["pm"] = AgentSpec{URL: raw, OutboundTokenFile: a}
+		if out, err := r.OutboundTokenFiles(nil); err == nil || out != nil {
+			t.Fatal("invalid agent URL accepted")
+		}
+	}
+}

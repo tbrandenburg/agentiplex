@@ -39,7 +39,7 @@ delivery:
   retention: 168h # terminal deliveries are removed this long after their last update; also the idempotency-key/messageId retry window (a key is a new operation afterwards); range 5m–3650d
   allowed_origins: [] # loopback allowed; explicit non-loopback HTTP(S) origins
   ca_file: ""
-  token_files: {} # map approved HTTPS origins to mounted bearer credential files
+  token_files: {} # approved HTTPS origins (no endpoint paths); aliases must use the same readable token
 
 observability:
   dashboard: true # read-only UI; trusted local use only
