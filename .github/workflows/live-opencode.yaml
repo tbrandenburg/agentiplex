@@ -1,4 +1,4 @@
-name: Live example
+name: 'Examples / Live / Hybrid autonomous team'
 on:
   push:
     branches: [main]
