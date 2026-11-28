@@ -95,7 +95,8 @@ func TestPoliciesAreLeastPrivilegeAndOnlyCoordinatorDelegates(t *testing.T) {
 				}
 			}
 			for _, d := range delegation {
-				if slices.Contains(tools, d) != (name == "coordinator") {
+				want := name == "coordinator" && (ex != "repository-team" || d == "ask")
+				if slices.Contains(tools, d) != want {
 					t.Fatalf("%s/%s: delegation tool %s grant mismatch", ex, name, d)
 				}
 			}
