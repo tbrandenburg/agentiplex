@@ -46,6 +46,7 @@ func (b *Bus) WaitDelivery(ctx context.Context, id string) (Delivery, error) {
 	wait := func(id string, done func(string) bool) (Delivery, error) {
 		return awaitTerminal(ctx, id, func() (Delivery, error) { return b.rawDelivery(id) }, b.watchDelivery, 500*time.Millisecond, done)
 	}
+	if d.Kind == "until-done" { if _,err:=wait(id,terminalState);err!=nil{return Delivery{},err};return b.DeliveryFor(ctx,id) }
 	if d.Kind != "broadcast" { return wait(id, terminalState) }
 	manifest, err := wait(id, func(state string) bool { return state == "broadcast-admitted" })
 	if err != nil { return Delivery{}, err }

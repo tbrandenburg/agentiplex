@@ -18,8 +18,12 @@ import (
 // returns the same delivery while the record is retained.
 func(b *Bus) Send(ctx context.Context,target,text,key string)(Delivery,error){
 	if !validKey(key){return Delivery{},ErrInvalid}
-	h:=sha256.Sum256([]byte(scopedKey(callerID(ctx),key)))
-	return b.sendWithID(ctx,target,text,hex.EncodeToString(h[:]),"")
+	return b.sendWithID(ctx,target,text,sendID(callerID(ctx),key),"")
+}
+
+func sendID(caller,key string)string {
+ h:=sha256.Sum256([]byte(scopedKey(caller,key)))
+ return hex.EncodeToString(h[:])
 }
 
 func validKey(key string)bool{return strings.TrimSpace(key)!=""&&len(key)<=256}
@@ -40,6 +44,7 @@ func(b *Bus) sendChild(ctx context.Context,target,text,id,ingressMessageID,paren
 	}
 	if !errors.Is(err,ErrNotFound){return Delivery{},err}
 	a,err:=b.Agent(target);if err!=nil{return Delivery{},err}
+	if err=b.guardFollow(target,a.Endpoint,false);err!=nil{return Delivery{},err}
 	d:=Delivery{ID:id,Caller:caller,ParentID:parent,IngressMessageID:ingressMessageID,Target:target,Text:text,Endpoint:a.Endpoint,CardURL:a.CardURL,State:"preparing",UpdatedAt:time.Now().UTC()}
 	raw,err:=json.Marshal(d);if err!=nil{return Delivery{},err}
 	if _,err=b.store.Deliveries.Create(id,raw);err!=nil{return Delivery{},err}
