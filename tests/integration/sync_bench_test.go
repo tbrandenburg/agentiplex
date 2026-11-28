@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/tbrandenburg/agentiplex"
+	"github.com/tbrandenburg/agentiplex/core"
 )
 
 // BenchmarkBrokerSync compares fsync-every-write with the relaxed 2m interval:
@@ -15,9 +15,9 @@ import (
 func BenchmarkBrokerSync(b *testing.B){
 	for _,mode:=range []struct{name string;every time.Duration}{{"always",0},{"interval-2m",2*time.Minute}}{
 		b.Run(mode.name,func(b *testing.B){
-			cfg:=agentiplex.DefaultConfig()
+			cfg:=core.DefaultConfig()
 			cfg.Storage=b.TempDir();cfg.Timeout=4*time.Second;cfg.RetryDelay=time.Second;cfg.BrokerSync=mode.every;cfg.HealthInterval=0
-			bus,err:=agentiplex.Open(context.Background(),cfg)
+			bus,err:=core.Open(context.Background(),cfg)
 			if err!=nil{b.Fatal(err)}
 			defer bus.Close()
 			a:=&agentService{};a.start(&testing.T{},false);defer a.stop()

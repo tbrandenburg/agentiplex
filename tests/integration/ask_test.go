@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
-	"github.com/tbrandenburg/agentiplex"
+	"github.com/tbrandenburg/agentiplex/core"
 	"github.com/tbrandenburg/agentiplex/internal/api"
 	"github.com/tbrandenburg/agentiplex/internal/daemon"
 )
@@ -44,7 +44,7 @@ func mustAsk(t *testing.T,c *mcp.ClientSession,args map[string]any)askResult{
 	return out
 }
 
-func askSetup(t *testing.T,poll time.Duration)(*agentiplex.Bus,*mcp.ClientSession,*taskAgent,agentiplex.Config){
+func askSetup(t *testing.T,poll time.Duration)(*core.Bus,*mcp.ClientSession,*taskAgent,core.Config){
 	t.Helper()
 	cfg:=config(t);cfg.HealthInterval=0;cfg.TaskPollInterval=poll
 	b:=open(t,cfg);a:=newTaskAgent(t)

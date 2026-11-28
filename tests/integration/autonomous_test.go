@@ -14,7 +14,7 @@ import (
 	"github.com/a2aproject/a2a-go/v2/a2a"
 	"github.com/a2aproject/a2a-go/v2/a2asrv"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
-	"github.com/tbrandenburg/agentiplex"
+	"github.com/tbrandenburg/agentiplex/core"
 	"github.com/tbrandenburg/agentiplex/internal/api"
 )
 
@@ -44,9 +44,9 @@ func TestActiveA2AAgentDelegatesThroughMCP(t *testing.T){
 			if err!=nil{return err};if res.IsError{return fmt.Errorf("%s returned tool error",name)}
 			raw,err:=json.Marshal(res.StructuredContent);if err!=nil{return err};return json.Unmarshal(raw,out)
 		}
-		var found struct{Agents []agentiplex.Agent}
+		var found struct{Agents []core.Agent}
 		if err=call("discover_agents",map[string]any{"skill":"architecture"},&found);err!=nil||len(found.Agents)!=1{return "",fmt.Errorf("discover worker: %v",err)}
-		var d agentiplex.Delivery
+		var d core.Delivery
 		if err=call("send_message",map[string]any{"target":found.Agents[0].ID,"text":"fixture review","idempotencyKey":"nested-fixture"},&d);err!=nil{return "",err}
 		id:=d.ID
 		for{
@@ -56,7 +56,7 @@ func TestActiveA2AAgentDelegatesThroughMCP(t *testing.T){
 			select{case<-ctx.Done():return "",ctx.Err();case<-time.After(100*time.Millisecond):}
 		}
 		if !strings.Contains(string(d.Result),"SIMULATED architect"){return "",fmt.Errorf("missing real transport fixture response")}
-		var entry agentiplex.StateEntry
+		var entry core.StateEntry
 		if err=call("put_state",map[string]any{"namespace":"review","key":"pm","value":id,"revision":0},&entry);err!=nil{return "",err}
 		return id,nil
 	}

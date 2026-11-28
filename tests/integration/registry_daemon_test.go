@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/tbrandenburg/agentiplex"
+	"github.com/tbrandenburg/agentiplex/core"
 )
 
 func TestDaemonStaticRegistryReadinessAndFailure(t *testing.T){
@@ -24,9 +24,9 @@ func TestDaemonStaticRegistryReadinessAndFailure(t *testing.T){
 		return p
 	}
 	api,cmd:=startDaemon(t,bin,conf("",a.URL()))
-	var agents []agentiplex.Agent
+	var agents []core.Agent
 	if c:=call(t,"GET",api+"/api/v1/agents",nil,&agents);c!=200||len(agents)!=2{t.Fatalf("ready daemon without full roster: %d %d",c,len(agents))}
-	var team agentiplex.Collection
+	var team core.Collection
 	if c:=call(t,"GET",api+"/api/v1/groups/team",nil,&team);c!=200||len(team.Members)!=2{t.Fatalf("group: %d %+v",c,team)}
 	_ = cmd.Process.Kill();_ = cmd.Wait()
 

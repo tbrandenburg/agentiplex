@@ -16,7 +16,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/tbrandenburg/agentiplex"
+	"github.com/tbrandenburg/agentiplex/core"
 	"github.com/tbrandenburg/agentiplex/internal/simagent"
 	"go.yaml.in/yaml/v3"
 )
@@ -54,7 +54,7 @@ func policyResources(t *testing.T, example, name string) (string, []string) {
 
 func TestTeamYAMLStrictRegistryAndExplicitCoordinator(t *testing.T) {
 	for _, ex := range []string{"repository-team", "autonomous-team"} {
-		reg, err := agentiplex.ParseRegistry(read(t, ex, "team.yaml"))
+		reg, err := core.ParseRegistry(read(t, ex, "team.yaml"))
 		if err != nil {
 			t.Fatalf("%s: %v", ex, err)
 		}
@@ -154,21 +154,21 @@ func TestRealDaemonStartsEachTeamYAMLWithSimulatedAgents(t *testing.T) {
 			case <-time.After(30 * time.Second):
 				t.Fatal("daemon did not become ready")
 			}
-			var got []agentiplex.Agent
+			var got []core.Agent
 			getJSON(t, api+"/api/v1/agents", &got)
 			if len(got) != len(agents) {
 				t.Fatalf("registered %d agents, want %d", len(got), len(agents))
 			}
-			reg, _ := agentiplex.ParseRegistry(read(t, ex, "team.yaml"))
+			reg, _ := core.ParseRegistry(read(t, ex, "team.yaml"))
 			for name, members := range reg.Groups {
-				var c agentiplex.Collection
+				var c core.Collection
 				getJSON(t, api+"/api/v1/groups/"+name, &c)
 				if len(c.Members) != len(members) {
 					t.Fatalf("group %s: %+v", name, c)
 				}
 			}
 			for name, members := range reg.Pools {
-				var c agentiplex.Collection
+				var c core.Collection
 				getJSON(t, api+"/api/v1/pools/"+name, &c)
 				if len(c.Members) != len(members) {
 					t.Fatalf("pool %s: %+v", name, c)
@@ -201,7 +201,7 @@ func sendAndComplete(t *testing.T, api, target string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var d agentiplex.Delivery
+	var d core.Delivery
 	_ = json.NewDecoder(resp.Body).Decode(&d)
 	resp.Body.Close()
 	if resp.StatusCode/100 != 2 || d.ID == "" {
@@ -217,7 +217,7 @@ func sendAndComplete(t *testing.T, api, target string) {
 }
 
 func TestRepositoryTeamHasRolePerAgentAndBoundedObjective(t *testing.T) {
-	reg, err := agentiplex.ParseRegistry(read(t, "repository-team", "team.yaml"))
+	reg, err := core.ParseRegistry(read(t, "repository-team", "team.yaml"))
 	if err != nil {
 		t.Fatal(err)
 	}

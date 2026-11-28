@@ -13,7 +13,7 @@ import (
 	"github.com/a2aproject/a2a-go/v2/a2a"
 	"github.com/a2aproject/a2a-go/v2/a2aclient"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
-	"github.com/tbrandenburg/agentiplex"
+	"github.com/tbrandenburg/agentiplex/core"
 	"github.com/tbrandenburg/agentiplex/internal/api"
 	"github.com/tbrandenburg/agentiplex/internal/dashboard"
 	"github.com/tbrandenburg/agentiplex/internal/security"
@@ -25,7 +25,7 @@ type identityEnv struct {
 	public string
 }
 
-func identityServer(t *testing.T,b *agentiplex.Bus,agents map[string]string,operator,viewer string)*identityEnv{
+func identityServer(t *testing.T,b *core.Bus,agents map[string]string,operator,viewer string)*identityEnv{
 	t.Helper()
 	dir:=t.TempDir()
 	files:=map[string]string{}
@@ -51,10 +51,10 @@ func (e *identityEnv) call(method,path,token,body string,want int)string{
 	return string(raw)
 }
 
-func (e *identityEnv) send(token,key,text string)agentiplex.Delivery{
+func (e *identityEnv) send(token,key,text string)core.Delivery{
 	e.t.Helper()
 	body,_:=json.Marshal(map[string]string{"target":"tester-1","text":text,"idempotencyKey":key})
-	var d agentiplex.Delivery
+	var d core.Delivery
 	if err:=json.Unmarshal([]byte(e.call("POST","/api/v1/messages",token,string(body),202)),&d);err!=nil{e.t.Fatal(err)}
 	return d
 }
@@ -119,7 +119,7 @@ func TestPerAgentIdentityIsolation(t *testing.T){
 
 	// Broadcast children inherit the caller.
 	body:=`{"target":"team","text":"fan","idempotencyKey":"bc"}`
-	var parent agentiplex.Delivery
+	var parent core.Delivery
 	if err:=json.Unmarshal([]byte(e.call("POST","/api/v1/broadcasts",alphaTok,body,202)),&parent);err!=nil{t.Fatal(err)}
 	view:=wait(t,b,parent.ID,"completed")
 	for _,c:=range view.Children{
@@ -127,7 +127,7 @@ func TestPerAgentIdentityIsolation(t *testing.T){
 		e.call("GET","/api/v1/deliveries/"+c.ID,betaTok,"",404)
 		if child,_:=b.Delivery(c.ID);child.Caller!="alpha"{t.Fatalf("child caller %q",child.Caller)}
 	}
-	var other agentiplex.Delivery
+	var other core.Delivery
 	if err:=json.Unmarshal([]byte(e.call("POST","/api/v1/broadcasts",betaTok,body,202)),&other);err!=nil||other.ID==parent.ID{t.Fatalf("broadcast key shared across principals: %v",err)}
 	e.call("GET","/api/v1/deliveries/"+parent.ID,betaTok,"",404)
 
@@ -151,8 +151,8 @@ func TestPerAgentIdentityIsolation(t *testing.T){
 	// MCP: scoped keys, own-result reads only, server-set note author regardless of claims.
 	ma,mb:=e.mcp(alphaTok),e.mcp(betaTok)
 	args:=map[string]any{"target":"tester-1","text":"mcp text","idempotencyKey":"mk"}
-	ra1:=decodeMCP[agentiplex.Delivery](t,mcpCall(t,ma,"send_message",args,false))
-	rb1:=decodeMCP[agentiplex.Delivery](t,mcpCall(t,mb,"send_message",args,false))
+	ra1:=decodeMCP[core.Delivery](t,mcpCall(t,ma,"send_message",args,false))
+	rb1:=decodeMCP[core.Delivery](t,mcpCall(t,mb,"send_message",args,false))
 	if ra1.ID==rb1.ID{t.Fatal("MCP key shared across principals")}
 	wait(t,b,ra1.ID,"completed");wait(t,b,rb1.ID,"completed")
 	mcpCall(t,mb,"get_delivery",map[string]any{"id":ra1.ID},true)
@@ -180,7 +180,7 @@ func TestAgentIdentitySurvivesRestartAndRotation(t *testing.T){
 	e2:=identityServer(t,b2,map[string]string{"alpha":rotated},opTok,viTok)
 	e2.call("GET","/api/v1/deliveries/"+d.ID,alphaTok,"",401)
 	e2.call("GET","/api/v1/deliveries/"+d.ID,betaTok,"",401)
-	var got agentiplex.Delivery
+	var got core.Delivery
 	if err:=json.Unmarshal([]byte(e2.call("GET","/api/v1/deliveries/"+d.ID,rotated,"",200)),&got);err!=nil||got.Caller!="alpha"||got.State!="completed"{t.Fatalf("record after restart: %+v %v",got,err)}
 	if retry:=e2.send(rotated,"k","persist me");retry.ID!=d.ID||first.calls.Load()!=1{t.Fatalf("retry after restart re-executed: %s calls=%d",retry.ID,first.calls.Load())}
 	// A rotated credential for a different identity does not inherit records.

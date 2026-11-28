@@ -6,12 +6,12 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/tbrandenburg/agentiplex"
+	"github.com/tbrandenburg/agentiplex/core"
 )
 
 // A bounded presentation-only data adapter. The existing domain/API
 // contracts remain independent of the UI library.
-func mountDashboardData(mux *http.ServeMux,b *agentiplex.Bus){
+func mountDashboardData(mux *http.ServeMux,b *core.Bus){
 	mux.HandleFunc("GET /api/v1/dashboard",func(w http.ResponseWriter,r *http.Request){
 		w.Header().Set("Cache-Control","no-store")
 		agents,err:=b.Agents("","");if err!=nil{respond(w,200,nil,err);return}
@@ -20,7 +20,7 @@ func mountDashboardData(mux *http.ServeMux,b *agentiplex.Bus){
 		deliveries,err:=b.RecentDeliveries(50);if err!=nil{respond(w,200,nil,err);return}
 		events,err:=b.RecentEvents(80);if err!=nil{respond(w,200,nil,err);return}
 		healths,err:=b.AgentHealths();if err!=nil{respond(w,200,nil,err);return}
-		healthByID:=map[string]agentiplex.AgentHealth{};for _,h:=range healths{healthByID[h.ID]=h}
+		healthByID:=map[string]core.AgentHealth{};for _,h:=range healths{healthByID[h.ID]=h}
 		a:=[]map[string]any{}
 		for _,agent:=range agents{
 			kind:="External agent";skills:=[]string{}
@@ -29,7 +29,7 @@ func mountDashboardData(mux *http.ServeMux,b *agentiplex.Bus){
 		}
 		c:=[]map[string]any{}
 		for _,item:=range append(groups,pools...){c=append(c,map[string]any{"id":item.ID,"kind":item.Kind,"members":strings.Join(item.Members,", ")})}
-		type row struct{agentiplex.DeliverySummary;RecipientStatus string `json:"recipientStatus"`}
+		type row struct{core.DeliverySummary;RecipientStatus string `json:"recipientStatus"`}
 		ds:=[]row{}
 		pending,completed,attention:=0,0,0
 		for _,d:=range deliveries{

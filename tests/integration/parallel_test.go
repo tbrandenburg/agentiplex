@@ -15,7 +15,7 @@ import (
 
 	"github.com/a2aproject/a2a-go/v2/a2a"
 	"github.com/a2aproject/a2a-go/v2/a2asrv"
-	"github.com/tbrandenburg/agentiplex"
+	"github.com/tbrandenburg/agentiplex/core"
 	"github.com/tbrandenburg/agentiplex/internal/api"
 	"github.com/tbrandenburg/agentiplex/internal/cli"
 	"github.com/tbrandenburg/agentiplex/internal/simagent"
@@ -99,7 +99,7 @@ func TestOperatorAbandonsKnownStoppedTaskWithoutReplay(t *testing.T){
 	if _,err:=b.Register(ctx,"worker",target.URL);err!=nil{t.Fatal(err)}
 	d,err:=b.Send(ctx,"worker","first task","abandon-key");if err!=nil{t.Fatal(err)}
 	accepted:=wait(t,b,d.ID,"accepted")
-	if _,err=b.AbandonTask(ctx,d.ID,string(accepted.TaskID),false);!errors.Is(err,agentiplex.ErrInvalid){t.Fatalf("confirmation bypass: %v",err)}
+	if _,err=b.AbandonTask(ctx,d.ID,string(accepted.TaskID),false);!errors.Is(err,core.ErrInvalid){t.Fatalf("confirmation bypass: %v",err)}
 	// The test operator knows execution stopped, although GetTask is unavailable.
 	offline.Store(true);stopRemote()
 	select{case<-stopped:case<-time.After(10*time.Second):t.Fatal("remote did not stop")}
@@ -110,9 +110,9 @@ func TestOperatorAbandonsKnownStoppedTaskWithoutReplay(t *testing.T){
 		if time.Now().After(deadline){t.Fatal("outage not observed")}
 		time.Sleep(50*time.Millisecond)
 	}
-	if _,err=b.AbandonTask(ctx,d.ID,"wrong-id",true);!errors.Is(err,agentiplex.ErrConflict){t.Fatalf("wrong task handle: %v",err)}
+	if _,err=b.AbandonTask(ctx,d.ID,"wrong-id",true);!errors.Is(err,core.ErrConflict){t.Fatalf("wrong task handle: %v",err)}
 	s:=httptest.NewServer(api.Handler(b));defer s.Close()
-	var abandoned agentiplex.Delivery
+	var abandoned core.Delivery
 	for {
 		cmd:=cli.Command();var output bytes.Buffer;cmd.SetOut(&output);cmd.SetErr(&output)
 		cmd.SetArgs([]string{"--server",s.URL,"messages","abandon",d.ID,string(accepted.TaskID),"--confirm-remote-stopped"})

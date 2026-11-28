@@ -17,11 +17,11 @@ import (
 	"github.com/a2aproject/a2a-go/v2/a2aclient"
 	"github.com/a2aproject/a2a-go/v2/a2aclient/agentcard"
 	"github.com/a2aproject/a2a-go/v2/a2asrv"
-	"github.com/tbrandenburg/agentiplex"
+	"github.com/tbrandenburg/agentiplex/core"
 	"github.com/tbrandenburg/agentiplex/internal/api"
 )
 
-func ingressClient(t *testing.T, b *agentiplex.Bus) (*httptest.Server, *a2aclient.Client) {
+func ingressClient(t *testing.T, b *core.Bus) (*httptest.Server, *a2aclient.Client) {
 	t.Helper()
 	s := httptest.NewUnstartedServer(nil)
 	base := "http://" + s.Listener.Addr().String()
@@ -303,7 +303,7 @@ func testAcceptedTaskSurvivesRestart(t *testing.T,pool bool) {
 		}
 	}
 	// Observe healthy active work beyond the former total-poll budget.
-	waitFor:=func(bus *agentiplex.Bus, predicate func(agentiplex.Delivery)bool)agentiplex.Delivery{
+	waitFor:=func(bus *core.Bus, predicate func(core.Delivery)bool)core.Delivery{
 		t.Helper()
 		deadline:=time.Now().Add(30*time.Second)
 		for time.Now().Before(deadline){
@@ -312,11 +312,11 @@ func testAcceptedTaskSurvivesRestart(t *testing.T,pool bool) {
 			if predicate(d){return d}
 			time.Sleep(100*time.Millisecond)
 		}
-		t.Fatal("monitoring condition not met");return agentiplex.Delivery{}
+		t.Fatal("monitoring condition not met");return core.Delivery{}
 	}
-	healthy:=waitFor(b,func(d agentiplex.Delivery)bool{return d.Polls>cfg.MaxAttempts*6&&d.PollFailures==0&&d.LastObservedAt!=nil})
+	healthy:=waitFor(b,func(d core.Delivery)bool{return d.Polls>cfg.MaxAttempts*6&&d.PollFailures==0&&d.LastObservedAt!=nil})
 	unavailable.Store(true)
-	lost:=waitFor(b,func(d agentiplex.Delivery)bool{return d.PollFailures>=2})
+	lost:=waitFor(b,func(d core.Delivery)bool{return d.PollFailures>=2})
 	if lost.TaskID!=accepted.TaskID||lost.LastObservedAt==nil||lost.LastObservedAt.Before(*healthy.LastObservedAt)||calls.Load()!=1{
 		t.Fatalf("outage lost last valid observation or replayed task: %+v",lost)
 	}
@@ -331,7 +331,7 @@ func testAcceptedTaskSurvivesRestart(t *testing.T,pool bool) {
 	retained,err:=b2.Delivery(string(task.ID));if err!=nil||retained.TaskID!=accepted.TaskID||retained.PollFailures<2||retained.Polls<lost.Polls{t.Fatalf("monitoring state lost: %+v %v",retained,err)}
 	health,err=b2.AgentHealth("tester");if err!=nil||!health.Busy{t.Fatalf("unobservable task released endpoint: %+v %v",health,err)}
 	unavailable.Store(false)
-	waitFor(b2,func(d agentiplex.Delivery)bool{return d.PollFailures==0&&d.Polls>retained.Polls&&d.LastObservedAt!=nil&&d.LastObservedAt.After(*lost.LastObservedAt)})
+	waitFor(b2,func(d core.Delivery)bool{return d.PollFailures==0&&d.Polls>retained.Polls&&d.LastObservedAt!=nil&&d.LastObservedAt.After(*lost.LastObservedAt)})
 	if working = nativeTask(t, c2, task.ID); working.Status.State != a2a.TaskStateWorking {
 		t.Fatalf("active task lost after restart: %s", working.Status.State)
 	}

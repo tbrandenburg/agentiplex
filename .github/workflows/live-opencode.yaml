@@ -10,7 +10,7 @@ on:
       - 'internal/api/**'
       - 'internal/daemon/**'
       - 'internal/nats/**'
-      - '*.go'
+      - 'core/**'
       - 'Makefile'
       - 'go.mod'
       - 'go.sum'

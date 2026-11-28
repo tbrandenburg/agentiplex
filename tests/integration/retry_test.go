@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/tbrandenburg/agentiplex"
+	"github.com/tbrandenburg/agentiplex/core"
 	"github.com/tbrandenburg/agentiplex/internal/api"
 )
 
@@ -38,7 +38,7 @@ func TestConcurrentDuplicateSubmissionIsOneOperation(t *testing.T){
 	s:=httptest.NewServer(api.HandlerWithProtocols(b,nil,"",true));t.Cleanup(s.Close)
 	ids:=make([]string,12);var wg sync.WaitGroup
 	for i:=range ids{wg.Add(1);go func(){defer wg.Done()
-		var d agentiplex.Delivery
+		var d core.Delivery
 		if code:=call(t,"POST",s.URL+"/api/v1/messages",map[string]string{"target":"worker","text":"dup","idempotencyKey":"same"},&d);code!=202{t.Errorf("status %d",code)}
 		ids[i]=d.ID
 	}()}
@@ -61,7 +61,7 @@ func TestLostResponseAfterTerminalPersistenceRetriesSameOperation(t *testing.T){
 		mu.Lock();d:=drop;mu.Unlock()
 		if !d{rp.ServeHTTP(w,r);return}
 		rec:=httptest.NewRecorder();rp.ServeHTTP(rec,r)
-		var got agentiplex.Delivery;_ = json.Unmarshal(rec.Body.Bytes(),&got)
+		var got core.Delivery;_ = json.Unmarshal(rec.Body.Bytes(),&got)
 		wait(t,b,got.ID,"completed")
 		conn,_,_:=w.(http.Hijacker).Hijack();_ = conn.Close()
 	}));t.Cleanup(proxy.Close)
@@ -70,7 +70,7 @@ func TestLostResponseAfterTerminalPersistenceRetriesSameOperation(t *testing.T){
 	raw,_:=json.Marshal(body)
 	if resp,err:=probe.Post(proxy.URL+"/api/v1/messages","application/json",strings.NewReader(string(raw)));err==nil{resp.Body.Close();t.Fatal("response was not dropped")}
 	mu.Lock();drop=false;mu.Unlock()
-	var d agentiplex.Delivery
+	var d core.Delivery
 	if code:=call(t,"POST",proxy.URL+"/api/v1/messages",body,&d);code!=202||d.State!="completed"||a.sends.Load()!=1{t.Fatalf("retry %d %+v sends=%d",code,d,a.sends.Load())}
 	if n,_:=b.RecentDeliveries(10);len(n)!=1{t.Fatalf("%d deliveries",len(n))}
 }

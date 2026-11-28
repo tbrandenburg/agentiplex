@@ -11,7 +11,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/tbrandenburg/agentiplex"
+	"github.com/tbrandenburg/agentiplex/core"
 	adapter "github.com/tbrandenburg/agentiplex/internal/adapters/a2a"
 	cat "github.com/tbrandenburg/agentiplex/internal/catalog"
 	"github.com/tbrandenburg/agentiplex/internal/dashboard"
@@ -20,35 +20,35 @@ import (
 )
 
 // Handler exposes the administration API and native A2A ingress when configured.
-func Handler(b *agentiplex.Bus, publicURL ...string) http.Handler {
+func Handler(b *core.Bus, publicURL ...string) http.Handler {
 	u,_:=dashboard.New(dashboard.DefaultConfig())
 	return handler(b,u,publicURL...)
 }
 
 // HandlerWithDashboard allows operators to disable the static UI.
-func HandlerWithDashboard(b *agentiplex.Bus, enabled bool, publicURL string) http.Handler {
+func HandlerWithDashboard(b *core.Bus, enabled bool, publicURL string) http.Handler {
 	var u *dashboard.UI
 	if enabled{u,_=dashboard.New(dashboard.DefaultConfig())}
 	return handler(b,u,publicURL)
 }
 
-func HandlerWithUI(b *agentiplex.Bus,u *dashboard.UI,publicURL string)http.Handler{return handler(b,u,publicURL)}
+func HandlerWithUI(b *core.Bus,u *dashboard.UI,publicURL string)http.Handler{return handler(b,u,publicURL)}
 
 // HandlerWithProtocols enables optional protocol adapters explicitly.
-func HandlerWithProtocols(b *agentiplex.Bus,u *dashboard.UI,publicURL string,mcpEnabled bool)http.Handler{
+func HandlerWithProtocols(b *core.Bus,u *dashboard.UI,publicURL string,mcpEnabled bool)http.Handler{
 	return HandlerSecure(b,u,publicURL,mcpEnabled,nil)
 }
 
-func HandlerSecure(b *agentiplex.Bus,u *dashboard.UI,publicURL string,mcpEnabled bool,auth *security.Auth)http.Handler{
+func HandlerSecure(b *core.Bus,u *dashboard.UI,publicURL string,mcpEnabled bool,auth *security.Auth)http.Handler{
 	mux:=http.NewServeMux()
 	if mcpEnabled{mux.Handle(mcpadapter.Path,mcpadapter.Handler(b,auth!=nil))}
 	mux.Handle("/",handlerMode(b,u,auth!=nil,publicURL))
 	return auth.Wrap(mux)
 }
 
-func handler(b *agentiplex.Bus, u *dashboard.UI, publicURL ...string) http.Handler {return handlerMode(b,u,false,publicURL...)}
+func handler(b *core.Bus, u *dashboard.UI, publicURL ...string) http.Handler {return handlerMode(b,u,false,publicURL...)}
 
-func handlerMode(b *agentiplex.Bus,u *dashboard.UI,secured bool,publicURL ...string)http.Handler{
+func handlerMode(b *core.Bus,u *dashboard.UI,secured bool,publicURL ...string)http.Handler{
 	mux:=http.NewServeMux()
 	if u!=nil{u.Mount(mux);mountDashboardData(mux,b)}
 	if len(publicURL)>0 && publicURL[0]!="" { adapter.Mount(mux,b,publicURL[0],secured) }
@@ -83,7 +83,7 @@ func handlerMode(b *agentiplex.Bus,u *dashboard.UI,secured bool,publicURL ...str
 	})
 	mux.HandleFunc("GET /api/v1/deliveries",func(w http.ResponseWriter,r *http.Request){
 		limit:=50
-		if raw:=r.URL.Query().Get("limit");raw!=""{n,e:=strconv.Atoi(raw);if e!=nil{respond(w,200,nil,agentiplex.ErrInvalid);return};limit=n}
+		if raw:=r.URL.Query().Get("limit");raw!=""{n,e:=strconv.Atoi(raw);if e!=nil{respond(w,200,nil,core.ErrInvalid);return};limit=n}
 		d,err:=b.RecentDeliveries(limit);respond(w,200,d,err)
 	})
 	mux.HandleFunc("GET /api/v1/deliveries/{id}",func(w http.ResponseWriter,r *http.Request){
@@ -96,7 +96,7 @@ func handlerMode(b *agentiplex.Bus,u *dashboard.UI,secured bool,publicURL ...str
 	})
 	mux.HandleFunc("GET /api/v1/events",func(w http.ResponseWriter,r *http.Request){
 		var after uint64
-		if raw:=r.URL.Query().Get("after");raw!=""{v,err:=strconv.ParseUint(raw,10,64);if err!=nil{respond(w,200,nil,agentiplex.ErrInvalid);return};after=v}
+		if raw:=r.URL.Query().Get("after");raw!=""{v,err:=strconv.ParseUint(raw,10,64);if err!=nil{respond(w,200,nil,core.ErrInvalid);return};after=v}
 		e,err:=b.Events(after);respond(w,200,e,err)
 	})
 	for _,kind:=range []string{"group","pool"}{
@@ -119,7 +119,7 @@ func handlerMode(b *agentiplex.Bus,u *dashboard.UI,secured bool,publicURL ...str
 		mux.HandleFunc("POST "+path,func(w http.ResponseWriter,r *http.Request){
 			var in struct{Target string `json:"target"`;Text string `json:"text"`;Key string `json:"idempotencyKey"`}
 			if !decode(w,r,&in){return}
-			var d agentiplex.Delivery;var err error
+			var d core.Delivery;var err error
 			if kind=="broadcast"{d,err=b.Broadcast(r.Context(),in.Target,in.Text,in.Key)}else{d,err=b.Dispatch(r.Context(),in.Target,in.Text,in.Key)}
 			respond(w,202,d,err)
 		})
@@ -130,11 +130,11 @@ func handlerMode(b *agentiplex.Bus,u *dashboard.UI,secured bool,publicURL ...str
 	return mux
 }
 
-func streamEvents(b *agentiplex.Bus,w http.ResponseWriter,r *http.Request){
+func streamEvents(b *core.Bus,w http.ResponseWriter,r *http.Request){
 	raw:=r.URL.Query().Get("after")
 	if raw==""{raw=r.Header.Get("Last-Event-ID")}
 	var after uint64
-	if raw!=""{n,err:=strconv.ParseUint(raw,10,64);if err!=nil{respond(w,200,nil,agentiplex.ErrInvalid);return};after=n}
+	if raw!=""{n,err:=strconv.ParseUint(raw,10,64);if err!=nil{respond(w,200,nil,core.ErrInvalid);return};after=n}
 	rc:=http.NewResponseController(w)
 	// SSE outlives the server's normal request write timeout. Individual
 	// writes still have a deadline, preventing a slow reader from hanging.
@@ -154,7 +154,7 @@ func streamEvents(b *agentiplex.Bus,w http.ResponseWriter,r *http.Request){
 	// proxies which cannot keep an idle stream open. Replay by sequence.
 	ctx,cancel:=context.WithTimeout(r.Context(),5*time.Minute)
 	defer cancel()
-	_ = b.SubscribeEvents(ctx,after,r.URL.Query().Get("kind"),func(e agentiplex.Event)error{
+	_ = b.SubscribeEvents(ctx,after,r.URL.Query().Get("kind"),func(e core.Event)error{
 		data,err:=json.Marshal(e);if err!=nil{return err}
 		return writeEvent(fmt.Sprintf("id: %d\ndata: %s\n\n",e.Sequence,data))
 	})
@@ -172,9 +172,9 @@ func decode(w http.ResponseWriter,r *http.Request,dst any)bool{
 func respond(w http.ResponseWriter,code int,v any,err error){
 	if err==nil{write(w,code,v);return}
 	switch{
-	case errors.Is(err,agentiplex.ErrInvalid):code=400
-	case errors.Is(err,agentiplex.ErrNotFound):code=404
-	case errors.Is(err,agentiplex.ErrConflict):code=409
+	case errors.Is(err,core.ErrInvalid):code=400
+	case errors.Is(err,core.ErrNotFound):code=404
+	case errors.Is(err,core.ErrConflict):code=409
 	default:code=503
 	}
 	message:="operation failed"

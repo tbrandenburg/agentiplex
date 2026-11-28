@@ -21,7 +21,7 @@ import (
 
 	"github.com/a2aproject/a2a-go/v2/a2a"
 	"github.com/a2aproject/a2a-go/v2/a2asrv"
-	"github.com/tbrandenburg/agentiplex"
+	"github.com/tbrandenburg/agentiplex/core"
 )
 
 var listenRe=regexp.MustCompile(`listen=(\S+)`)
@@ -102,7 +102,7 @@ func TestSIGKILLRestartCompletesWithoutDuplicates(t *testing.T){
 
 	// Accepted delivery: agent accepts it and keeps working.
 	down.Store(false)
-	var acc,queued agentiplex.Delivery
+	var acc,queued core.Delivery
 	if c:=call(t,"POST",api+"/api/v1/messages",map[string]string{"target":"slow","text":"accepted-one","idempotencyKey":"k-acc"},&acc);c!=202{t.Fatalf("send accepted: %d",c)}
 	deadline:=time.Now().Add(15*time.Second)
 	for time.Now().Before(deadline){
@@ -110,7 +110,7 @@ func TestSIGKILLRestartCompletesWithoutDuplicates(t *testing.T){
 		if n==1{break};time.Sleep(50*time.Millisecond)
 	}
 	for time.Now().Before(deadline){
-		var d agentiplex.Delivery;call(t,"GET",api+"/api/v1/deliveries/"+acc.ID,nil,&d)
+		var d core.Delivery;call(t,"GET",api+"/api/v1/deliveries/"+acc.ID,nil,&d)
 		if d.State=="working"||d.State=="accepted"||d.TaskID!=""{break};time.Sleep(50*time.Millisecond)
 	}
 	// Queued delivery: target refuses submissions, so it stays queued.
@@ -119,7 +119,7 @@ func TestSIGKILLRestartCompletesWithoutDuplicates(t *testing.T){
 	time.Sleep(1500*time.Millisecond)
 	mu.Lock();if runs["queued-one"]!=0{t.Fatalf("queued delivery already executed")};mu.Unlock()
 
-	var pre,preQ agentiplex.Delivery
+	var pre,preQ core.Delivery
 	call(t,"GET",api+"/api/v1/deliveries/"+acc.ID,nil,&pre);call(t,"GET",api+"/api/v1/deliveries/"+queued.ID,nil,&preQ)
 	t.Logf("before SIGKILL: accepted=%s queued=%s",pre.State,preQ.State)
 	if pre.State=="completed"||pre.State=="failed"||preQ.State=="completed"{t.Fatalf("fixture not mid-flight: %s/%s",pre.State,preQ.State)}
@@ -132,7 +132,7 @@ func TestSIGKILLRestartCompletesWithoutDuplicates(t *testing.T){
 	for _,id:=range []string{acc.ID,queued.ID}{
 		deadline=time.Now().Add(25*time.Second);state:=""
 		for time.Now().Before(deadline){
-			var d agentiplex.Delivery;call(t,"GET",api2+"/api/v1/deliveries/"+id,nil,&d);state=d.State
+			var d core.Delivery;call(t,"GET",api2+"/api/v1/deliveries/"+id,nil,&d);state=d.State
 			if state=="completed"{break};time.Sleep(200*time.Millisecond)
 		}
 		if state!="completed"{t.Fatalf("delivery %s ended %q after SIGKILL restart",id,state)}

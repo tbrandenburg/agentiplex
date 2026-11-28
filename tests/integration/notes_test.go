@@ -7,7 +7,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/tbrandenburg/agentiplex"
+	"github.com/tbrandenburg/agentiplex/core"
 	"github.com/tbrandenburg/agentiplex/internal/security"
 )
 
@@ -40,18 +40,18 @@ func TestNotesConcurrentOrderedAndRestart(t *testing.T){
 
 func TestNotesRejections(t *testing.T){
 	b:=open(t,config(t));ctx:=context.Background()
-	for _,topic:=range []string{"","a.b","A","a b","a/b",strings.Repeat("a",agentiplex.MaxNoteTopic+1)}{
+	for _,topic:=range []string{"","a.b","A","a b","a/b",strings.Repeat("a",core.MaxNoteTopic+1)}{
 		if _,err:=b.Note(ctx,"team",topic,"x");err==nil{t.Fatalf("topic %q accepted",topic)}
 		if _,err:=b.ReadNotes("team",topic,1);err==nil{t.Fatalf("read topic %q accepted",topic)}
 	}
 	if _,err:=b.Note(ctx,"team","ok","  ");err==nil{t.Fatal("empty text accepted")}
-	_,err:=b.Note(ctx,"team","ok",strings.Repeat("x",agentiplex.MaxStateValueBytes))
+	_,err:=b.Note(ctx,"team","ok",strings.Repeat("x",core.MaxStateValueBytes))
 	if err==nil||!strings.Contains(err.Error(),"value limit"){t.Fatalf("oversize error %v",err)}
 	if n,_:=b.ReadNotes("team","ok",10);len(n)!=0{t.Fatal("rejected note stored")}
 }
 
 func TestNotesBeyondNamespaceKeyLimit(t *testing.T){
 	b:=open(t,config(t));ctx:=context.Background()
-	for i:=0;i<agentiplex.MaxStateKeys+5;i++{if _,err:=b.Note(ctx,"big","log","n"); err!=nil{t.Fatalf("note %d: %v",i,err)}}
+	for i:=0;i<core.MaxStateKeys+5;i++{if _,err:=b.Note(ctx,"big","log","n"); err!=nil{t.Fatalf("note %d: %v",i,err)}}
 	if n,_:=b.ReadNotes("big","log",100);len(n)!=100{t.Fatalf("got %d",len(n))}
 }

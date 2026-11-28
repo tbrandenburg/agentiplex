@@ -16,7 +16,7 @@ import (
 	catalog "github.com/Agent-Card/ai-catalog-go/catalog"
 	"github.com/Agent-Card/ai-catalog-go/validate"
 	"github.com/nats-io/nats-server/v2/server"
-	"github.com/tbrandenburg/agentiplex"
+	"github.com/tbrandenburg/agentiplex/core"
 	"github.com/tbrandenburg/agentiplex/internal/api"
 	"github.com/tbrandenburg/agentiplex/internal/simagent"
 )
@@ -55,9 +55,9 @@ func (a *agentService) start(t *testing.T, ambiguous bool) {
 func(a *agentService) stop(){if a.srv!=nil{_ = a.srv.Close();a.srv=nil}}
 func(a *agentService) URL()string{return "http://"+a.addr}
 
-func config(t *testing.T)agentiplex.Config{
+func config(t *testing.T)core.Config{
 	t.Helper()
-	cfg:=agentiplex.DefaultConfig()
+	cfg:=core.DefaultConfig()
 	cfg.Storage=t.TempDir()
 	cfg.Timeout=4*time.Second
 	cfg.RetryDelay=time.Second
@@ -65,15 +65,15 @@ func config(t *testing.T)agentiplex.Config{
 	return cfg
 }
 
-func open(t *testing.T,cfg agentiplex.Config)*agentiplex.Bus{
+func open(t *testing.T,cfg core.Config)*core.Bus{
 	t.Helper()
-	b,err:=agentiplex.Open(context.Background(),cfg)
+	b,err:=core.Open(context.Background(),cfg)
 	if err!=nil{t.Fatal(err)}
 	t.Cleanup(b.Close)
 	return b
 }
 
-func wait(t *testing.T,b *agentiplex.Bus,id,state string)agentiplex.Delivery{
+func wait(t *testing.T,b *core.Bus,id,state string)core.Delivery{
 	t.Helper()
 	deadline:=time.Now().Add(30*time.Second)
 	for time.Now().Before(deadline){
@@ -84,7 +84,7 @@ func wait(t *testing.T,b *agentiplex.Bus,id,state string)agentiplex.Delivery{
 	}
 	d,err:=b.Delivery(id)
 	t.Fatalf("delivery did not reach %s: state=%s detail=%s err=%v",state,d.State,d.Detail,err)
-	return agentiplex.Delivery{}
+	return core.Delivery{}
 }
 
 func TestFoundationDirectOfflineAndRestart(t *testing.T){
@@ -94,11 +94,11 @@ func TestFoundationDirectOfflineAndRestart(t *testing.T){
 	ctx:=context.Background()
 	reg,err:=b.Register(ctx,"architect",a.URL());if err!=nil{t.Fatal(err)}
 	if reg.Card.Name!="architect"{t.Fatalf("wrong card: %+v",reg.Card)}
-	if _,err=b.Register(ctx,"architect",a.URL());!errors.Is(err,agentiplex.ErrConflict){t.Fatalf("duplicate: %v",err)}
-	if _,err=b.Register(ctx,"invalid!",a.URL());!errors.Is(err,agentiplex.ErrInvalid){t.Fatalf("invalid ID: %v",err)}
+	if _,err=b.Register(ctx,"architect",a.URL());!errors.Is(err,core.ErrConflict){t.Fatalf("duplicate: %v",err)}
+	if _,err=b.Register(ctx,"invalid!",a.URL());!errors.Is(err,core.ErrInvalid){t.Fatalf("invalid ID: %v",err)}
 	bad:=httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter,r *http.Request){_,_=io.WriteString(w,"{}")}))
 	defer bad.Close()
-	if _,err=b.Register(ctx,"bad",bad.URL);!errors.Is(err,agentiplex.ErrInvalid){t.Fatalf("invalid card: %v",err)}
+	if _,err=b.Register(ctx,"bad",bad.URL);!errors.Is(err,core.ErrInvalid){t.Fatalf("invalid card: %v",err)}
 	agents,err:=b.Agents("architecture","simulated")
 	if err!=nil||len(agents)!=1{t.Fatalf("discovery: %d %v",len(agents),err)}
 	agents,err=b.Agents("testing","")
@@ -122,7 +122,7 @@ func TestFoundationDirectOfflineAndRestart(t *testing.T){
 	if !strings.Contains(string(done.Result),"SIMULATED architect"){t.Fatalf("missing response: %s",done.Result)}
 	duplicate,err:=b.Send(ctx,"architect","review requirement 42","first")
 	if err!=nil||duplicate.ID!=d.ID||a.calls.Load()!=1{t.Fatalf("idempotency: %v %d",err,a.calls.Load())}
-	if _,err=b.Send(ctx,"architect","different prompt","first");!errors.Is(err,agentiplex.ErrConflict){t.Fatalf("conflicting idempotency key: %v",err)}
+	if _,err=b.Send(ctx,"architect","different prompt","first");!errors.Is(err,core.ErrConflict){t.Fatalf("conflicting idempotency key: %v",err)}
 
 	a.stop()
 	pending,err:=b.Send(ctx,"architect","offline handoff","second")
@@ -173,7 +173,7 @@ func TestExternalBrokerAndHTTPSubmission(t *testing.T){
 	h:=httptest.NewServer(api.Handler(b));defer h.Close()
 	resp,err:=http.Post(h.URL+"/api/v1/messages","application/json",strings.NewReader(`{"target":"architect","text":"external broker","idempotencyKey":"external"}`))
 	if err!=nil{t.Fatal(err)}
-	var d agentiplex.Delivery
+	var d core.Delivery
 	err=json.NewDecoder(resp.Body).Decode(&d);_ = resp.Body.Close()
 	if err!=nil||resp.StatusCode!=202||d.ID==""{t.Fatalf("HTTP submission: %d %v",resp.StatusCode,err)}
 	wait(t,b,d.ID,"completed")

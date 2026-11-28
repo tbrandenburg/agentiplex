@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/tbrandenburg/agentiplex"
+	"github.com/tbrandenburg/agentiplex/core"
 	"github.com/tbrandenburg/agentiplex/internal/api"
 )
 
@@ -41,7 +41,7 @@ func TestDashboardUsesStoredDeliveryState(t *testing.T) {
 	if code!=200||!strings.Contains(snapshot,`"completedCount":1`)||strings.Contains(snapshot,"private fixture prompt"){t.Fatalf("snapshot invalid %d %s",code,snapshot)}
 	code,_,raw:=get("/api/v1/deliveries?limit=1")
 	if code!=200||strings.Contains(raw,"private fixture prompt")||strings.Contains(raw,"SIMULATED"){t.Fatalf("summary must omit payloads: %d %s",code,raw)}
-	var summaries []agentiplex.DeliverySummary
+	var summaries []core.DeliverySummary
 	if err:=json.Unmarshal([]byte(raw),&summaries);err!=nil||len(summaries)!=1{t.Fatalf("summary: %v %s",err,raw)}
 	if summaries[0].ID!=d.ID||summaries[0].State!="completed"||len(summaries[0].Children)!=2{t.Fatalf("aggregate summary: %+v",summaries)}
 	if code,_,raw=get("/api/v1/deliveries/"+d.Children[0].ID);code!=200||!strings.Contains(raw,"private fixture prompt")||!strings.Contains(raw,"SIMULATED"){t.Fatalf("detail did not preserve actual result: %d %s",code,raw)}

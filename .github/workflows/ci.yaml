@@ -9,7 +9,7 @@ concurrency:
 permissions:
   contents: read
 jobs:
-  test:
+  unit:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -31,16 +31,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Build, race-enabled unit and integration tests, and vet
-        run: make build test lint GO_TEST_FLAGS="-race -count=1 -v"
-      - name: Simulated engineering team and dashboard
-        run: |
-          bash -n examples/engineering-team/demo.sh
-          node --check internal/dashboard/static/bootstrap.js
-          node --check examples/engineering-team/browser-check.mjs
-          make demo-check DEMO_ARGS=--browser-check
-      - name: Native example configuration, policies and provider-free startup
-        run: make examples-check
+      - name: Build, race-enabled unit tests and vet
+        run: make build test lint GO_TEST_FLAGS="-race -count=1 -v" GO_TEST_PACKAGES="./core/... ./cmd/... ./internal/... ./examples/..."
       - name: Save resolved dependency manifest
         if: always()
         uses: actions/upload-artifact@v4
@@ -55,6 +47,52 @@ jobs:
         with:
           name: formatted-source
           path: /tmp/agentiplex-formatted.tar.gz
+  integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.x'
+          cache: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Race-enabled integration tests
+        run: make test GO_TEST_FLAGS="-race -count=1 -v" GO_TEST_PACKAGES="./tests/integration/..."
+  examples:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.x'
+          cache: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Native example configuration, policies and provider-free startup
+        run: make examples-check GO_TEST_FLAGS="-race -count=1 -v"
+      - name: Simulated engineering team and dashboard
+        run: |
+          bash -n examples/engineering-team/demo.sh
+          node --check internal/dashboard/static/bootstrap.js
+          node --check examples/engineering-team/browser-check.mjs
+          make demo-check DEMO_ARGS=--browser-check
+  container-compose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.x'
+          cache: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
       - name: Build image
         run: make docker IMAGE=agentiplex:ci
       - name: Container smoke test
@@ -74,11 +112,40 @@ jobs:
         run: |
           bash -n examples/down.sh examples/repository-team/up.sh examples/autonomous-team/up.sh scripts/demo-secrets.sh scripts/compose-check.sh scripts/helm-check.sh scripts/package-release.sh
           bash scripts/compose-check.sh
+  helm:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.x'
+          cache: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Build image for kind
+        run: make docker IMAGE=agentiplex:ci
       - name: Helm deployment on kind
         run: |
           kind version
           helm version
           bash scripts/helm-check.sh
+  # Preserve the existing Checks / test status for branch protection.
+  test:
+    needs: [unit, integration, examples, container-compose, helm, release-artifacts, multiarch-image]
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require all checks to succeed
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          test -n "$RESULTS"
+          for result in $RESULTS; do
+            test "$result" = success || exit 1
+          done
   release-artifacts:
     runs-on: ubuntu-latest
     timeout-minutes: 30
