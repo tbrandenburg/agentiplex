@@ -36,11 +36,20 @@ def git(ws, *a):
 
 
 def fixture(ws, model):
-    # Both objectives use the same starting repository and the same role files.
+    # All objectives use the same starting repository and the same role files.
     (ws / "README.md").write_text("# Synthetic repository\n\n[Usage](docs/missing.md)\n")
     (ws / "docs").mkdir()
     (ws / "docs" / "usage.md").write_text("Call clamp(value, lower, upper).\n")
     (ws / "calc.py").write_text("def clamp(value, lower, upper):\n    return min(lower, max(upper, value))\n")
+    # A real, visible failing check that the agents can reproduce. The
+    # independent verifier separately owns its assertions outside the workspace.
+    (ws / "test_calc.py").write_text(
+        "from calc import clamp\n\n"
+        "assert [clamp(v, 0, 10) for v in (-3, 0, 4, 10, 12)] == [0, 0, 4, 10, 10]\n"
+        "assert clamp(-2, -5, -1) == -2\n"
+        "assert clamp(5, 2, 2) == 2\n"
+        "print('clamp checks passed')\n"
+    )
     (ws / ".gitignore").write_text("__pycache__/\n")
     cfg = json.loads((EX / "opencode.json").read_text())
     if model:
@@ -59,7 +68,7 @@ def submit_objective(cli, objective):
     return cli("send", "pm", objective, "--idempotency-key", "repository-objective")["id"], revision
 
 
-def verify_evidence(root, deliveries, state, objective, objective_revision):
+def verify_evidence(root, deliveries, state, objective, objective_revision, integration=False):
     # Local mode has no authenticated author. Topics are evidence, not identity attestation.
     if root["target"] != "pm" or root["state"] != "completed" or not root.get("result") or root.get("text") != objective:
         raise RuntimeError("coordinator did not produce a completed result")
@@ -70,6 +79,8 @@ def verify_evidence(root, deliveries, state, objective, objective_revision):
     reviewers = workers & {"tester", "quality"}
     if "developer" not in workers or not reviewers:
         raise RuntimeError("missing real implementer or independent reviewer delivery")
+    if integration and reviewers != {"tester", "quality"}:
+        raise RuntimeError("integration requires independent tester and quality results")
     if not any(s["key"] == "objective" and s.get("value") == objective and s.get("revision") == objective_revision for s in state):
         raise RuntimeError("original shared objective missing, altered or rewritten")
     topics = {role for role in {"pm", "developer", *reviewers}
@@ -77,17 +88,47 @@ def verify_evidence(root, deliveries, state, objective, objective_revision):
                      and json.loads(s["value"]).get("text", "").strip() for s in state)}
     if not {"pm", "developer"} <= topics or not topics & reviewers:
         raise RuntimeError("missing coordinator, implementer or reviewer notes")
+    if integration and not reviewers <= topics:
+        raise RuntimeError("integration missing tester or quality findings")
     return sorted(workers)
 
 
+def verify_merge(ws, base, branch):
+    if branch != "main" or git(ws, "branch", "--show-current").strip() != "main":
+        raise RuntimeError("integration must finish on main")
+    if git(ws, "status", "--porcelain") or git(ws, "remote").strip():
+        raise RuntimeError("integration must finish clean with no remote")
+    parents = git(ws, "rev-list", "--parents", "-n", "1", "HEAD").split()
+    if len(parents) != 3 or parents[1] != base or parents[2] == base:
+        raise RuntimeError("expected a real two-parent merge into the original main")
+    candidate = parents[2]
+    if not git(ws, "for-each-ref", "--points-at=" + candidate, "--format=%(refname:short)", "refs/heads").strip():
+        raise RuntimeError("expected retained feature branch at the merged candidate")
+    # The reviewed candidate must contain the initial base and exactly the
+    # integrated tree; no surprise edits introduced by the merge itself.
+    if git(ws, "merge-base", base, candidate).strip() != base:
+        raise RuntimeError("candidate is not descended from original main")
+    if git(ws, "diff", "--name-only", candidate, "HEAD").strip():
+        raise RuntimeError("merge introduced changes beyond the candidate")
+    if git(ws, "diff", "--name-only", base, candidate).splitlines() != ["calc.py"]:
+        raise RuntimeError("candidate changed files outside the objective")
+    print("Verified local merge:", parents[0], "candidate:", candidate, flush=True)
+
+
 def verify_workspace(ws, head, branch, scenario):
-    wanted = {"docs": "README.md", "defect": "calc.py"}[scenario]
-    changed = git(ws, "diff", "--name-only", "HEAD").splitlines()
+    head, branch = head.strip(), branch.strip()
+    wanted = {"docs": "README.md", "defect": "calc.py", "integration": "calc.py"}[scenario]
+    if scenario == "integration":
+        verify_merge(ws, head, branch)
+    else:
+        if git(ws, "rev-parse", "HEAD").strip() != head or git(ws, "rev-parse", "--abbrev-ref", "HEAD").strip() != branch:
+            raise RuntimeError("agents changed Git history or branch")
+        if git(ws, "for-each-ref", "--format=%(refname:short)", "refs/heads").splitlines() != [branch]:
+            raise RuntimeError("patch-only objective created additional branches")
+    changed = git(ws, "diff", "--name-only", head).splitlines()
     if changed != [wanted] or git(ws, "diff", "--cached", "--name-only") or git(ws, "ls-files", "--others", "--exclude-standard"):
         raise RuntimeError("unexpected workspace scope, staged or untracked changes")
-    if git(ws, "rev-parse", "HEAD") != head or git(ws, "rev-parse", "--abbrev-ref", "HEAD") != branch:
-        raise RuntimeError("agents changed Git history or branch")
-    git(ws, "diff", "--check")
+    git(ws, "diff", "--check", head)
     if (ws / wanted).is_symlink() or not (ws / wanted).is_file():
         raise RuntimeError("changed file must be a regular file")
     if scenario == "docs":
@@ -100,13 +141,23 @@ def verify_workspace(ws, head, branch, scenario):
                  "assert [clamp(v, 0, 10) for v in (-3, 0, 4, 10, 12)] == [0, 0, 4, 10, 10]; "
                  "assert clamp(-2, -5, -1) == -2; assert clamp(5, 2, 2) == 2")
         verify.verify(ws, [sys.executable, "-I", "-B", "-c", check, str(ws / "calc.py")], 30)
+        verify.verify(ws, [sys.executable, "-B", "test_calc.py"], 30)
 
 
 def live_check(args, run, ws, api, daemon, head, branch):
     cli = lambda *a: json.loads(subprocess.check_output([str(run / "agentiplex"), "--server", api, *a],
                                                        env=procs.clean_env(), timeout=30))
-    objective = ((EX / "objective.md").read_text().rstrip("\n") if args.live == "docs" else
-                 "Fix clamp(value, lower, upper) in calc.py for lower <= upper so it returns the value bounded by the inclusive limits. Preserve its signature and leave unrelated files unchanged.")
+    objective = {
+        "docs": (EX / "objective.md").read_text().rstrip("\n"),
+        "defect": "Fix clamp(value, lower, upper) in calc.py for lower <= upper so it returns the value bounded by the inclusive limits. Preserve its signature and leave unrelated files unchanged. The check python3 -B test_calc.py must pass. Leave the patch uncommitted; no branch or history changes.",
+        "integration": (EX / "objective.integration.md").read_text().rstrip("\n"),
+    }[args.live]
+    if args.live != "docs":
+        baseline = subprocess.run([sys.executable, "-B", "test_calc.py"], cwd=ws, timeout=30,
+                                  capture_output=True, text=True)
+        if baseline.returncode != 1 or "AssertionError" not in baseline.stderr:
+            raise RuntimeError("fixture must start with the expected failing check")
+        print("Baseline local check failed as expected: python3 -B test_calc.py (exit 1)", flush=True)
     root_id, objective_revision = submit_objective(cli, objective)
     end = time.monotonic() + args.seconds
     while time.monotonic() < end:
@@ -134,7 +185,7 @@ def live_check(args, run, ws, api, daemon, head, branch):
     result_text = json.dumps(root.get("result", {})).lower()
     print("PM result indicators:", json.dumps({term: term in result_text for term in
           ("blocked", "mcp", "not available", "unavailable", "connection", "cannot", "permission")}), flush=True)
-    workers = verify_evidence(root, deliveries, state, objective, objective_revision)
+    workers = verify_evidence(root, deliveries, state, objective, objective_revision, integration=args.live == "integration")
     verify_workspace(ws, head, branch, args.live)
     print("PASS:", args.live, "objective; completed worker deliveries:", ", ".join(workers),
           "; original objective and notes persisted; independent workspace check passed.")
@@ -143,7 +194,7 @@ def live_check(args, run, ws, api, daemon, head, branch):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--live", choices=("docs", "defect"), help="submit one real objective on a disposable synthetic checkout")
+    parser.add_argument("--live", choices=("docs", "defect", "integration"), help="submit one real objective on a disposable synthetic checkout")
     parser.add_argument("--model", help="provider/model (omit for the OpenCode default)")
     parser.add_argument("--seconds", type=int, default=1200)
     args = parser.parse_args()
@@ -153,7 +204,7 @@ def main():
     print("Private run directory:", run, flush=True)
     ws = run / "workspace"
     ws.mkdir()
-    git(ws, "init", "-q")
+    git(ws, "init", "-q", "-b", "main")
     git(ws, "config", "user.name", "Example CI")
     git(ws, "config", "user.email", "ci@example.invalid")
     fixture(ws, args.model)
