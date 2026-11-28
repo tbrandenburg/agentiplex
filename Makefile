@@ -1,4 +1,4 @@
-.PHONY: help fmt lint dashboard-assets build test check clean run demo-agent demo-team demo-check examples-check contract-check live-check repository-provision-check docker compose-up compose-down release release-plan
+.PHONY: help fmt lint dashboard-assets build install test check clean run demo-agent demo-team demo-check examples-check contract-check live-check repository-provision-check docker compose-up compose-down release release-plan
 .DEFAULT_GOAL := help
 export bump
 
@@ -9,6 +9,8 @@ RUN_ARGS ?= --mcp
 DEMO_ARGS ?=
 LIVE_ARGS ?= -prompt-timeout 10m -seconds 900
 IMAGE ?= agentiplex:dev
+PREFIX ?= /usr/local
+DESTDIR ?=
 
 help:
 	@printf '%s\n' \
@@ -16,6 +18,7 @@ help:
 		'  make fmt              Format tracked Go sources' \
 		'  make lint             Run go vet' \
 		'  make build            Build daemon and CLI into bin/' \
+		'  make install          Install built binaries into PREFIX/bin (default /usr/local/bin)' \
 		'  make test             Race-enabled Go tests (GO_TEST_PACKAGES=./... by default)' \
 		'  make check            Go tests, vet and release-script tests' \
 		'  make clean            Remove generated binaries, dist and AMIS assets' \
@@ -50,6 +53,12 @@ build: dashboard-assets
 	go build -mod=readonly -o bin/agentiplexd ./cmd/agentiplexd
 	go build -mod=readonly ./examples/...
 
+# Build as an ordinary user first. Installation does not compile as root.
+install:
+	@test -x bin/agentiplex && test -x bin/agentiplexd || { echo 'Run make build first.' >&2; exit 1; }
+	install -d "$(DESTDIR)$(PREFIX)/bin"
+	install -m 0755 bin/agentiplex bin/agentiplexd "$(DESTDIR)$(PREFIX)/bin"
+
 test: dashboard-assets
 	go test $(GO_TEST_FLAGS) $(GO_TEST_PACKAGES)
 
@@ -58,6 +67,7 @@ lint: dashboard-assets
 
 check: test lint
 	bash scripts/test-release.sh
+	bash scripts/test-install.sh
 
 clean:
 	rm -rf bin dist internal/dashboard/static/vendor

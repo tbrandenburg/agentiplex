@@ -41,8 +41,10 @@ jobs:
           bun-version: '1.4.4'
       - name: README setup (build and install)
         run: |
-          make build
+          make build && sudo make install
           npm install --global @opencode/cli@2.4.1 @tbrandenburg/opencode-a2a-lite@0.9.3
+          cmp bin/agentiplex "$(command -v agentiplex)"
+          cmp bin/agentiplexd "$(command -v agentiplexd)"
           test "$(opencode --version)" = 'opencode v2.4.1'
           test "$(opencode-a2a-lite --version)" = '0.9.3'
           test "$(bun --version)" = '1.4.4'

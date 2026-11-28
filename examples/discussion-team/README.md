@@ -88,7 +88,7 @@ It requires real results from the lead, expert and critic, and no failed
 or pending deliveries. The same live test then executes the until-done command from the main README, checks the recorded incomplete checkpoint, multiple coordinator activations, distinct expert and critic evidence before and after revision, and explicit final resolution. The same agents then execute the actor-owned commands and the observer checks every Markdown revision, immutable criterion labels, ownership of checkbox changes, evidence-backed checks, direct expert-to-critic-to-expert rework, accepted current draft and all distinct ordinary delivery receipts, without scheduling any work. Startup alone is not a pass. It does not attest
 individual tool calls, note authorship or semantic correctness.
 
-After the README setup's build and install commands, run locally on a
+After the README setup's build and global install commands, run locally on a
 disposable Linux host with free ports (uses real model inference):
 
 ```sh

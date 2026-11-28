@@ -73,10 +73,11 @@ No launcher or orchestration code. The live CI test executes these exact command
 
 <!-- discussion-quickstart:start -->
 **Setup once.** On Linux with Git, Go 1.26+, Make, Bash, curl, Node 22+ and
-Bun 1.4.4, clone this repository and run from its root:
+Bun 1.4.4, clone this repository and run from its root. Install the two binaries
+into `/usr/local/bin` (once; no PATH changes per terminal):
 
 ```sh
-make build
+make build && sudo make install
 npm install --global @opencode/cli@2.4.1 @tbrandenburg/opencode-a2a-lite@0.9.3
 ```
 
@@ -90,7 +91,7 @@ cd examples/discussion-team
 Use a new storage directory for a fresh discussion; the example keeps state outside the checkout:
 
 ```sh
-../../bin/agentiplexd --mcp --storage "$HOME/.local/state/agentiplex-discussion"
+agentiplexd --mcp --storage "$HOME/.local/state/agentiplex-discussion"
 ```
 
 Run one gateway command per other terminal, and wait for all three ready URLs:
@@ -104,18 +105,18 @@ opencode-a2a-lite --name critic --port 8003 --workspace workspace --system-promp
 **Discuss.** From another terminal in the same example directory:
 
 ```sh
-../../bin/agentiplex register lead http://127.0.0.1:8001
-../../bin/agentiplex register expert http://127.0.0.1:8002
-../../bin/agentiplex register critic http://127.0.0.1:8003
-../../bin/agentiplex send lead "Should we use event sourcing?" --idempotency-key discussion-1 --wait
-../../bin/agentiplex notes list discussion
+agentiplex register lead http://127.0.0.1:8001
+agentiplex register expert http://127.0.0.1:8002
+agentiplex register critic http://127.0.0.1:8003
+agentiplex send lead "Should we use event sourcing?" --idempotency-key discussion-1 --wait
+agentiplex notes list discussion
 ```
 <!-- discussion-quickstart:end -->
 
 The lead returns a verdict, and notes show the shared findings.
 Open [the dashboard](http://127.0.0.1:8080/ui/).
 Ctrl-C detaches a waiting CLI or stops a foreground gateway/daemon;
-`../../bin/agentiplex messages wait DELIVERY_ID` reattaches to durable work.
+`agentiplex messages wait DELIVERY_ID` reattaches to durable work.
 Use free ports 8080 and 8001–8003 and a trusted, disposable checkout with
 operator-owned, non-shared-writable policy paths outside the agent workspace. [Operating notes and verification](examples/discussion-team/README.md).
 
@@ -127,7 +128,7 @@ Review the [decision contract](examples/discussion-team/contract.md) first.
 
 <!-- discussion-contract:start -->
 ```sh
-../../bin/agentiplex send lead --file contract.md --idempotency-key discussion-contract-1 --until-done --max-turns 6 --timeout 12m --wait
+agentiplex send lead --file contract.md --idempotency-key discussion-contract-1 --until-done --max-turns 6 --timeout 12m --wait
 ```
 <!-- discussion-contract:end -->
 
@@ -136,8 +137,8 @@ the objective and known work settles, or intervention is needed.
 Progress survives CLI disconnect and daemon restart with the same storage.
 No runner or inactivity nudge is needed.
 
-Watch with `../../bin/agentiplex state watch discussion-contract` or
-`../../bin/agentiplex messages list`. Use a dedicated, initially idle daemon with one
+Watch with `agentiplex state watch discussion-contract` or
+`agentiplex messages list`. Use a dedicated, initially idle daemon with one
 open until-done request. [Lifecycle and limits](docs/COLLABORATION.md#durable-follow-through-until-done).
 
 ### Actor-owned contract (direct handovers)
@@ -153,16 +154,16 @@ With the same three running agents and no outstanding deliveries, review the
 
 <!-- discussion-actors:start -->
 ```sh
-../../bin/agentiplex state put discussion-actors objective --file objective-actors.md --revision 0
-../../bin/agentiplex state put discussion-actors contract --file contract-actors.md --revision 0
-../../bin/agentiplex send lead --file objective-actors.md --idempotency-key discussion-actors-1 --wait
+agentiplex state put discussion-actors objective --file objective-actors.md --revision 0
+agentiplex state put discussion-actors contract --file contract-actors.md --revision 0
+agentiplex send lead --file objective-actors.md --idempotency-key discussion-actors-1 --wait
 ```
 <!-- discussion-actors:end -->
 
 Watch the living document:
 
 ```sh
-../../bin/agentiplex state watch discussion-actors
+agentiplex state watch discussion-actors
 ```
 
 The initial `--wait` observes only the first delivery. Overall completion means
@@ -204,10 +205,11 @@ Conceptual references, not protocol-conformance claims.
 
 ### Connect your own agents
 
-Start a daemon with embedded NATS and MCP, then a sample A2A agent in a separate terminal:
+With Agentiplex installed as above, start a daemon with embedded NATS and MCP,
+then a sample A2A agent in a separate terminal:
 
 ```sh
-make run
+agentiplexd --mcp
 ```
 
 ```sh
@@ -215,8 +217,8 @@ make demo-agent
 ```
 
 ```sh
-./bin/agentiplex register architect http://127.0.0.1:8001
-./bin/agentiplex send architect "Review requirement 42" --idempotency-key demo-42 --wait
+agentiplex register architect http://127.0.0.1:8001
+agentiplex send architect "Review requirement 42" --idempotency-key demo-42 --wait
 ```
 
 Use the same registration command with any existing A2A endpoint.
@@ -276,7 +278,15 @@ visible rather than silently replayed. [Architecture](docs/ARCH.md) ·
 ## Installation and deployment
 
 Download native binaries and Helm packages from [GitHub Releases](https://github.com/tbrandenburg/agentiplex/releases),
-or build with `make build` (outputs in `bin/`).
+or install from source (Linux/macOS):
+
+```sh
+make build && sudo make install
+```
+
+The install target copies the built CLI and daemon to `/usr/local/bin`.
+For a user-managed prefix already on PATH, use `make install PREFIX="$HOME/.local"`
+after building. No sudo is needed for a writable prefix.
 
 | Deploy | Guide |
 | --- | --- |

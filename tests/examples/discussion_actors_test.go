@@ -153,9 +153,9 @@ func discussionActorCommands(t *testing.T) []string {
 	}
 	lines := strings.Split(strings.TrimSuffix(strings.TrimPrefix(block, "```sh\n"), "\n```"), "\n")
 	want := []string{
-		"../../bin/agentiplex state put discussion-actors objective --file objective-actors.md --revision 0",
-		"../../bin/agentiplex state put discussion-actors contract --file contract-actors.md --revision 0",
-		"../../bin/agentiplex send lead --file objective-actors.md --idempotency-key discussion-actors-1 --wait",
+		"agentiplex state put discussion-actors objective --file objective-actors.md --revision 0",
+		"agentiplex state put discussion-actors contract --file contract-actors.md --revision 0",
+		"agentiplex send lead --file objective-actors.md --idempotency-key discussion-actors-1 --wait",
 	}
 	if !reflect.DeepEqual(lines, want) { t.Fatal("expected ordinary native submission:", lines) }
 	return lines
