@@ -21,6 +21,8 @@ import (
 	"go.yaml.in/yaml/v3"
 )
 
+var repositoryIDs = []string{"pm", "architect", "developer", "tester", "quality"}
+
 var delegation = []string{"ask", "send_message", "broadcast", "dispatch"}
 var listen = regexp.MustCompile(`listen=(\S+)`)
 
@@ -57,6 +59,12 @@ func TestTeamYAMLStrictRegistryAndExplicitCoordinator(t *testing.T) {
 		reg, err := core.ParseRegistry(read(t, ex, "team.yaml"))
 		if err != nil {
 			t.Fatalf("%s: %v", ex, err)
+		}
+		if ex == "repository-team" {
+			if len(reg.Agents) != 0 || len(reg.Groups) != 0 || len(reg.Pools) != 0 {
+				t.Fatal("repository-team must start MCP before registering endpoints")
+			}
+			continue
 		}
 		if _, ok := reg.Agents["pm"]; !ok {
 			t.Fatalf("%s: coordinator pm not registered", ex)
@@ -103,8 +111,9 @@ func TestPoliciesAreLeastPrivilegeAndOnlyCoordinatorDelegates(t *testing.T) {
 	}
 }
 
-// Both team.yaml files are consumed unchanged by the real daemon; only ports/storage are redirected
-// to isolated test values and every agent endpoint is a provider-free simulator of the same ID.
+// Both native configs are tested with isolated ports/storage and provider-free agents.
+// Repository-team starts MCP first and registers endpoints via the same REST API as the CLI;
+// autonomous-team still exercises declarative registry provisioning.
 func TestRealDaemonStartsEachTeamYAMLWithSimulatedAgents(t *testing.T) {
 	bin := filepath.Join(t.TempDir(), "agentiplexd")
 	if o, err := exec.Command("go", "build", "-o", bin, "github.com/tbrandenburg/agentiplex/cmd/agentiplexd").CombinedOutput(); err != nil {
@@ -120,7 +129,14 @@ func TestRealDaemonStartsEachTeamYAMLWithSimulatedAgents(t *testing.T) {
 			doc["server"] = map[string]any{"listen": "127.0.0.1:0"}
 			doc["broker"] = map[string]any{"mode": "embedded", "storage": filepath.Join(dir, "data")}
 			doc["observability"] = map[string]any{"dashboard": false}
-			agents := doc["registry"].(map[string]any)["agents"].(map[string]any)
+			registry := doc["registry"].(map[string]any)
+			agents, _ := registry["agents"].(map[string]any)
+			if ex == "repository-team" {
+				agents = make(map[string]any, len(repositoryIDs))
+				for _, id := range repositoryIDs {
+					agents[id] = nil
+				}
+			}
 			for id := range agents {
 				srv := httptest.NewServer(nil)
 				srv.Config.Handler = simagent.Handler(srv.URL, id, "demo", nil)
@@ -153,6 +169,19 @@ func TestRealDaemonStartsEachTeamYAMLWithSimulatedAgents(t *testing.T) {
 				api = "http://" + a
 			case <-time.After(30 * time.Second):
 				t.Fatal("daemon did not become ready")
+			}
+			if ex == "repository-team" {
+				for _, id := range repositoryIDs {
+					body, _ := json.Marshal(map[string]string{"id": id, "url": agents[id].(map[string]any)["url"].(string)})
+					resp, err := http.Post(api+"/api/v1/agents", "application/json", bytes.NewReader(body))
+					if err != nil {
+						t.Fatal(err)
+					}
+					resp.Body.Close()
+					if resp.StatusCode/100 != 2 {
+						t.Fatalf("register %s: %d", id, resp.StatusCode)
+					}
+				}
 			}
 			var got []core.Agent
 			getJSON(t, api+"/api/v1/agents", &got)
@@ -217,11 +246,7 @@ func sendAndComplete(t *testing.T, api, target string) {
 }
 
 func TestRepositoryTeamHasRolePerAgentAndBoundedObjective(t *testing.T) {
-	reg, err := core.ParseRegistry(read(t, "repository-team", "team.yaml"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	for id := range reg.Agents {
+	for _, id := range repositoryIDs {
 		role := bytes.TrimSpace(read(t, "repository-team", "roles", id+".md"))
 		if len(role) == 0 || len(role) > 64*1024 || !bytes.Contains(role, []byte("objective")) {
 			t.Fatalf("invalid or objective-unaware system prompt for %s", id)

@@ -1,8 +1,7 @@
 # Repository engineering team
 
 Real OpenCode agents (via [opencode-a2a-lite](https://github.com/tbrandenburg/opencode-a2a-lite)) collaborate on **one
-explicitly selected Git workspace** and can produce real repository changes. You start five gateways with their native
-commands, start the daemon with [team.yaml](team.yaml) unchanged and send **one objective** to the coordinator (`pm`).
+explicitly selected Git workspace** and can produce real repository changes. Start the daemon with [team.yaml](team.yaml), launch the five gateways with their native commands, register their endpoints using the native CLI, and send **one objective** to the coordinator (`pm`).
 The agents collaborate themselves with the Agentiplex MCP tools. Agentiplex only sees agent IDs, endpoints, messages and
 shared state; no orchestration layer, no generated team roster.
 
@@ -60,11 +59,13 @@ timeout); it carries no credentials. It omits `model`, so OpenCode's default is 
 `"model": {"providerID": "opencode", "model": "big-pickle"}`. If the workspace already has an `opencode.json`, merge the
 `mcp` block by hand instead.
 
-## 2. Start the agents, the daemon, send the objective (by hand)
+## 2. Start the daemon, the agents, register and send the objective (by hand)
 Each [role file](roles/) is an actual native OpenCode system prompt passed using `--system-prompt-file`; the short `A2A_DESCRIPTION` is only discovery metadata. The [objective](objective.md) contains only the desired outcome and acceptance criteria (4096-byte A2A submission limit). The PM publishes the original objective into shared state `repository/objective`; all workers read it before contributing. Notes use role topics in `repository`. The team chooses which roles are needed and may revise its plan; there is no scripted task sequence. Run one fresh daemon/storage and five gateways per objective. Run each long-lived process in its own terminal, from the repository root.
 
 ```sh
 export AGENTIPLEX_SERVER=http://127.0.0.1:19080 W=$RUN/workspace P=$RUN/policies
+make build && bin/agentiplexd --config "$EX/team.yaml" --storage "$RUN/jetstream" # fresh storage
+# Wait for /readyz in another terminal before starting gateways.
 gw() { opencode-a2a-lite --workspace "$W" --system-prompt-file "$EX/roles/$1.md" --port "$2" --access "$3" --policy-file "$P/$4.json" --prompt-timeout 45m "${@:5}"; }
 
 A2A_NAME=pm A2A_DESCRIPTION="Engineering coordination and objective ownership" A2A_TAGS=pm,real-opencode gw pm 19081 read coordinator --no-env
@@ -73,8 +74,12 @@ A2A_NAME=developer A2A_DESCRIPTION="Repository implementation and repair" A2A_TA
 A2A_NAME=tester A2A_DESCRIPTION="Independent executable verification" A2A_TAGS=tester,real-opencode gw tester 19084 danger-full-access writer
 A2A_NAME=quality A2A_DESCRIPTION="Independent change and acceptance review" A2A_TAGS=quality,real-opencode gw quality 19085 read reader --no-env
 
-make build && bin/agentiplexd --config "$EX/team.yaml" --storage "$RUN/jetstream" # fresh storage
-
+# Once the five gateways have published their Agent Cards, register them:
+bin/agentiplex register pm http://127.0.0.1:19081
+bin/agentiplex register architect http://127.0.0.1:19082
+bin/agentiplex register developer http://127.0.0.1:19083
+bin/agentiplex register tester http://127.0.0.1:19084
+bin/agentiplex register quality http://127.0.0.1:19085
 bin/agentiplex agents list
 bin/agentiplex send pm "$(cat $EX/objective.md)" --idempotency-key repository-objective
 bin/agentiplex messages status <id-printed-by-send>   # repeat until a terminal state; the dashboard shows all deliveries
@@ -83,8 +88,7 @@ bin/agentiplex state list repository                  # shared notes
 ```
 
 The startup preflight can take a minute or more and fails intermittently ("capability policy was dropped...", see
-[../README.md](../README.md)); retry the same gateway command. Gateways start before the daemon because the daemon
-registers them at startup; the gateway's MCP connection to the daemon is lazy.
+[../README.md](../README.md)); retry the same gateway command. Start the daemon **before** the gateways. With explicit native roles, gateway v0.9.2 creates a session during readiness verification; OpenCode can discover MCP tools at that point. A failed initial MCP connection may persist for the lifetime of that runtime. The native CLI registers each endpoint once it is ready, so no declarative roster or bootstrap retry is needed for this trusted-local example. The static registry configuration remains supported by the daemon for other examples.
 
 Developer/tester gateways forward no provider keys unless you add `--pass-env <PROVIDER>_API_KEY` (an explicit variable name,
 never a value). Use free models only on public or synthetic code: free-model providers may retain prompts. For private code
@@ -112,21 +116,20 @@ storage directory.
 ## Secure mode (verified HTTPS + per-agent tokens)
 Private-CA forwarding was added upstream in gateway 0.9.1; the authenticated real-team run with the released gateway is not yet verified here (#41). Prerequisites and evidence are in
 [../README.md](../README.md#secure-mode-verified-https--per-agent-tokens). For this team: copy `team.yaml`, add the `server` TLS
-fields and `security` tokens, add `token_file` to the five `registry.agents` entries, point the MCP `url` and header of a copy of
+fields and `security` tokens, declare the five `registry.agents` entries with the URLs from the registration commands above and their own `token_file`, point the MCP `url` and header of a copy of
 `opencode.json` at `https://localhost:19080/mcp`, start each of the five gateways with its own `AGENTIPLEX_TOKEN` and
 `--pass-env AGENTIPLEX_TOKEN` and operator-set `NODE_EXTRA_CA_CERTS` (the `gw` helper accepts extra flags; `--no-env` can remain for explicit passthrough), start
-`bin/agentiplexd --config <your copy>` and use `bin/agentiplex --ca-file ... --token-file <operator>`. Existing policies are unchanged.
+`bin/agentiplexd --config <your copy>` and use `bin/agentiplex --ca-file ... --token-file <operator>`. Existing policies are unchanged. The secure static-roster startup has the same dependency to resolve: a first launch needs the cards for registration while the role-selected gateways need MCP. Do not treat the trusted-local dynamic-registration instructions as authenticated provisioning. Secure real-team startup remains unverified (#41); with an already persisted roster, start the daemon before launching gateways.
 
 ## Customize and restart
-- **Add a team member** (a second tester, a docs reviewer): add `name: {url: ...}` to `registry.agents` in `team.yaml`, start
-  another gateway on that port with its own system prompt file, `A2A_*` identity and the `reader`/`writer` policy, restart the daemon. Only
+- **Add a team member** (a second tester, a docs reviewer): start another gateway on an unused port with its own system prompt file, `A2A_*` identity and the `reader`/`writer` policy, then run `bin/agentiplex register NAME URL`. Only
   the coordinator needs the delegation policy.
 - **Daemon restart:** if the daemon is killed (even SIGKILL) and restarted on the same storage and port, the PM's failed `ask`
   is repeated and re-attaches to the same delivery without duplicate downstream execution (see [MCP](../../docs/MCP.md),
   [ARCH 5.5](../../docs/ARCH.md), [DEPLOYMENT](../../docs/DEPLOYMENT.md)). A model turn in flight in an agent is not resumed.
 
 ## Verification
-`make examples-check` (provider-free: real daemon with `team.yaml`, simulated agents, least-privilege policy checks) and
+`make examples-check` (provider-free: real daemon with `team.yaml`, native endpoint registration of simulated agents, least-privilege policy checks) and
 `make repository-provision-check` (five explicitly prompted real gateways on a synthetic Git workspace, no model task)
 live in [tests/examples](../../tests/examples).
 

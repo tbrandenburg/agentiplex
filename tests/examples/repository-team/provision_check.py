@@ -26,6 +26,7 @@ DESCRIPTIONS = {
     "tester": "Independent executable verification",
     "quality": "Independent change and acceptance review"
 }
+PORTS = {"pm": 19081, "architect": 19082, "developer": 19083, "tester": 19084, "quality": 19085}
 RETRIES = 4  # the gateway preflight is known to be flaky
 TERMINAL = {"completed", "failed", "partial", "uncertain", "input-required", "auth-required"}
 
@@ -118,6 +119,11 @@ def live_check(args, run, ws, api, daemon, head, branch):
     (run / "evidence.json").write_text(json.dumps({"root": root, "deliveries": deliveries, "state": state}, indent=2))
     print("Delivery summary:", json.dumps([{"id": d["id"], "target": d["target"], "state": d["state"],
                                               "has_result": bool(d.get("result"))} for d in deliveries]), flush=True)
+    print("Shared state keys:", json.dumps(sorted(s["key"] for s in state)), flush=True)
+    # Only classify public synthetic final-result indicators; never log raw model messages or reasoning.
+    result_text = json.dumps(root.get("result", {})).lower()
+    print("PM result indicators:", json.dumps({term: term in result_text for term in
+          ("blocked", "mcp", "not available", "unavailable", "connection", "cannot", "permission")}), flush=True)
     workers = verify_evidence(root, deliveries, state, objective)
     verify_workspace(ws, head, branch, args.live)
     print("PASS:", args.live, "objective; completed worker deliveries:", ", ".join(workers),
@@ -146,13 +152,16 @@ def main():
     head, branch = git(ws, "rev-parse", "HEAD"), git(ws, "rev-parse", "--abbrev-ref", "HEAD")
     team = (EX / "team.yaml").read_text()
     (run / "team.yaml").write_text(team.replace("/tmp/agentiplex-repository/", str(run) + "/"))
-    ports = {k: int(v) for k, v in re.findall(r'(\S+): \{url: "http://127\.0\.0\.1:(\d+)"\}', team)}
+    ports = PORTS
     api = "http://127.0.0.1:%d" % int(re.search(r'listen: "127\.0\.0\.1:(\d+)"', team).group(1))
     for name in ("agentiplexd", "agentiplex"):
         subprocess.run(["go", "build", "-mod=readonly", "-o", str(run / name), "./cmd/" + name], cwd=ROOT, check=True, timeout=300)
     procs.private_policies(EX / "policies", run)
     owned = procs.Procs(str(run))
     try:
+        # The explicit-role readiness probe opens an ACP session, so MCP must already be reachable.
+        daemon = owned.spawn("daemon", [str(run / "agentiplexd"), "--config", str(run / "team.yaml")])
+        owned.wait_url("daemon", daemon, api + "/readyz", 120)
         for name, (policy, access) in POLICY.items():
             env = procs.clean_env(A2A_NAME=name, A2A_DESCRIPTION=DESCRIPTIONS[name], A2A_TAGS=name + ",real-opencode")
             for attempt in range(RETRIES + 1):
@@ -168,14 +177,15 @@ def main():
                         raise
                     print(name, "startup failed (known flaky preflight); retrying", flush=True)
                     time.sleep(2)
-        daemon = owned.spawn("daemon", [str(run / "agentiplexd"), "--config", str(run / "team.yaml")])
-        owned.wait_url("daemon", daemon, api + "/readyz", 120)
+            subprocess.run([str(run / "agentiplex"), "--server", api, "register", name,
+                            "http://127.0.0.1:%d" % ports[name]], env=procs.clean_env(), check=True,
+                           stdout=subprocess.DEVNULL, timeout=30)
         agents = json.loads(subprocess.check_output([str(run / "agentiplex"), "--server", api, "agents", "list"], timeout=30))
         if {a["id"] for a in agents} != set(ports):
             raise RuntimeError("registry mismatch")
         if git(ws, "status", "--porcelain"):
             raise RuntimeError("provisioning changed the workspace")
-        print("PASS: five explicitly prompted real gateways provisioned and registered; no model task submitted.")
+        print("PASS: MCP ready before five explicitly prompted gateways started and registered; no model task submitted.", flush=True)
         if args.live:
             live_check(args, run, ws, api, daemon, head, branch)
     finally:

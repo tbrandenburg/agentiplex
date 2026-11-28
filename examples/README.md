@@ -2,7 +2,7 @@
 
 Applies to `repository-team` and `autonomous-team`. These start real, partly
 full-access OpenCode agents with their **native commands**; each example has one `team.yaml` that is passed unchanged to
-`agentiplexd --config team.yaml`. No orchestration layer is needed: follow the example README. The core middleware does not depend on any of this.
+`agentiplexd --config team.yaml`. The prompted repository-team starts MCP first and registers live gateways with native CLI commands; autonomous-team uses declarative registry provisioning. No orchestration layer is needed: follow the example README. The core middleware does not depend on any of this.
 Ports are fixed loopback ports (daemon 19080, agents 19081 and up); both examples use 19080, so run one at a time and check `ss -ltn` first.
 Trusted-local means unauthenticated loopback HTTP; for secure operation use an operator-owned copy of `team.yaml`.
 
@@ -37,7 +37,7 @@ file each for `operator`, `viewer` (dashboard) and every agent. [scripts/demo-se
 openssl/`openssl rand -hex 32` steps used by the repo's tests; field semantics are in
 [DEPLOYMENT](../docs/DEPLOYMENT.md#static-credentials-and-tls).
 
-**Edit an operator-owned copy of `team.yaml`** (the committed file stays unchanged; the roster is not duplicated):
+**Edit an operator-owned copy of `team.yaml`** (the committed file stays unchanged). For repository-team, declare the five endpoints from its documented registration commands in `registry.agents` so the daemon knows the per-agent token files. Secure static-roster startup with explicit native roles remains unverified (#41); the trusted-local dynamic-registration path is not a substitute for credential provisioning.
 ```yaml
 server:   # add to the existing block
   public_url: "https://localhost:19080"
@@ -87,7 +87,7 @@ weak evidence of collaboration; review actual results.
 ## Collaboration model
 - Agents collaborate through the MCP tools of the daemon. The coordinator (PM) discovers the team and delegates with the tools it is
   granted (typically the blocking `ask`); mechanics such as idempotency keys and re-attaching are in the tool contract, not the prompt. Findings are shared with `note`/`read_notes`.
-- Each team is the `registry` block of its `team.yaml` (agents, groups, pools) plus native runtime configuration and static gateway policies. Repository-team uses standalone role files passed as actual system prompts; autonomous-team uses native prepared profiles. A new member is one more registry entry and one more native runtime.
+- Team membership comes from native CLI registrations (repository-team) or the `registry` block of `team.yaml` (autonomous-team), plus native runtime configuration and static gateway policies. Repository-team uses standalone role files passed as actual system prompts; autonomous-team uses native prepared profiles. A new member is one more registry entry and one more native runtime.
 - **Restart expectation:** if the daemon is killed (even SIGKILL) mid-run and restarted on the same storage and port, the run
   continues: the PM's failed `ask` is repeated and re-attaches to the same delivery, with no duplicate downstream
   execution. This relies on the restart policy of [DEPLOYMENT](../docs/DEPLOYMENT.md) (#31) or an operator restart.
