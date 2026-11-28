@@ -118,8 +118,8 @@ The bearer token is resolved once, at the HTTP boundary, to a principal (`operat
 
 | Principal | Access |
 |---|---|
-| Operator | Everything: registry/collection administration, state deletion, abandon, all deliveries, global delivery list and event feed |
-| Agent `<id>` | Discovery/catalog and collection reads; send/broadcast/dispatch/ask via REST, A2A, MCP; read or wait for **only its own** deliveries, broadcast children and results (others look "not found"); read and revision-checked write of shared state; read shared notes and append notes via MCP (author = its ID). No registry/collection mutation, state deletion, abandon, global delivery list or event feed |
+| Operator | Everything: registry/collection administration, state deletion, abandon, all deliveries, global delivery list and event feed; start/nudge until-done requests (resolution is recipient-owned) |
+| Agent `<id>` | Discovery/catalog and collection reads; send/broadcast/dispatch/ask via REST, A2A, MCP; read or wait for **only its own** deliveries, broadcast children and results (others look "not found"); read and revision-checked write of shared state; read shared notes and append notes via MCP (author = its ID); propose resolution through MCP only for a current until-done activation targeted at its own agent ID. No registry/collection mutation, state deletion, abandon, until-done admission/nudging, global delivery list or event feed |
 | Viewer (browser Basic user `viewer`, or bearer) | Read-only dashboard incl. explicit delivery detail; no collaboration, raw state or mutations |
 | Anonymous | Health/readiness and the public Agent Card only |
 

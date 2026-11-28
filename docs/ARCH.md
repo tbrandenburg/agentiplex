@@ -392,3 +392,17 @@ A2A asynchronous admission and execution lifetime are separate. The delivery tim
 ### MVP stabilization (PR #9)
 
 One daemon per namespace remains a deployment contract. A bounded local worker pool (default four, maximum sixteen) shares the existing durable direct and pool consumers. Fetch only when a slot is available; renew ACK leases in flight. Local delivery ownership prevents duplicate concurrent redelivery; endpoint capacity is checked and attempting intent persisted atomically under the existing mutex after an out-of-lock card probe. Accepted records retain reservations across restart. Network operations run outside the admission mutex. Per-endpoint ordering is not guaranteed. No new broker resources or distributed leases. Operator-only abandonment requires the exact downstream task ID and explicit confirmation that remote execution has stopped; it marks accepted work uncertain, preserves evidence, and releases local reservation without cancellation or replay. Reject abandonment while a local operation owns the delivery. HA, indexing, performance targets, AHP/ACP and federation remain backlog until actual usage justifies them.
+
+### Durable logical requests (until-done)
+
+The optional operator send mode owns a parent delivery with immutable objective,
+coordinator, finite budgets, deadline and deterministic activation IDs. Each
+activation follows the existing direct durable delivery path. Parent intent is
+persisted before child creation/publish; restart reconciles the same ID. A
+recipient proposes explicit resolution through MCP; the parent becomes terminal
+only after the current activation and known scope settle, or pauses/fails safely
+on intervention. The daemon wakes on delivery transitions and reconciles every
+500ms as a safety net, including watchdog/deadline checks. No extra broker
+resources or orchestration DSL. The MVP admits one request on an initially idle
+dedicated daemon; delegated calls have no cross-agent request correlation and
+all work since admission is conservatively in scope. See [COLLABORATION](COLLABORATION.md#durable-follow-through-until-done) for the boundary and CLI semantics.
