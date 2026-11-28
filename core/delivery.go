@@ -19,7 +19,7 @@ func terminalState(s string)bool{
 // pendingState includes unfinished broadcast admission. Unknown states are
 // deliberately not treated as pending or terminal.
 func pendingState(state string)bool{
-	switch state{case "preparing","queued","attempting","accepted","fanout":return true}
+	switch state{case "preparing","queued","attempting","accepted","fanout","continuing":return true}
 	return false
 }
 
@@ -27,6 +27,7 @@ func terminalOrPartial(s string)bool{return s=="partial"||terminalState(s)}
 
 type Delivery struct {
 	Kind string `json:"kind,omitempty"`
+	Follow *FollowThrough `json:"follow,omitempty"`
 	ParentID string `json:"parentId,omitempty"`
 	Members []string `json:"members,omitempty"`
 	AssignedAgent string `json:"assignedAgent,omitempty"`
@@ -61,6 +62,7 @@ func(b *Bus) Delivery(id string)(Delivery,error){
 	if !validID.MatchString(id){return Delivery{},ErrInvalid}
 	d,err:=b.rawDelivery(id)
 	if err==nil&&d.Kind=="broadcast"{return b.broadcastView(d)}
+	if err==nil&&d.Kind=="until-done"{return b.followView(d)}
 	return d,err
 }
 
@@ -73,7 +75,7 @@ func(b *Bus) save(d *Delivery,state,detail string)error{
 	d.State=state;d.Detail=detail;d.UpdatedAt=time.Now().UTC()
 	raw,err:=json.Marshal(d);if err!=nil{return err}
 	_,err=b.store.Deliveries.Put(d.ID,raw)
-	if err==nil&&state!=prev{b.emit("delivery.state",d.ID,state,d.Caller)}
+	if err==nil&&state!=prev{b.emit("delivery.state",d.ID,state,d.Caller);b.wakeFollow()}
 	return err
 }
 
@@ -102,6 +104,7 @@ func (b *Bus) RecentDeliveries(limit int) ([]DeliverySummary,error){
 		d,err:=b.rawDelivery(id);if err!=nil{return nil,err}
 		if d.ParentID!=""{continue}
 		if d.Kind=="broadcast"{d,err=b.broadcastView(d);if err!=nil{return nil,err}}
+		if d.Kind=="until-done"{d,err=b.followView(d);if err!=nil{return nil,err}}
 		kind:=d.Kind;if kind==""{kind="send"}
 		children:=make([]ChildDelivery,len(d.Children))
 		for i,c:=range d.Children{children[i]=ChildDelivery{ID:c.ID,Target:c.Target,State:c.State}}

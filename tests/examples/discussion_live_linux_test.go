@@ -122,4 +122,49 @@ func runDiscussionQuickstart(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Log("PASS: exact README commands, three real completed agents, readable verdict and all three durable note topics.")
+ runDiscussionContract(l,dir)
+}
+
+func runDiscussionContract(l *liveTeam,dir string){
+ t:=l.t;t.Helper()
+ doc:=string(l.read("README.md"))
+ _,block,ok:=strings.Cut(doc,"<!-- discussion-contract:start -->")
+ block,_,end:=strings.Cut(block,"<!-- discussion-contract:end -->")
+ if !ok||!end{t.Fatal("missing until-done quickstart")}
+ command:=strings.TrimSpace(block)
+ command=strings.TrimPrefix(command,"```sh\n");command=strings.TrimSuffix(command,"\n```")
+ if strings.Contains(command,"\n")||!strings.Contains(command,"--until-done")||!strings.Contains(command,"--wait")||strings.Contains(command,"--nudge-after"){t.Fatal("unexpected until-done quickstart")}
+ out,err:=commandOutput(dir,13*time.Minute,l.env,"bash","-ec","exec "+command)
+ t.Logf("Until-done result: %.4000q",out)
+ if err!=nil{t.Fatalf("native until-done command: %v",err)}
+ var summaries []core.DeliverySummary
+ if err=l.get(l.api+"/api/v1/deliveries?limit=100",&summaries);err!=nil||len(summaries)>=100{t.Fatal("cannot inspect complete delivery set",err)}
+ var root core.Delivery
+ for _,s:=range summaries{
+  if s.State!="completed"{t.Fatal("unresolved delivery",s.ID)}
+  if s.Kind=="until-done"{
+   if root.ID!=""{t.Fatal("multiple logical requests")}
+   if err=l.get(l.api+"/api/v1/deliveries/"+s.ID,&root);err!=nil{t.Fatal(err)}
+  }
+ }
+ if root.Target!="lead"||root.Text!=string(l.read("contract.md"))||root.Follow==nil||root.Follow.Resolution==nil||root.Follow.Resolution.Outcome!="done"||root.Follow.Options.NudgeSeconds!=0||len(root.Follow.Turns)<2||len(root.Result)==0{t.Fatal("missing native multi-turn resolution")}
+ var first core.Delivery
+ for i,id:=range root.Follow.Turns{
+  var d core.Delivery
+  if err=l.get(l.api+"/api/v1/deliveries/"+id,&d);err!=nil||d.ParentID!=root.ID||d.Target!="lead"||d.State!="completed"{t.Fatal("invalid activation",id,err)}
+  if i==0{first=d}
+ }
+ var baseline,final struct{DraftDelivery,ReviewDelivery,Finding,Recommendation string;Accepted bool}
+ var baselineState,finalState core.StateEntry
+ if err=l.get(l.api+"/api/v1/state/discussion-contract/baseline",&baselineState);err!=nil||baselineState.Value==nil||json.Unmarshal([]byte(*baselineState.Value),&baseline)!=nil{t.Fatal("missing baseline checkpoint",err)}
+ if err=l.get(l.api+"/api/v1/state/discussion-contract/final",&finalState);err!=nil||finalState.Value==nil||json.Unmarshal([]byte(*finalState.Value),&final)!=nil{t.Fatal("missing final evidence",err)}
+ if baselineState.UpdatedAt.After(first.UpdatedAt)||!strings.Contains(strings.ToLower(baseline.Finding),"recovery")||!final.Accepted||!strings.Contains(strings.ToLower(final.Recommendation),"recovery"){t.Fatal("missing observed checkpoint or accepted recovery analysis")}
+ used:=map[string]bool{}
+ for i,item:=range []struct{id,target string}{{baseline.DraftDelivery,"expert"},{baseline.ReviewDelivery,"critic"},{final.DraftDelivery,"expert"},{final.ReviewDelivery,"critic"}}{
+  var d core.Delivery
+  if item.id==""||used[item.id]||l.get(l.api+"/api/v1/deliveries/"+item.id,&d)!=nil||d.Target!=item.target||d.State!="completed"||!(teamDelivery{Result:d.Result}).hasResult(){t.Fatal("invalid distinct worker evidence",item.target,item.id)}
+  used[item.id]=true
+  if d.UpdatedAt.Before(root.Follow.StartedAt)||(i<2&&d.UpdatedAt.After(first.UpdatedAt))||(i>=2&&!d.UpdatedAt.After(first.UpdatedAt)){t.Fatal("worker evidence outside expected checkpoint",item.id)}
+ }
+ t.Log("PASS: same three agents, native until-done without nudges, independent incomplete checkpoint and revised acceptance.")
 }

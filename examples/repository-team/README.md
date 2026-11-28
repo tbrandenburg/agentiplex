@@ -64,42 +64,51 @@ Review [the approved objective](objective.contract.md) and
 [the checklist](contract.json) before starting; this example is specifically
 for the synthetic Clamp defect used in CI (see the fixture in
 [team_verify_test.go](../../tests/examples/team_verify_test.go)).
-Requires Bash, jq, curl and GNU timeout in addition to the usual tools.
+Start the team using the convenience launcher (or the native setup below).
+Put the checkout's `bin/` directory on PATH and enter the example directory:
 
 ```sh
 ACCEPT_FULL_ACCESS=yes CONTRACT_MODE=yes bash examples/repository-team/up.sh /path/to/disposable/git/checkout
 export AGENTIPLEX_SERVER=http://127.0.0.1:19080
-# Explicit approval; do not run the ordinary objective submission as well.
-bash examples/repository-team/run-contract.sh init
-bash examples/repository-team/run-contract.sh run
-# In another terminal: live checklist (raw state events)
-bin/agentiplex state watch repository
+cd examples/repository-team
 ```
 
-The runner prints the checklist after each bounded PM activation. Round one
-reproduces the failing check and checkpoints it before repair. Subsequent
-rounds work on open criteria, reverify after changes, and stop only when all
-criteria have evidence and all deliveries are completed, an explicit blocker
-occurs, or the eight-round budget is exhausted. Only the runner schedules PM
-rounds; an unexpected PM delivery or unfinished work pauses the run instead of
-reporting fulfillment. Completed PM delivery IDs are persisted in the cursor. The PM owns the checklist; owners supply independent evidence.
-The operator must still review the diff and run independent checks; delivery
-completion and model-reported evidence do not attest a test result.
+Review and approve the objective and checklist, then run these native commands.
+Do not also submit the ordinary repository objective.
 
-If the runner is interrupted, rerun `run-contract.sh run` with the same daemon
-storage and original example files. The persisted round and stable idempotency
-key reattach to the same delivery; never create a new key to retry an uncertain
-outcome. Only one runner at a time; don't modify contract state while work is
-active. Recovery is deliberately bounded to 24 hours with the default seven-day
-delivery retention. Partial initialization requires fresh storage; unresolved
-deliveries require inspection, not blind replay. An explicit blocker remains
-paused until the operator resolves it. Checklist ownership is a trusted-local
-working agreement, not enforced authorization.
+<!-- contract-quickstart:start -->
+```sh
+agentiplex state put repository objective --file objective.contract.md --revision 0
+agentiplex state put repository contract --file contract.json --revision 0
+agentiplex send pm --file objective.contract.md --idempotency-key repository-contract --until-done --max-turns 8 --timeout 20m --wait
+```
+<!-- contract-quickstart:end -->
 
-`make contract-check` runs provider-free runner regression tests (a fake CLI,
-not a simulated engineering result). The real-model `contract` scenario in
+In another terminal, inspect the living checklist with
+`agentiplex state watch repository`, and the durable request with
+`agentiplex messages list` or `agentiplex messages status MESSAGE_ID`.
+
+Round one reproduces the failing check and checkpoints it before repair.
+Subsequent activations work on open criteria and reverify after changes.
+The daemon continues automatically after each safe completed turn without an
+inactivity timer. The PM explicitly resolves the logical request only after
+all criteria have evidence; the daemon waits for execution quiescence. It
+pauses on intervention or the eight-turn/deadline limits. The operator must
+still independently verify the actual patch. Checklist ownership is a
+trusted-local working agreement, not enforced authorization.
+
+Ctrl-C detaches the observer, not execution. Reattach with
+`agentiplex messages wait MESSAGE_ID` or repeat the identical send with
+the same idempotency key and options. Restart the daemon with the same storage
+to recover the request. Never blindly replay uncertain work. This first
+implementation requires a dedicated, initially idle daemon and one open
+until-done request at a time; don't submit unrelated work or change the
+approved state during execution. Full-access agents remain unsandboxed.
+
+`make contract-check` runs provider-free broker lifecycle tests.
+The real-model `contract` scenario in
 [Examples / Live / Repository engineering team](https://github.com/tbrandenburg/agentiplex/actions/workflows/repository-team-live.yaml)
-uses the real daemon and gateways and independently verifies the actual patch.
+executes the native commands above and independently verifies the actual patch.
 
 ### Foundations and related work
 
@@ -107,8 +116,8 @@ Here, contract-driven development means an operator-approved, persistent work
 specification: scope, acceptance criteria, responsible roles and verification
 evidence. Agents choose the next useful action within that scope. A completed
 agent turn is not a fulfilled contract; closure additionally requires verified
-criteria and no outstanding deliveries. The runner is a bounded application-level
-continuation mechanism, not a workflow engine or a formal verification system.
+criteria and no outstanding deliveries. Native until-done messaging supplies bounded continuation, not a workflow engine
+or a formal verification system.
 
 Relevant original research and practitioner work:
 
@@ -135,7 +144,7 @@ The checklist applies the spirit of software contracts at the level of a
 development task, rather than implementing language-level executable
 preconditions, postconditions or invariants. The example uses explicit
 delegation, not Contract Net bidding, and a bounded delivery-state check in a
-dedicated single-runner environment, not the general Dijkstra–Scholten
+dedicated collaboration environment, not the general Dijkstra–Scholten
 termination-detection algorithm. These references provide conceptual context;
 they are not claims of formal guarantees or protocol conformance.
 

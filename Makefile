@@ -27,7 +27,7 @@ help:
 		'  make demo-check       Noninteractive simulated demo' \
 		'  Real-agent start/send/stop: see examples/README.md' \
 		'  make examples-check   Provider-free native example checks (real daemon, simulated agents)' \
-		'  make contract-check   Provider-free contract runner regression (Python 3, jq)' \
+		'  make contract-check   Provider-free durable continuation regression' \
 		'  make live-check       Verification: real PM+architect autonomous team (MODEL optional; Linux; see examples/README.md)' \
 		'  make repository-provision-check Verification: start the repository team gateways, no model task' \
 		'Deployment:' \
@@ -77,8 +77,8 @@ demo-check:
 examples-check: dashboard-assets contract-check
 	go test $(GO_TEST_FLAGS) ./tests/examples/
 
-contract-check:
-	python3 tests/examples/contract_runner_test.py -v
+contract-check: dashboard-assets
+	go test $(GO_TEST_FLAGS) ./tests/integration -run '^TestUntilDone'
 
 live-check: dashboard-assets
 	go test -count=1 -v -timeout 45m ./tests/examples -run '^TestLiveTeam$$' -args -live autonomous $(if $(MODEL),-model $(MODEL)) $(LIVE_ARGS)

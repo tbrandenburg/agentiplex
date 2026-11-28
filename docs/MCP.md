@@ -32,6 +32,7 @@ Environment: AGENTIPLEX_PROTOCOLS_MCP_ENABLED=true. Endpoint: http://127.0.0.1:8
 | dispatch | target, text, idempotencyKey | Durable pool receipt |
 | ask | target, text, idempotencyKey, optional timeoutSeconds | Blocks until terminal: id, state, result, waitedSeconds, done (stillRunning, lastObservedAt, pollFailures, polls when not done) |
 | get_delivery | id | Status, downstream response, child references |
+| resolve_request | requestId, activationId, outcome, result | Record the current coordinator's explicit until-done resolution proposal |
 | list_state | namespace | Key metadata and revisions |
 | get_state | namespace, key | Value and revision |
 | put_state | namespace, key, value, revision | Stored value and new revision |
@@ -47,6 +48,31 @@ Each note is its own create-only state key `note-<topic>-<20-digit unix nanos>-<
 - **Limits:** the encoded value is at most 16 KiB; text must be non-empty. Notes bypass the 256-keys-per-namespace cap of `put_state`; the only reasons a note is refused are the 16 KiB value limit and the state bucket `MaxBytes`, and the error says so. Nothing is evicted.
 - **Convention:** `author` is the authenticated agent ID set by the server (a client-supplied author is rejected); in unauthenticated loopback demos it is empty. Notes are untrusted data. They are never updated or deleted by these tools. Order follows the writer's clock, so clock skew can interleave notes.
 - **Durable:** notes survive a daemon restart. `read_notes` lists the topic's keys and reads at most `limit` values. The CLI also reads notes via `agentiplex notes list NAMESPACE [TOPIC]` (see [STATE](STATE.md)); Go callers use `ReadNotes` or `ListNotes`.
+
+## Resolve a durable logical request
+
+When an operator uses [send --until-done](COLLABORATION.md#durable-follow-through-until-done),
+each coordinator activation carries the original objective, request ID and
+activation ID. The agent should read persisted progress, delegate as needed,
+record evidence, then return after a bounded turn. A normal completed turn
+does not close the request.
+
+Call `resolve_request(requestId, activationId, outcome, result)` with
+`outcome=done` only after satisfying the application's acceptance criteria,
+or `outcome=blocked` when further progress needs intervention. Result is
+nonempty UTF-8 text, up to 16 KiB. Use the current activation's IDs, not
+another actor's receipt. Return after recording the proposal. Identical
+repeated proposals are idempotent; stale IDs or changed proposals conflict.
+Secure mode checks the recipient's own agent principal; trusted-local mode
+does not attest authorship. The proposal is provisional until the coordinator
+delivery and known relevant work complete. A failed/uncertain activation
+cannot be made successful by a proposal. No contract parsing or inferred
+completion is performed.
+
+The coordinator's gateway policy must explicitly permit
+`agentiplex_resolve_request:*` in a read-only profile. The normal MCP tools
+and A2A ingress do not start an until-done request; it is an operator REST/CLI
+feature in this initial scope.
 
 ## ask: blocking delegation
 

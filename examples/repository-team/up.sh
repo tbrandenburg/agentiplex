@@ -42,7 +42,7 @@ gw tester 19084 danger-full-access writer "Independent executable verification" 
 gw quality 19085 read reader "Independent acceptance review" --no-env
 printf 'Team up (dashboard http://127.0.0.1:19080/ui/).\nRUN=%q\n' "$RUN"
 if [[ ${CONTRACT_MODE:-} == yes ]]; then
-  printf '%s\n' 'Contract mode: export AGENTIPLEX_SERVER=http://127.0.0.1:19080; bash examples/repository-team/run-contract.sh init; bash examples/repository-team/run-contract.sh run'
+  printf '%s\n' 'Contract mode: put bin/ on PATH, export AGENTIPLEX_SERVER=http://127.0.0.1:19080, cd examples/repository-team and follow the README native contract commands.'
 else
   printf '%s\n' 'From the repository root, publish and submit the same objective:' '  OBJECTIVE="$(cat examples/repository-team/objective.md)"' '  bin/agentiplex --server http://127.0.0.1:19080 state put repository objective "$OBJECTIVE" --revision 0 &&' '  bin/agentiplex --server http://127.0.0.1:19080 send pm "$OBJECTIVE" --idempotency-key repository-objective --wait' '  bin/agentiplex --server http://127.0.0.1:19080 notes list repository'
 fi

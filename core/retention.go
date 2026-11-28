@@ -38,7 +38,13 @@ func (b *Bus) Usage()(Usage,error){
 // on their own. Nonterminal records are never touched. Deletion is a CAS
 // purge, so a concurrent update wins and the record survives to the next sweep.
 func (b *Bus) sweepRetention(ctx context.Context,now time.Time,retention time.Duration)(int,error){
-	ks,err:=keys(b.store.Deliveries);if err!=nil{return 0,err}
+	b.mu.Lock();defer b.mu.Unlock()
+ var scopeStart time.Time
+ if b.followID!=""{
+  f,e:=b.rawDelivery(b.followID);if e!=nil{return 0,e}
+  if f.State=="continuing"&&f.Follow!=nil{scopeStart=f.Follow.StartedAt}
+ }
+ ks,err:=keys(b.store.Deliveries);if err!=nil{return 0,err}
 	removed:=0
 	purge:=func(id string,rev uint64)bool{
 		err:=b.store.Deliveries.Purge(id,nats.LastRevision(rev))
@@ -49,6 +55,7 @@ func (b *Bus) sweepRetention(ctx context.Context,now time.Time,retention time.Du
 		if ctx.Err()!=nil{break}
 		d,rev,e:=read[Delivery](b.store.Deliveries,id)
 		if e!=nil{continue}
+  if !scopeStart.IsZero()&&!d.UpdatedAt.Before(scopeStart){continue}
 		if d.ParentID!=""{
 			// Owned by a live parent; orphans (parent already removed) age out alone.
 			if _,_,pe:=read[Delivery](b.store.Deliveries,d.ParentID);!errors.Is(pe,ErrNotFound){continue}
@@ -62,6 +69,21 @@ func (b *Bus) sweepRetention(ctx context.Context,now time.Time,retention time.Du
 			continue
 		}
 		if !terminalState(d.State){continue}
+  if d.Kind=="until-done"&&d.Follow!=nil{
+   // A deadline may pause a parent while its admitted child is still active.
+   // Preserve the request and its children until the last child ages out.
+   keep:=false
+   for _,turn:=range d.Follow.Turns{
+    child,e:=b.rawDelivery(turn)
+    if e==nil&&(!terminalState(child.State)||now.Sub(child.UpdatedAt)<=retention){keep=true;break}
+    if e!=nil&&!errors.Is(e,ErrNotFound){keep=true;break}
+   }
+   if keep{continue}
+   if now.Sub(d.UpdatedAt)>retention&&purge(id,rev){
+    for _,turn:=range d.Follow.Turns{if _,cr,ce:=read[Delivery](b.store.Deliveries,turn);ce==nil{purge(turn,cr)}}
+   }
+   continue
+  }
 		if now.Sub(d.UpdatedAt)>retention{purge(id,rev)}
 	}
 	if removed>0{

@@ -77,9 +77,17 @@ func Command()*cobra.Command{
 	catalog.AddCommand(&cobra.Command{Use:"get",Args:cobra.NoArgs,RunE:func(c *cobra.Command,a []string)error{return print(c,"GET","/.well-known/ai-catalog.json",nil)}})
 	root.AddCommand(catalog)
 	var key string
-	var sendWait bool
-	send:=&cobra.Command{Use:"send TARGET TEXT",Args:cobra.ExactArgs(2),RunE:func(c *cobra.Command,a []string)error{
-		in:=map[string]string{"target":a[0],"text":a[1],"idempotencyKey":key}
+	var sendWait,untilDone bool
+ var file string
+ var maxTurns int
+ var nudgeAfter,deadline time.Duration
+ send:=&cobra.Command{Use:"send TARGET [TEXT]",Args:cobra.RangeArgs(1,2),RunE:func(c *cobra.Command,a []string)error{
+  text,err:=messageInput(c,a[1:],file);if err!=nil{return err}
+  in:=map[string]any{"target":a[0],"text":text,"idempotencyKey":key}
+  if untilDone {
+   if maxTurns<1||maxTurns>100||deadline<time.Second||deadline>24*time.Hour||deadline%time.Second!=0||nudgeAfter<0||nudgeAfter>24*time.Hour||nudgeAfter%time.Second!=0{return fmt.Errorf("invalid continuation limits (1–100 turns, whole seconds, deadline 1s–24h)")}
+   in["follow"]=map[string]int{"maxTurns":maxTurns,"timeoutSeconds":int(deadline/time.Second),"nudgeSeconds":int(nudgeAfter/time.Second)}
+  }else if c.Flags().Changed("max-turns")||c.Flags().Changed("timeout")||c.Flags().Changed("nudge-after"){return fmt.Errorf("continuation limits require --until-done")}
 		if !sendWait{return print(c,"POST","/api/v1/messages",in)}
 		raw,err:=r.call(c.Context(),"POST","/api/v1/messages",in);if err!=nil{return err}
 		var receipt struct{ID string}
@@ -89,7 +97,12 @@ func Command()*cobra.Command{
 		return waitAndPrint(c,r,receipt.ID,false)
 	}}
 	send.Flags().StringVar(&key,"idempotency-key","","required stable caller-generated key, created once per intended operation and reused only to retry")
-	send.Flags().BoolVar(&sendWait,"wait",false,"wait for the admitted delivery and print its verdict")
+	send.Flags().BoolVar(&sendWait,"wait",false,"wait for the admitted message's selected completion lifecycle")
+ send.Flags().StringVar(&file,"file","","read message content from a file, or - for stdin")
+ send.Flags().BoolVar(&untilDone,"until-done",false,"continue across turns until explicit resolution or intervention (dedicated daemon)")
+ send.Flags().IntVar(&maxTurns,"max-turns",20,"maximum coordinator activations, including initial turn")
+ send.Flags().DurationVar(&deadline,"timeout",2*time.Hour,"durable continuation deadline, not a wait timeout")
+ send.Flags().DurationVar(&nudgeAfter,"nudge-after",0,"optional inactivity watchdog interval (0 disables)")
 	_ = send.MarkFlagRequired("idempotency-key")
 	root.AddCommand(send)
 	for _,kind:=range []string{"group","pool"}{
@@ -114,7 +127,14 @@ func Command()*cobra.Command{
 	}
 	messages:=&cobra.Command{Use:"messages"}
 	messages.AddCommand(&cobra.Command{Use:"status ID",Args:cobra.ExactArgs(1),RunE:func(c *cobra.Command,a []string)error{return print(c,"GET","/api/v1/deliveries/"+url.PathEscape(a[0]),nil)}})
-	var remoteStopped bool
+	var listLimit int
+ listMessages:=&cobra.Command{Use:"list",Args:cobra.NoArgs,RunE:func(c *cobra.Command,a []string)error{
+  if listLimit<1||listLimit>100{return fmt.Errorf("limit must be 1–100")}
+  return print(c,"GET","/api/v1/deliveries?limit="+strconv.Itoa(listLimit),nil)
+ }}
+ listMessages.Flags().IntVar(&listLimit,"limit",50,"recent top-level deliveries")
+ messages.AddCommand(listMessages,&cobra.Command{Use:"nudge ID",Args:cobra.ExactArgs(1),RunE:func(c *cobra.Command,a []string)error{return print(c,"POST","/api/v1/deliveries/"+url.PathEscape(a[0])+"/nudge",nil)}})
+ var remoteStopped bool
 	abandon:=&cobra.Command{Use:"abandon ID DOWNSTREAM_TASK_ID",Short:"Stop monitoring only after verifying remote execution stopped; outcome remains uncertain",Args:cobra.ExactArgs(2),RunE:func(c *cobra.Command,a []string)error{
 		if !remoteStopped{return fmt.Errorf("verify remote execution stopped before using --confirm-remote-stopped")}
 		return print(c,"POST","/api/v1/deliveries/"+url.PathEscape(a[0])+"/abandon",map[string]any{"taskId":a[1],"remoteStopped":true})
@@ -177,4 +197,15 @@ func (c *remote) follow(ctx context.Context,out io.Writer,after uint64,kind stri
 		if err=scanner.Err();err!=nil{return err}
 		select{case<-ctx.Done():return nil;case<-time.After(time.Second):}
 	}
+}
+
+// messageInput keeps the document format independent of completion semantics.
+func messageInput(c *cobra.Command,args []string,file string)(string,error){
+ if file=="" {if len(args)!=1{return "",fmt.Errorf("provide text or --file")};return args[0],nil}
+ if len(args)!=0{return "",fmt.Errorf("text and --file are mutually exclusive")}
+ var reader io.Reader=c.InOrStdin()
+ if file!="-" {f,err:=os.Open(file);if err!=nil{return "",err};defer f.Close();reader=f}
+ raw,err:=io.ReadAll(io.LimitReader(reader,(64<<10)+1));if err!=nil{return "",err}
+ if len(raw)>64<<10{return "",fmt.Errorf("input exceeds 64 KiB")}
+ return string(raw),nil
 }

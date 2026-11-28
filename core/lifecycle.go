@@ -107,7 +107,7 @@ func (b *Bus) RemoveAgent(ctx context.Context,id string)error{
 		d,err:=b.rawDelivery(key);if err!=nil{return err}
 		if d.Kind=="broadcast"{d,err=b.broadcastView(d);if err!=nil{return err}}
 		if !pendingState(d.State){continue}
-		if (d.Kind==""&&d.Target==id)||d.AssignedAgent==id{return fmt.Errorf("%w: pending delivery %s",ErrConflict,d.ID)}
+		if ((d.Kind==""||d.Kind=="until-done")&&d.Target==id)||d.AssignedAgent==id{return fmt.Errorf("%w: pending delivery %s",ErrConflict,d.ID)}
 		for _,member:=range d.Members{if member==id{return fmt.Errorf("%w: pending recipient snapshot %s",ErrConflict,d.ID)}}
 	}
 	if err=b.store.Registry.Delete(id,nats.LastRevision(rev));err!=nil{

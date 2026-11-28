@@ -38,6 +38,7 @@ func (b *Bus) submitCollection(ctx context.Context,kind,target,text,id,messageID
 	if err==nil{
 		if d.Kind!=kind||d.Caller!=callerID(ctx)||d.Target!=target||d.Text!=text||d.IngressMessageID!=messageID{b.mu.Unlock();return Delivery{},ErrConflict}
 	}else if errors.Is(err,ErrNotFound){
+		if e:=b.guardFollow("","",true);e!=nil{b.mu.Unlock();return Delivery{},e}
 		collectionKind:="group"
 		if kind=="dispatch"{collectionKind="pool"}
 		c,e:=b.Collection(collectionKind,target)

@@ -35,6 +35,90 @@ Groups/pools set is an upsert. Members must already be registered. The idempoten
 
 The wait is event-driven on the durable delivery KV record, using the same watcher as MCP `ask`; broadcast admission and each child use their own existing record. No server lifetime cap or per-waiter polling of agents. Ctrl-C, a lost connection or a daemon restart ends the observation, not the work. Run `messages wait ID` again against the restarted daemon on the same storage. A failed submission response may be retried only with the same key and payload while retained; never blindly resubmit uncertain work. Normal authentication and per-caller visibility apply. Raw result text is untrusted.
 
+## Durable follow-through (until-done)
+
+A single delivery is still the default. Use the same `send` command for a
+collaborative objective that may need multiple independent agent turns:
+
+```sh
+agentiplex send lead "Resolve all findings" --idempotency-key objective-1 --until-done --wait
+agentiplex send lead --file objective.md --idempotency-key objective-2 --until-done --max-turns 20 --timeout 2h --nudge-after 5m --wait
+```
+
+These are alternative submissions, not concurrent commands for the same daemon.
+`--file FILE` (or `--file -` for stdin) is also supported for ordinary
+send and state put. Files contain UTF-8 text, not middleware-interpreted
+contracts. Ordinary send accepts up to 64 KiB; until-done up to 60 KiB to
+leave room for activation context. State values keep their existing 16 KiB limit.
+
+- `--until-done`: persist a logical request with an original ID and
+  coordinator. The daemon automatically admits another safe activation after
+  a successful turn without explicit resolution; no inactivity interval is
+  required. A short 250ms admission floor prevents a tight loop.
+- `--wait`: attach an observer to the selected lifecycle. Without it, the
+  receipt returns immediately and continuation still happens. Ctrl-C does not
+  cancel execution.
+- `--max-turns`: default 20, range 1–100, includes the initial activation and
+  every continuation or reminder; not subordinate calls or status polls.
+- `--timeout`: default 2h, range 1s–24h in whole seconds; durable continuation
+  deadline, not the HTTP/wait timeout. On exhaustion, no further activation
+  intents are admitted; already admitted work may still run or finish.
+- `--nudge-after`: optional watchdog interval in whole seconds (0/off by
+  default; maximum 24h). A safe continuation overdue by this interval is
+  labelled an inactivity watchdog reminder. It shares the same eligibility
+  and budget as normal continuation; it cannot force an extra turn, interrupt
+  active work, or bypass uncertainty. Normal progress does not wait for it.
+
+```sh
+agentiplex messages list
+agentiplex messages status MESSAGE_ID
+agentiplex messages nudge MESSAGE_ID
+agentiplex messages wait MESSAGE_ID
+```
+
+Manual nudge rechecks eligibility immediately, rather than retrying the original
+work. Status includes `follow` (options, deadline, activation IDs and proposed
+resolution) and child delivery summaries. Fetch child IDs to inspect individual
+turns. The original request stays `continuing` until the coordinator explicitly
+proposes resolution through MCP and its activation and known delegated work
+complete. `completed` means the coordinator declared success and the supported
+delivery scope is quiescent; it is not independent proof of objective acceptance.
+Blocked objectives, budget exhaustion and unsafe work end in an intervention
+state with details. Failed or uncertain execution is not automatically replayed.
+
+**Scope:** initial support is for operator submissions to one initially idle,
+dedicated daemon, with at most one open until-done request. Existing delegated
+calls do not propagate a request ID. Consequently every delivery admitted during
+this request is conservatively considered relevant. Other direct worker calls
+use ordinary messaging; competing direct sends to the coordinator (including
+aliases) and new broadcast/pool dispatch submissions are rejected while the
+request is open. Do not mix unrelated work. Existing uncertain records prevent
+new until-done admission. No claim of multi-request correlation or of knowing
+work executed outside Agentiplex. Trusted-local mode cannot attest the sender;
+authenticated resolution requires the coordinator's own agent credential.
+
+The parent and deterministic activation intents are persisted in the existing
+DELIVERIES KV. Delivery state transitions wake one daemon reconciler; a bounded
+two-second reconciliation tick repairs missed wakes; earlier durable deadlines,
+continuation floors and optional watchdog timestamps shorten the next wake. No new stream, scheduler, task store or application workflow
+is needed. Native JetStream message scheduling was considered, but it would add
+stream configuration and duplicate admission paths without improving the
+immediate event-driven continuation in this dedicated scope. The persisted
+timestamps and intents survive restart. Broker publish ACKs and existing
+delivery attempt/uncertainty rules still apply to every activation.
+Repeat only the identical target/text/lifecycle options under the same retained
+key to reattach. A new key is new work. Retention protects known evidence while
+a request is open and retains the parent while admitted activations remain active.
+
+REST: `POST /api/v1/messages` accepts an optional
+`"follow":{"maxTurns":20,"timeoutSeconds":7200,"nudgeSeconds":0}` object.
+Omit it for an ordinary send. `POST /api/v1/deliveries/{id}/nudge` is
+operator-only in secure mode. Existing status/wait routes observe the parent.
+Native A2A ingress and MCP ask/send retain their original semantics.
+
+Examples: [three read-only agents](../examples/discussion-team/README.md#continue-until-the-objective-is-done)
+and [repository repair](../examples/repository-team/README.md#contract-driven-mode-opt-in).
+
 ## HTTP / A2A
 
 - PUT /api/v1/groups/{id} and /api/v1/pools/{id}: body {"members":["tester-1","tester-2"]}.

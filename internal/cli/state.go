@@ -15,10 +15,13 @@ func stateCommand(r *remote,print func(*cobra.Command,string,string,any)error)*c
 	root:=&cobra.Command{Use:"state",Short:"Revision-checked persistent application state"}
 	path:=func(a []string)string{return "/api/v1/state/"+url.PathEscape(a[0])+"/"+url.PathEscape(a[1])}
 	var revision uint64
-	put:=&cobra.Command{Use:"put NAMESPACE KEY VALUE",Args:cobra.ExactArgs(3),RunE:func(c *cobra.Command,a []string)error{
-		return print(c,"PUT",path(a),map[string]any{"value":a[2],"revision":revision})
+ var file string
+ put:=&cobra.Command{Use:"put NAMESPACE KEY [VALUE]",Args:cobra.RangeArgs(2,3),RunE:func(c *cobra.Command,a []string)error{
+  value,err:=messageInput(c,a[2:],file);if err!=nil{return err}
+  return print(c,"PUT",path(a),map[string]any{"value":value,"revision":revision})
 	}}
 	put.Flags().Uint64Var(&revision,"revision",0,"expected revision (zero creates only)")
+ put.Flags().StringVar(&file,"file","","read state value from a file, or - for stdin")
 	var removeRevision uint64
 	remove:=&cobra.Command{Use:"delete NAMESPACE KEY",Args:cobra.ExactArgs(2),RunE:func(c *cobra.Command,a []string)error{
 		if removeRevision==0{return fmt.Errorf("positive revision required")}

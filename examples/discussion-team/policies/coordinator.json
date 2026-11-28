@@ -31,6 +31,21 @@
       "action": "tool.use",
       "resource": "agentiplex_read_notes:*",
       "effect": "allow"
+    },
+    {
+      "action": "tool.use",
+      "resource": "agentiplex_get_state:*",
+      "effect": "allow"
+    },
+    {
+      "action": "tool.use",
+      "resource": "agentiplex_put_state:*",
+      "effect": "allow"
+    },
+    {
+      "action": "tool.use",
+      "resource": "agentiplex_resolve_request:*",
+      "effect": "allow"
     }
   ]
 }

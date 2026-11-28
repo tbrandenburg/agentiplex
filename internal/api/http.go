@@ -118,11 +118,26 @@ func handlerMode(b *core.Bus,u *dashboard.UI,secured bool,publicURL ...string)ht
 			c,err:=b.SetCollection(r.Context(),kind,r.PathValue("id"),in.Members);respond(w,200,c,err)
 		})
 	}
-	for _,route:=range []struct{
+	mux.HandleFunc("POST /api/v1/messages",func(w http.ResponseWriter,r *http.Request){
+  var in struct {
+   Target string `json:"target"`
+   Text string `json:"text"`
+   Key string `json:"idempotencyKey"`
+   Follow *core.FollowOptions `json:"follow,omitempty"`
+  }
+  if !decode(w,r,&in){return}
+  var d core.Delivery
+  var err error
+  if in.Follow!=nil{d,err=b.SendUntilDone(r.Context(),in.Target,in.Text,in.Key,*in.Follow)}else{d,err=b.Send(r.Context(),in.Target,in.Text,in.Key)}
+  respond(w,202,d,err)
+ })
+ mux.HandleFunc("POST /api/v1/deliveries/{id}/nudge",func(w http.ResponseWriter,r *http.Request){
+  d,err:=b.NudgeFollow(r.Context(),r.PathValue("id"));respond(w,200,d,err)
+ })
+ for _,route:=range []struct{
 		path string
 		submit func(context.Context,string,string,string)(core.Delivery,error)
 	}{
-		{"/api/v1/messages",b.Send},
 		{"/api/v1/broadcasts",b.Broadcast},
 		{"/api/v1/dispatches",b.Dispatch},
 	}{
