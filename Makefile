@@ -76,12 +76,11 @@ demo-check:
 examples-check: dashboard-assets
 	go test $(GO_TEST_FLAGS) ./tests/examples/
 
-
 live-check: dashboard-assets
-	go test -count=1 -v -timeout 45m ./tests/examples -run '^TestLiveTeam$' -args -live autonomous $(if $(MODEL),-model $(MODEL)) $(LIVE_ARGS)
+	go test -count=1 -v -timeout 45m ./tests/examples -run '^TestLiveTeam$$' -args -live autonomous $(if $(MODEL),-model $(MODEL)) $(LIVE_ARGS)
 
 repository-provision-check: dashboard-assets
-	go test -count=1 -v -timeout 45m ./tests/examples -run '^TestLiveTeam$' -args -live provision
+	go test -count=1 -v -timeout 45m ./tests/examples -run '^TestLiveTeam$$' -args -live provision
 
 docker:
 	docker build -t $(IMAGE) .

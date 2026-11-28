@@ -52,5 +52,4 @@ jobs:
           trap 'rm -rf "$home"' EXIT
           env -i PATH="$PATH" HOME="$home" LANG=C.UTF-8 USER="$(id -un)" \
             GOMODCACHE="$(go env GOMODCACHE)" GOCACHE="$(go env GOCACHE)" \
-            go test -count=1 -v -timeout 45m ./tests/examples -run '^TestLiveTeam
- -args -live "$OBJECTIVE" -model opencode/big-pickle
+            go test -count=1 -v -timeout 45m ./tests/examples -run '^TestLiveTeam$' -args -live "$OBJECTIVE" -model opencode/big-pickle

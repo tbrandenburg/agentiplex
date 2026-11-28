@@ -136,24 +136,9 @@ Full real-model acceptance is separate, in the path-filtered `Repository team li
 
 ```sh
 make dashboard-assets
-go test -count=1 -v -timeout 45m ./tests/examples -run '^TestLiveTeamdocs -model opencode/big-pickle
-python3 -B tests/examples/repository-team/provision_check.py --live defect -model opencode/big-pickle
-python3 -B tests/examples/repository-team/provision_check.py --live integration -model opencode/big-pickle
+go test -count=1 -v -timeout 45m ./tests/examples -run '^TestLiveTeam$' -args -live docs -model opencode/big-pickle
+go test -count=1 -v -timeout 45m ./tests/examples -run '^TestLiveTeam$' -args -live defect -model opencode/big-pickle
+go test -count=1 -v -timeout 45m ./tests/examples -run '^TestLiveTeam$' -args -live integration -model opencode/big-pickle
 ```
 
 A failed or timed-out run is not successful collaboration. Inspect the retained private evidence, actual Git diff and observed checks. These live scenarios are skipped by ordinary `make check`; the provider-free Go verifier cases still run there.
- -args -live docs -model opencode/big-pickle
-go test -count=1 -v -timeout 45m ./tests/examples -run '^TestLiveTeamdefect -model opencode/big-pickle
-python3 -B tests/examples/repository-team/provision_check.py --live integration -model opencode/big-pickle
-```
-
-A failed or timed-out run is not successful collaboration. Inspect the retained private evidence, actual Git diff and observed checks. These live scenarios are not part of `make check`.
- -args -live defect -model opencode/big-pickle
-go test -count=1 -v -timeout 45m ./tests/examples -run '^TestLiveTeamintegration -model opencode/big-pickle
-```
-
-A failed or timed-out run is not successful collaboration. Inspect the retained private evidence, actual Git diff and observed checks. These live scenarios are not part of `make check`.
- -args -live integration -model opencode/big-pickle
-```
-
-A failed or timed-out run is not successful collaboration. Inspect the retained private evidence, actual Git diff and observed checks. These live scenarios are not part of `make check`.
