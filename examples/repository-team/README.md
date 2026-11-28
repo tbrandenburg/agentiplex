@@ -49,6 +49,50 @@ Follow all deliveries on the [dashboard](http://127.0.0.1:19080/ui/). Ctrl-C dur
 the wait detaches; `bin/agentiplex messages wait DELIVERY_ID` reattaches on the
 same daemon. Review the actual Git diff and run independent checks before accepting changes.
 
+## Contract-driven mode (opt in)
+
+Use a fresh disposable repository and fresh daemon storage. The existing five
+agents, policies and gateway are reused. The PM's shared
+[contract instructions](roles/contract-kernel.md) are appended by the launcher.
+Review [the approved objective](objective.contract.md) and
+[the checklist](contract.json) before starting; this example is specifically
+for the synthetic Clamp defect used in CI (see the fixture in
+[team_verify_test.go](../../tests/examples/team_verify_test.go)).
+Requires Bash, jq and GNU timeout in addition to the usual tools.
+
+```sh
+ACCEPT_FULL_ACCESS=yes bash examples/repository-team/up.sh /path/to/disposable/git/checkout
+export AGENTIPLEX_SERVER=http://127.0.0.1:19080
+# Explicit approval; do not run the ordinary objective submission as well.
+bash examples/repository-team/run-contract.sh init
+bash examples/repository-team/run-contract.sh run
+# In another terminal: live checklist (raw state events)
+bin/agentiplex state watch repository
+```
+
+The runner prints the checklist after each bounded PM activation. Round one
+reproduces the failing check and checkpoints it before repair. Subsequent
+rounds work on open criteria, reverify after changes, and stop only when all
+criteria have evidence, an explicit blocker occurs, or the eight-round budget
+is exhausted. The PM owns the checklist; owners supply independent evidence.
+The operator must still review the diff and run independent checks; delivery
+completion and model-reported evidence do not attest a test result.
+
+If the runner is interrupted, rerun `run-contract.sh run` with the same daemon
+storage and original example files. The persisted round and stable idempotency
+key reattach to the same delivery; never create a new key to retry an uncertain
+outcome. Only one runner at a time; don't modify contract state while work is
+active. Recovery is deliberately bounded to 24 hours with the default seven-day
+delivery retention. Partial initialization requires fresh storage; unresolved
+deliveries require inspection, not blind replay. An explicit blocker remains
+paused until the operator resolves it. Checklist ownership is a trusted-local
+working agreement, not enforced authorization.
+
+`make contract-check` runs provider-free runner regression tests (a fake CLI,
+not a simulated engineering result). The real-model `contract` scenario in
+[Examples / Live / Repository engineering team](https://github.com/tbrandenburg/agentiplex/actions/workflows/repository-team-live.yaml)
+uses the real daemon and gateways and independently verifies the actual patch.
+
 ## Native commands (without the convenience launcher)
 
 ### Prepare once
