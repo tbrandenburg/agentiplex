@@ -67,7 +67,7 @@ for the synthetic Clamp defect used in CI (see the fixture in
 Requires Bash, jq, curl and GNU timeout in addition to the usual tools.
 
 ```sh
-ACCEPT_FULL_ACCESS=yes bash examples/repository-team/up.sh /path/to/disposable/git/checkout
+ACCEPT_FULL_ACCESS=yes CONTRACT_MODE=yes bash examples/repository-team/up.sh /path/to/disposable/git/checkout
 export AGENTIPLEX_SERVER=http://127.0.0.1:19080
 # Explicit approval; do not run the ordinary objective submission as well.
 bash examples/repository-team/run-contract.sh init
@@ -100,6 +100,44 @@ working agreement, not enforced authorization.
 not a simulated engineering result). The real-model `contract` scenario in
 [Examples / Live / Repository engineering team](https://github.com/tbrandenburg/agentiplex/actions/workflows/repository-team-live.yaml)
 uses the real daemon and gateways and independently verifies the actual patch.
+
+### Foundations and related work
+
+Here, contract-driven development means an operator-approved, persistent work
+specification: scope, acceptance criteria, responsible roles and verification
+evidence. Agents choose the next useful action within that scope. A completed
+agent turn is not a fulfilled contract; closure additionally requires verified
+criteria and no outstanding deliveries. The runner is a bounded application-level
+continuation mechanism, not a workflow engine or a formal verification system.
+
+Relevant original research and practitioner work:
+
+- Bertrand Meyer, [Applying Design by Contract](https://doi.org/10.1109/2.161279),
+  IEEE Computer 25(10), 1992 — explicit obligations, guarantees and invariants.
+- Bertrand Meyer, [Contract-Driven Development](https://doi.org/10.1007/978-3-540-71289-3_2),
+  FASE 2007 — combines Design by Contract, test-driven development, formal methods
+  and automated testing.
+- Andreas Leitner, Ilinca Ciupa, Manuel Oriol, Bertrand Meyer and Arno Fiva,
+  [Contract Driven Development = Test Driven Development – Writing Test Cases](https://doi.org/10.1145/1287624.1287685),
+  ESEC/FSE 2007 — using executable contracts to support automated testing and
+  regression detection.
+- Gojko Adzic, [Specification by Example](https://www.manning.com/books/specification-by-example),
+  Manning, 2011 — shared, concrete acceptance examples and living documentation.
+- Reid G. Smith, [The Contract Net Protocol: High-Level Communication and Control in a Distributed Problem Solver](https://doi.org/10.1109/TC.1980.1675516),
+  IEEE Transactions on Computers, 1980 — task allocation and coordination among
+  distributed problem solvers.
+- Edsger W. Dijkstra and Carel S. Scholten,
+  [Termination Detection for Diffusing Computations](https://doi.org/10.1016/0020-0190(80)90021-6),
+  Information Processing Letters 11(1), 1980 — distinguishing local completion
+  from termination of distributed work.
+
+The checklist applies the spirit of software contracts at the level of a
+development task, rather than implementing language-level executable
+preconditions, postconditions or invariants. The example uses explicit
+delegation, not Contract Net bidding, and a bounded delivery-state check in a
+dedicated single-runner environment, not the general Dijkstra–Scholten
+termination-detection algorithm. These references provide conceptual context;
+they are not claims of formal guarantees or protocol conformance.
 
 ## Native commands (without the convenience launcher)
 
