@@ -6,6 +6,9 @@ full-access OpenCode agents with their **native commands**; each example has one
 Ports are fixed loopback ports (daemon 19080, agents 19081 and up); both examples use 19080, so run one at a time and check `ss -ltn` first.
 Trusted-local means unauthenticated loopback HTTP; for secure operation use an operator-owned copy of `team.yaml`.
 
+Quick start: `make repository-team-up|send|down` and `make autonomous-team-up|send|down` (see each example's README). The scripts only
+run the documented commands in the background; prompts are plain files (`roles/`, `objective.md`, `profiles/`).
+
 ## Setup
 - Go 1.26+, Git, Make, Node/npm, and Bun 1.4.4 (the gateway needs `bun` on PATH). Python 3.10+ is only needed for the
   optional verification scripts in [tests/examples](../tests/examples).

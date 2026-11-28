@@ -47,7 +47,7 @@ def main():
     owned = procs.Procs(str(run))
     try:
         for name, (policy, access) in POLICY.items():
-            env = procs.clean_env(A2A_NAME=name, A2A_DESCRIPTION=name + " of the repository team", A2A_TAGS=name + ",real-opencode")
+            env = procs.clean_env(A2A_NAME=name, A2A_DESCRIPTION=(EX / "roles" / (name + ".md")).read_text().strip(), A2A_TAGS=name + ",real-opencode")
             for attempt in range(RETRIES + 1):
                 proc = owned.spawn(name, [*procs.gateway_command(), "--workspace", str(ws), "--port", str(ports[name]), "--access", access,
                                          "--policy-file", str(run / "policies" / (policy + ".json"))], env, ws)

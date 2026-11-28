@@ -28,7 +28,20 @@ Linux, Go 1.26+, Git, Node 22+, Bun 1.4.4, OpenCode 2.3.2 or newer, `opencode-a2
 (`ss -ltn`); to change them edit `team.yaml`, the commands below and the MCP `url` in [opencode.json](opencode.json).
 JetStream needs free disk: edit `broker.storage` in `team.yaml` if needed.
 
-## 1. Prepare a disposable workspace
+## Quick start
+`up.sh` and `down.sh` only run the commands of sections 1 and 2 below in the background (no other logic); the prompts are the plain files in
+[roles/](roles/) and [objective.md](objective.md). Edit the `Objective:` line of `objective.md` first.
+
+```sh
+make repository-team-up WORKSPACE=/path/to/disposable/git/checkout ACCEPT_FULL_ACCESS=yes   # prints RUN=<dir>
+make repository-team-send                       # sends objective.md to the coordinator: bin/agentiplex send pm "$(cat objective.md)"
+bin/agentiplex --server http://127.0.0.1:19080 messages status <id>   # until a terminal state; also http://127.0.0.1:19080/ui/
+make repository-team-down RUN=<dir>             # stops exactly the recorded processes
+```
+Verified: five real gateways plus daemon start this way; the PM delegated to architect, developer, tester and quality and the
+developer fixed a broken README link in a synthetic repository (opencode 2.4.1, gateway 0.9.0, free model).
+
+## 1. Prepare a disposable workspace (by hand)
 The gateways need a trusted, standalone Git workspace with reviewed configuration (no untrusted project instructions,
 escaping symlinks, secrets or plugins). A disposable clone is the simplest:
 
@@ -38,7 +51,7 @@ git clone https://github.com/owner/repo.git $RUN/workspace   # or your own dispo
 EX=$PWD/examples/repository-team
 cp -n $EX/opencode.json $RUN/workspace/opencode.json         # -n: never overwrite an operator-owned config
 echo /opencode.json >> $RUN/workspace/.git/info/exclude      # keep Git clean; skip if you commit it
-cp -r $EX/policies $RUN/policies && chmod 600 $RUN/policies/*   # the gateway rejects group-writable policy paths
+cp -r $EX/policies $RUN/policies && chmod 700 $RUN/policies && chmod 600 $RUN/policies/*   # the gateway rejects group-writable policy paths
 ```
 
 [opencode.json](opencode.json) is the one shared native OpenCode config (Agentiplex MCP server and a 45 minute tool-call
@@ -46,24 +59,25 @@ timeout); it carries no credentials. It omits `model`, so OpenCode's default is 
 `"model": {"providerID": "opencode", "model": "big-pickle"}`. If the workspace already has an `opencode.json`, merge the
 `mcp` block by hand instead.
 
-## 2. Start the agents, the daemon, send the objective
-Run each long-lived process in its own terminal, from the repository root. Role and identity come from `A2A_*`.
+## 2. Start the agents, the daemon, send the objective (by hand)
+All prompt text lives in two places: one role file per agent in [roles/](roles/) and the PM's instruction in
+[objective.md](objective.md). Edit its last line (`Objective: ...`) before sending; the A2A submission is limited to 4096 bytes.
+Run each long-lived process in its own terminal, from the repository root. Identity comes from `A2A_NAME`; each agent's role text is a plain file in [roles/](roles/) passed as `A2A_DESCRIPTION`.
 
 ```sh
 export AGENTIPLEX_SERVER=http://127.0.0.1:19080 W=$RUN/workspace P=$RUN/policies
 gw() { opencode-a2a-lite --workspace $W --port "$1" --access "$2" --policy-file $P/"$3".json --prompt-timeout 45m "${@:4}"; }
 
-A2A_NAME=pm        A2A_DESCRIPTION="Coordinate the work: delegate concrete tasks with ask and report honestly" A2A_TAGS=pm,real-opencode gw 19081 read coordinator --no-env
-A2A_NAME=architect A2A_DESCRIPTION="Analyze the repository and recommend a bounded implementation" A2A_TAGS=architect,real-opencode gw 19082 read reader --no-env
-A2A_NAME=developer A2A_DESCRIPTION="Implement the agreed change, run builds and tests, fix failures" A2A_TAGS=developer,real-opencode gw 19083 danger-full-access writer
-A2A_NAME=tester    A2A_DESCRIPTION="Independently run build, test and lint commands and report each command, exit code and outcome (or NOT RUN); do not edit source" A2A_TAGS=tester,real-opencode gw 19084 danger-full-access writer
-A2A_NAME=quality   A2A_DESCRIPTION="Review the actual changes independently and identify risks or blockers" A2A_TAGS=quality,real-opencode gw 19085 read reader --no-env
+A2A_NAME=pm        A2A_DESCRIPTION="$(cat $EX/roles/pm.md)" A2A_TAGS=pm,real-opencode gw 19081 read coordinator --no-env
+A2A_NAME=architect A2A_DESCRIPTION="$(cat $EX/roles/architect.md)" A2A_TAGS=architect,real-opencode gw 19082 read reader --no-env
+A2A_NAME=developer A2A_DESCRIPTION="$(cat $EX/roles/developer.md)" A2A_TAGS=developer,real-opencode gw 19083 danger-full-access writer
+A2A_NAME=tester    A2A_DESCRIPTION="$(cat $EX/roles/tester.md)" A2A_TAGS=tester,real-opencode gw 19084 danger-full-access writer
+A2A_NAME=quality   A2A_DESCRIPTION="$(cat $EX/roles/quality.md)" A2A_TAGS=quality,real-opencode gw 19085 read reader --no-env
 
 make build && bin/agentiplexd --config $EX/team.yaml     # registers all five endpoints at startup
 
 bin/agentiplex agents list
-bin/agentiplex send pm "You are pm, coordinating a team in one shared Git workspace. Discover the available agents and delegate according to their capabilities. Have the change implemented, independently tested and reviewed before you finish, and share findings with the team (notes, namespace repository). Nobody commits, stages, pushes, merges, changes branches or touches credentials or files outside the project. Never invent results; report failures and blockers honestly.
-Objective: Improve the README and correct broken relative links" --idempotency-key repository-objective
+bin/agentiplex send pm "$(cat $EX/objective.md)" --idempotency-key repository-objective
 bin/agentiplex messages status <id-printed-by-send>   # repeat until a terminal state; the dashboard shows all deliveries
 bin/agentiplex state list repository                  # shared notes
 ```

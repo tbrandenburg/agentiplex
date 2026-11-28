@@ -1,4 +1,4 @@
-.PHONY: help fmt lint dashboard-assets build test check clean run demo-agent demo-team demo-check examples-check live-check repository-provision-check docker compose-up compose-down release release-plan
+.PHONY: help fmt lint dashboard-assets build test check clean run demo-agent demo-team demo-check examples-check live-check repository-provision-check repository-team-up repository-team-send repository-team-down autonomous-team-up autonomous-team-send autonomous-team-down docker compose-up compose-down release release-plan
 .DEFAULT_GOAL := help
 export bump
 
@@ -24,6 +24,8 @@ help:
 		'  make demo-agent       Start a simulated agent' \
 		'  make demo-team        Run simulated engineering team' \
 		'  make demo-check       Noninteractive simulated demo' \
+		'  make autonomous-team-up | -send | -down RUN=<dir>  Real PM+architect team: start, send examples/autonomous-team/objective.md, stop' \
+		'  make repository-team-up WORKSPACE=<git dir> ACCEPT_FULL_ACCESS=yes | -send | -down RUN=<dir>  Real full-access repository team' \
 		'  make examples-check   Provider-free native example checks (real daemon, simulated agents)' \
 		'  make live-check       Verification: real PM+architect autonomous team (MODEL optional; Linux; see examples/README.md)' \
 		'  make repository-provision-check Verification: start the repository team gateways, no model task' \
@@ -81,6 +83,24 @@ live-check: dashboard-assets
 
 repository-provision-check: dashboard-assets
 	python3 -B tests/examples/repository-team/provision_check.py
+
+autonomous-team-up: dashboard-assets
+	bash examples/autonomous-team/up.sh
+
+autonomous-team-send:
+	bin/agentiplex --server http://127.0.0.1:19080 send pm "$$(cat examples/autonomous-team/objective.md)" --idempotency-key review
+
+autonomous-team-down:
+	bash examples/down.sh "$(RUN)"
+
+repository-team-up: dashboard-assets
+	bash examples/repository-team/up.sh "$(WORKSPACE)"
+
+repository-team-send:
+	bin/agentiplex --server http://127.0.0.1:19080 send pm "$$(cat examples/repository-team/objective.md)" --idempotency-key repository-objective
+
+repository-team-down:
+	bash examples/down.sh "$(RUN)"
 
 docker:
 	docker build -t $(IMAGE) .

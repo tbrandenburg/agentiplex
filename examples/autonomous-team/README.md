@@ -24,7 +24,19 @@ Linux, Go 1.26+, Node 22+, Bun 1.4.4, OpenCode 2.3.2 or newer, `opencode-a2a-lit
 `profiles/*/opencode.json` (`http://127.0.0.1:19080/mcp`).
 JetStream needs free disk: edit `broker.storage` in `team.yaml` (default `/tmp/agentiplex-autonomous/jetstream`) if needed.
 
-## Run it
+## Quick start
+`up.sh` and `down.sh` only run the commands of "Run it" below in the background (no other logic). The objective is the plain file
+[objective.md](objective.md); the agents' role prompts are the `system` text in [profiles/](profiles/).
+
+```sh
+make autonomous-team-up                         # prints RUN=<dir>; the gateway preflight can take a minute or more
+make autonomous-team-send                       # sends objective.md to the coordinator: bin/agentiplex send pm "$(cat objective.md)"
+bin/agentiplex --server http://127.0.0.1:19080 messages status <id>   # until a terminal state; also http://127.0.0.1:19080/ui/
+make autonomous-team-down RUN=<dir>             # stops exactly the recorded processes
+```
+Verified: the PM completed and delegated to the architect and the `testers` pool by itself (opencode 2.4.1, gateway 0.9.0, free model).
+
+## Run it (by hand)
 Use the commands from the repository root; run each long-lived process in its own terminal.
 
 ```sh
@@ -34,7 +46,7 @@ export AGENTIPLEX_SERVER=http://127.0.0.1:19080
 EX=$PWD/examples/autonomous-team RUN=$(mktemp -d)
 
 # private run directory (mode 0700): the gateway rejects policy files in group-writable directories, so use copies
-cp -r $EX/policies $RUN/policies && chmod 600 $RUN/policies/*
+cp -r $EX/policies $RUN/policies && chmod 700 $RUN/policies && chmod 600 $RUN/policies/*
 # private workspaces: the profile config plus the synthetic fixture only
 for r in pm architect; do mkdir $RUN/$r; cp $EX/profiles/$r/opencode.json $RUN/$r/; cp -r $EX/fixture $RUN/$r/; done
 
@@ -57,7 +69,7 @@ bin/agentiplexd --config $EX/team.yaml
 
 # 4. discover, send ONE objective to the coordinator, inspect
 bin/agentiplex agents list
-bin/agentiplex send pm "Review the fictional controller fixture for architectural, implementation and verification risks. Collaborate with the team and produce a consolidated evidence-based assessment." --idempotency-key review
+bin/agentiplex send pm "$(cat $EX/objective.md)" --idempotency-key review
 bin/agentiplex messages status <id-printed-by-send>   # repeat until a terminal state
 bin/agentiplex state list review                      # notes and plans the agents wrote
 ```

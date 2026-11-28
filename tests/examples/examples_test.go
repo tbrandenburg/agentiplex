@@ -215,3 +215,25 @@ func sendAndComplete(t *testing.T, api, target string) {
 	}
 	t.Fatalf("delivery did not complete: %+v", d)
 }
+
+func TestRepositoryTeamHasRolePerAgentAndBoundedObjective(t *testing.T) {
+	reg, err := agentiplex.ParseRegistry(read(t, "repository-team", "team.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for id := range reg.Agents {
+		if len(bytes.TrimSpace(read(t, "repository-team", "roles", id+".md"))) == 0 {
+			t.Fatalf("empty role for %s", id)
+		}
+	}
+	objective := read(t, "repository-team", "objective.md")
+	if len(objective) > 4096 || !bytes.Contains(objective, []byte("Objective:")) {
+		t.Fatalf("objective.md must contain an Objective: line and stay within the 4096-byte submission limit (%d bytes)", len(objective))
+	}
+}
+
+func TestAutonomousObjectiveIsBounded(t *testing.T) {
+	if n := len(bytes.TrimSpace(read(t, "autonomous-team", "objective.md"))); n == 0 || n > 4096 {
+		t.Fatalf("autonomous-team/objective.md must be non-empty and within the 4096-byte submission limit (%d bytes)", n)
+	}
+}
