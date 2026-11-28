@@ -31,7 +31,7 @@ From the Agentiplex checkout, edit [objective.md](objective.md) to describe the 
 Start the team, then submit the original objective and read the results:
 
 ```sh
-ACCEPT_FULL_ACCESS=yes CONTRACT_MODE=yes bash examples/repository-team/up.sh /path/to/disposable/git/checkout
+ACCEPT_FULL_ACCESS=yes bash examples/repository-team/up.sh /path/to/disposable/git/checkout
 export AGENTIPLEX_SERVER=http://127.0.0.1:19080
 OBJECTIVE="$(cat examples/repository-team/objective.md)"
 bin/agentiplex state put repository objective "$OBJECTIVE" --revision 0 &&
@@ -110,7 +110,72 @@ The real-model `contract` scenario in
 [Examples / Live / Repository engineering team](https://github.com/tbrandenburg/agentiplex/actions/workflows/repository-team-live.yaml)
 executes the native commands above and independently verifies the actual patch.
 
-### Foundations and related work
+## Actor-owned contract (direct handovers)
+
+An alternative contract-team setup uses ordinary asynchronous messages: the
+[approved objective](objective.actors.md) and [living contract](contract.actors.json)
+define artifact owners and evidence. Each actor updates only its owned criteria,
+records the next responsible actor with a revision-checked write, then sends a
+direct notification. The recipient re-reads the contract before acting. The PM
+initiates and closes; it does not relay each handover. This is inspired by
+[Syspilot's Contract Driven Development](https://github.com/enthali/syspilot/blob/main/docs/methodology.md);
+the shared KV revision replaces a Git commit of the contract itself in this example.
+
+Use a fresh disposable synthetic Clamp repository (same fixture as contract mode).
+From the checkout, start the five gateways with the actor roles and policies:
+
+```sh
+ACCEPT_FULL_ACCESS=yes CONTRACT_MODE=actors bash examples/repository-team/up.sh /path/to/disposable/git/checkout
+export AGENTIPLEX_SERVER=http://127.0.0.1:19080
+cd examples/repository-team
+```
+
+With bin/ on PATH and after reviewing the objective and checklist, run:
+
+<!-- actors-quickstart:start -->
+```sh
+agentiplex state put repository objective --file objective.actors.md --revision 0
+agentiplex state put repository actors-contract --file contract.actors.json --revision 0
+agentiplex send pm --file objective.actors.md --idempotency-key actors-objective --wait
+```
+<!-- actors-quickstart:end -->
+
+Observe `agentiplex state watch repository`, `agentiplex messages list` and the
+dashboard. Here --wait observes only the initial PM delivery, not contract
+closure. Wait for status done in actors-contract **and** all deliveries to
+complete, then independently verify the actual patch. The tester records the
+failed baseline and sends work directly to the developer; the independent tests
+and quality review may be done in either useful order. Rework is driven by
+evidence. The PM closes only after the owners have supplied current evidence.
+There is no runner, until-done, new MCP primitive or middleware responsibility
+record.
+
+The [actor prompt](roles/contract-actors.md) and [read-only actor policy](policies/actors-reader.json)
+grant direct messaging; the [executable actor policy](policies/actors-writer.json)
+enables MCP for full-access developer and tester. The latter's wildcard access
+and the trusted-local sender/ownership agreements are not security boundaries.
+The launcher only provisions processes, not the work. For native setup without
+the launcher, use the five gateway commands below with a separate system prompt
+for each actor (prepend "You are actor NAME." to roles/contract-actors.md) and
+the actors-reader / actors-writer policies instead of the default roles/policies.
+
+**Recovery boundary:** state and ordinary messages survive a daemon restart with
+the same storage; the revision write and notification are not one transaction.
+If an actor stops between them, the contract may stall with the new owner named
+but not activated. Inspect the last handoff and durable deliveries; if no
+notification was admitted and execution is known safe, an operator may submit
+the exact recorded target/text/key (`actors-handoff-N`) using ordinary send.
+Never blindly replay uncertain work. No automatic wakeup, overall deadline or
+native completion receipt is promised for this mode. This example tests
+methodology-level collaboration, not full Syspilot/Jarvis feature equivalence.
+
+The live workflow's `actors` scenario executes the approval and submission
+commands above and observes revision changes, artifact ownership, actual
+handoff deliveries, the failing baseline checkpoint and independent acceptance.
+It independently verifies the patch and rejects extra, failed or pending
+deliveries. No middleware changes are required.
+
+## Foundations and related work
 
 Here, contract-driven development means an operator-approved, persistent work
 specification: scope, acceptance criteria, responsible roles and verification
@@ -262,7 +327,14 @@ Full real-model acceptance is separate, in the path-filtered [Repository team li
 make dashboard-assets
 go test -count=1 -v -timeout 45m ./tests/examples -run '^TestLiveTeam$' -args -live docs -model opencode/big-pickle
 go test -count=1 -v -timeout 45m ./tests/examples -run '^TestLiveTeam$' -args -live defect -model opencode/big-pickle
-go test -count=1 -v -timeout 45m ./tests/examples -run '^TestLiveTeam$' -args -live integration -model opencode/big-pickle
+go test -count=1 -v -timeout 45m ./tests/examples -run '^TestLiveTeam```
+
+A failed or timed-out run is not successful collaboration. Inspect the retained private evidence, actual Git diff and observed checks. These live scenarios are skipped by ordinary `make check`; the provider-free Go verifier cases still run there.
+ -args -live integration -model opencode/big-pickle
+go test -count=1 -v -timeout 45m ./tests/examples -run '^TestLiveTeam```
+
+A failed or timed-out run is not successful collaboration. Inspect the retained private evidence, actual Git diff and observed checks. These live scenarios are skipped by ordinary `make check`; the provider-free Go verifier cases still run there.
+ -args -live actors -model opencode/big-pickle
 ```
 
 A failed or timed-out run is not successful collaboration. Inspect the retained private evidence, actual Git diff and observed checks. These live scenarios are skipped by ordinary `make check`; the provider-free Go verifier cases still run there.

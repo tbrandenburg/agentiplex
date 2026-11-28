@@ -21,7 +21,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        objective: [docs, defect, integration, contract]
+        objective: [docs, defect, integration, contract, actors]
     steps:
       - uses: actions/checkout@v4
         with:

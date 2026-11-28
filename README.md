@@ -201,6 +201,7 @@ Choose the level of collaboration you want to explore.
 | [Engineering team](docs/DEMO.md) | `make demo-team` | Six simulated agents; deterministic communication, persistence and recovery. |
 | [Autonomous team](examples/autonomous-team/README.md) | [native commands](examples/autonomous-team/README.md) | Real model-driven delegation through A2A and MCP using synthetic fixtures. |
 | [Repository team](examples/repository-team/README.md) | [native commands](examples/repository-team/README.md) | Five real agents working on the same Git worktree, with implementation and executable verification. |
+| [Actor-owned contract team](examples/repository-team/README.md#actor-owned-contract-direct-handovers) | [direct handovers](examples/repository-team/README.md#actor-owned-contract-direct-handovers) | Role-owned evidence, revision-checked responsibility handovers and independent review through ordinary asynchronous messaging. |
 | [Contract-driven repository team](examples/repository-team/README.md#contract-driven-mode-opt-in) | [approve and run](examples/repository-team/README.md#contract-driven-mode-opt-in) | Living checklist, bounded continuation, rework and independent verification. |
 
 The core is agent-runtime independent. The real-agent examples use an off-the-shelf
