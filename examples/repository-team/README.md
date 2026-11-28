@@ -4,7 +4,7 @@ Real OpenCode agents (via [opencode-a2a-lite](https://github.com/tbrandenburg/op
 explicitly selected Git workspace** and can produce real repository changes. You start five gateways with their native
 commands, start the daemon with [team.yaml](team.yaml) unchanged and send **one objective** to the coordinator (`pm`).
 The agents collaborate themselves with the Agentiplex MCP tools. Agentiplex only sees agent IDs, endpoints, messages and
-shared state; no launcher, no generated configuration.
+shared state; no orchestration layer, no generated team roster.
 
 > **WARNING - FULL ACCESS:** `developer` and `tester` run with `--access danger-full-access`: arbitrary shell commands without
 > per-command approval, edits to any file of your OS user, network access, any provider credentials you forward with `--pass-env`, Git operations,
@@ -29,14 +29,16 @@ Linux, Go 1.26+, Git, Node 22+, Bun 1.4.4, OpenCode 2.3.2 or newer, `opencode-a2
 JetStream needs free disk: edit `broker.storage` in `team.yaml` if needed.
 
 ## Quick start
+Run these commands from the repository root. Start the team only once and set `RUN` to the directory printed by the launcher before stopping it.
 `up.sh` and `down.sh` only run the commands of sections 1 and 2 below in the background (no other logic); the prompts are the plain files in
 [roles/](roles/) and [objective.md](objective.md). Edit the `Objective:` line of `objective.md` first.
 
 ```sh
-make repository-team-up WORKSPACE=/path/to/disposable/git/checkout ACCEPT_FULL_ACCESS=yes   # prints RUN=<dir>
-make repository-team-send                       # sends objective.md to the coordinator: bin/agentiplex send pm "$(cat objective.md)"
+ACCEPT_FULL_ACCESS=yes bash examples/repository-team/up.sh /path/to/disposable/git/checkout  # prints RUN=<dir>
+# Set RUN to the printed directory before using the stop command.
+bin/agentiplex --server http://127.0.0.1:19080 send pm "$(cat examples/repository-team/objective.md)" --idempotency-key repository-objective
 bin/agentiplex --server http://127.0.0.1:19080 messages status <id>   # until a terminal state; also http://127.0.0.1:19080/ui/
-make repository-team-down RUN=<dir>             # stops exactly the recorded processes
+bash examples/down.sh "$RUN"                   # stops exactly the recorded processes
 ```
 Verified: five real gateways plus daemon start this way; the PM delegated to architect, developer, tester and quality and the
 developer fixed a broken README link in a synthetic repository (opencode 2.4.1, gateway 0.9.0, free model).

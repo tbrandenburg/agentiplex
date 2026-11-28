@@ -2,12 +2,15 @@
 
 Applies to `repository-team` and `autonomous-team`. These start real, partly
 full-access OpenCode agents with their **native commands**; each example has one `team.yaml` that is passed unchanged to
-`agentiplexd --config team.yaml`. There is no launcher: follow the example README. The core middleware does not depend on any of this.
+`agentiplexd --config team.yaml`. No orchestration layer is needed: follow the example README. The core middleware does not depend on any of this.
 Ports are fixed loopback ports (daemon 19080, agents 19081 and up); both examples use 19080, so run one at a time and check `ss -ltn` first.
 Trusted-local means unauthenticated loopback HTTP; for secure operation use an operator-owned copy of `team.yaml`.
 
-Quick start: `make repository-team-up|send|down` and `make autonomous-team-up|send|down` (see each example's README). The scripts only
-run the documented commands in the background; prompts are plain files (`roles/`, `objective.md`, `profiles/`).
+Quick start from the repository root: use the example's `up.sh` ([repository-team](repository-team/README.md#quick-start) or
+[autonomous-team](autonomous-team/README.md#quick-start)), submit its objective using the native `bin/agentiplex` CLI, and stop
+with `bash examples/down.sh <run-dir>` (the directory printed as `RUN=...`). The scripts only run the documented native commands
+in the background; prompts are plain files (`roles/`, `objective.md`, `profiles/`). The repository-team launcher still requires
+explicit `ACCEPT_FULL_ACCESS=yes` and a disposable Git workspace. The former six Makefile lifecycle targets are removed.
 
 ## Setup
 - Go 1.26+, Git, Make, Node/npm, and Bun 1.4.4 (the gateway needs `bun` on PATH). Python 3.10+ is only needed for the

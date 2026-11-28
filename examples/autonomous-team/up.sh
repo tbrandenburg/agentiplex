@@ -19,8 +19,10 @@ A2A_NAME=architect A2A_DESCRIPTION="Read-only architecture reviewer" A2A_TAGS=ar
   spawn architect opencode-a2a-lite --workspace "$RUN/architect" --port 19082 --access read --no-env --policy-file "$RUN/policies/worker.json" --prompt-timeout 10m
 for port in 19081 19082 19083 19084 19085 19086; do   # curl's own retry: the gateway preflight takes a minute or more
   curl -fs -o /dev/null --retry 120 --retry-delay 2 --retry-connrefused "http://127.0.0.1:$port/.well-known/agent-card.json" \
-    || { echo "agent on $port did not start; see $RUN/*.log (the gateway preflight is flaky: run down.sh $RUN and retry)" >&2; exit 1; }
+    || { echo "agent on $port did not start; see $RUN/*.log (the gateway preflight is flaky: run bash examples/down.sh $RUN from the repository root and retry)" >&2; exit 1; }
 done
 spawn daemon "$ROOT/bin/agentiplexd" --config "$EX/team.yaml" --storage "$RUN/jetstream"
 curl -fs -o /dev/null --retry 60 --retry-delay 1 --retry-connrefused http://127.0.0.1:19080/readyz || { echo "daemon failed; see $RUN/daemon.log" >&2; exit 1; }
-echo "Team up (run dir $RUN, dashboard http://127.0.0.1:19080/ui/). Next: make autonomous-team-send; stop with: make autonomous-team-down RUN=$RUN"
+printf 'Team up (dashboard http://127.0.0.1:19080/ui/).\nRUN=%q\n' "$RUN"
+printf '%s\n' 'From the repository root, submit the objective:' '  bin/agentiplex --server http://127.0.0.1:19080 send pm "$(cat examples/autonomous-team/objective.md)" --idempotency-key review'
+printf 'Stop with: bash examples/down.sh %q\n' "$RUN"

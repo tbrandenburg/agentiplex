@@ -75,9 +75,14 @@ jobs:
           node-version: '22'
       - name: Native example configuration, policies and provider-free startup
         run: make examples-check GO_TEST_FLAGS="-race -count=1 -v"
+      - name: Check shell syntax and full-access opt-in
+        run: |
+          git ls-files -z '*.sh' | xargs -0 -r -n 1 bash -n
+          status=0
+          env -u ACCEPT_FULL_ACCESS bash examples/repository-team/up.sh /nonexistent || status=$?
+          test "$status" -eq 2
       - name: Simulated engineering team and dashboard
         run: |
-          bash -n examples/engineering-team/demo.sh
           node --check internal/dashboard/static/bootstrap.js
           node --check examples/engineering-team/browser-check.mjs
           make demo-check DEMO_ARGS=--browser-check
@@ -109,9 +114,7 @@ jobs:
           done
           exit 1
       - name: Secure Compose deployment and recovery
-        run: |
-          bash -n examples/down.sh examples/repository-team/up.sh examples/autonomous-team/up.sh scripts/demo-secrets.sh scripts/compose-check.sh scripts/helm-check.sh scripts/package-release.sh
-          bash scripts/compose-check.sh
+        run: bash scripts/compose-check.sh
   helm:
     runs-on: ubuntu-latest
     timeout-minutes: 30
