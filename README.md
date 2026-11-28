@@ -99,7 +99,7 @@ Use a fresh private directory with no symlink or shared-writable ancestors,
 reviewed configuration, free ports 8080 and 8001–8003, and public topics only
 (the example uses a free model). The gateway's default read access is not
 an OS sandbox. Unauthenticated local ports must not be exposed. See the
-[discussion example](examples/discussion-team/README.md) for limitations and verification.
+[discussion example](examples/discussion-team/README.md) for limitations and verification. To pursue a collaborative objective across multiple turns, use the same agents with [native until-done messaging](examples/discussion-team/README.md#continue-until-the-objective-is-done).
 
 ### Simulated team (no model or API key)
 
