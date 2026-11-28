@@ -10,11 +10,6 @@ import (
 	"github.com/nats-io/nats.go"
 )
 
-func terminalState(s string)bool{
-	switch s{case "completed","failed","uncertain","input-required","auth-required":return true}
-	return false
-}
-
 // Ask is Send plus a wait: it durably admits one text request under a required
 // stable key, then blocks until the delivery is terminal, ctx ends, or the
 // optional timeout elapses (done false, no error). The wait is only a view on

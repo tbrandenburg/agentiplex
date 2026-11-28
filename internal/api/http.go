@@ -32,8 +32,6 @@ func HandlerWithDashboard(b *core.Bus, enabled bool, publicURL string) http.Hand
 	return handler(b,u,publicURL)
 }
 
-func HandlerWithUI(b *core.Bus,u *dashboard.UI,publicURL string)http.Handler{return handler(b,u,publicURL)}
-
 // HandlerWithProtocols enables optional protocol adapters explicitly.
 func HandlerWithProtocols(b *core.Bus,u *dashboard.UI,publicURL string,mcpEnabled bool)http.Handler{
 	return HandlerSecure(b,u,publicURL,mcpEnabled,nil)
@@ -76,11 +74,6 @@ func handlerMode(b *core.Bus,u *dashboard.UI,secured bool,publicURL ...string)ht
 		data,err:=b.Catalog();if err!=nil{respond(w,200,nil,err);return}
 		w.Header().Set("Content-Type",cat.MediaType);w.WriteHeader(200);_,_=w.Write(data)
 	})
-	mux.HandleFunc("POST /api/v1/messages",func(w http.ResponseWriter,r *http.Request){
-		var in struct{Target string `json:"target"`;Text string `json:"text"`;Key string `json:"idempotencyKey"`}
-		if !decode(w,r,&in){return}
-		d,err:=b.Send(r.Context(),in.Target,in.Text,in.Key);respond(w,202,d,err)
-	})
 	mux.HandleFunc("GET /api/v1/deliveries",func(w http.ResponseWriter,r *http.Request){
 		limit:=50
 		if raw:=r.URL.Query().Get("limit");raw!=""{n,e:=strconv.Atoi(raw);if e!=nil{respond(w,200,nil,core.ErrInvalid);return};limit=n}
@@ -113,15 +106,18 @@ func handlerMode(b *core.Bus,u *dashboard.UI,secured bool,publicURL ...string)ht
 			c,err:=b.SetCollection(r.Context(),kind,r.PathValue("id"),in.Members);respond(w,200,c,err)
 		})
 	}
-	for _,kind:=range []string{"broadcast","dispatch"}{
-		path:="/api/v1/"+kind
-		if kind=="dispatch"{path+="es"}else{path+="s"}
-		mux.HandleFunc("POST "+path,func(w http.ResponseWriter,r *http.Request){
+	for _,route:=range []struct{
+		path string
+		submit func(context.Context,string,string,string)(core.Delivery,error)
+	}{
+		{"/api/v1/messages",b.Send},
+		{"/api/v1/broadcasts",b.Broadcast},
+		{"/api/v1/dispatches",b.Dispatch},
+	}{
+		mux.HandleFunc("POST "+route.path,func(w http.ResponseWriter,r *http.Request){
 			var in struct{Target string `json:"target"`;Text string `json:"text"`;Key string `json:"idempotencyKey"`}
 			if !decode(w,r,&in){return}
-			var d core.Delivery;var err error
-			if kind=="broadcast"{d,err=b.Broadcast(r.Context(),in.Target,in.Text,in.Key)}else{d,err=b.Dispatch(r.Context(),in.Target,in.Text,in.Key)}
-			respond(w,202,d,err)
+			d,err:=route.submit(r.Context(),in.Target,in.Text,in.Key);respond(w,202,d,err)
 		})
 	}
 	mux.HandleFunc("GET /api/v1/events/stream",func(w http.ResponseWriter,r *http.Request){

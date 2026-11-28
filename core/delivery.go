@@ -8,6 +8,23 @@ import (
 	"github.com/a2aproject/a2a-go/v2/a2a"
 )
 
+// terminalState classifies individual deliveries, including outcomes requiring
+// operator intervention. A partial broadcast is a derived aggregate, not a
+// terminal state of an individual delivery.
+func terminalState(s string)bool{
+	switch s{case "completed","failed","uncertain","input-required","auth-required":return true}
+	return false
+}
+
+// pendingState includes unfinished broadcast admission. Unknown states are
+// deliberately not treated as pending or terminal.
+func pendingState(state string)bool{
+	switch state{case "preparing","queued","attempting","accepted","fanout":return true}
+	return false
+}
+
+func terminalOrPartial(s string)bool{return s=="partial"||terminalState(s)}
+
 type Delivery struct {
 	Kind string `json:"kind,omitempty"`
 	ParentID string `json:"parentId,omitempty"`

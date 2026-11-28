@@ -66,9 +66,7 @@ func (b *Bus) sweepRetention(ctx context.Context,now time.Time,retention time.Du
 	}
 	if removed>0{
 		if err:=b.store.Deliveries.PurgeDeletes(nats.DeleteMarkersOlderThan(time.Hour));err!=nil{slog.Warn("retention marker cleanup failed")}
+		slog.Info("retention sweep","removed",removed)
 	}
-	if removed>0{slog.Info("retention sweep","removed",removed)}
 	return removed,nil
 }
-
-func terminalOrPartial(s string)bool{return s=="partial"||terminalState(s)}

@@ -2,8 +2,6 @@ package core
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -23,7 +21,7 @@ func (b *Bus) SendMessage(ctx context.Context, req *a2a.SendMessageRequest) (a2a
 		return nil, a2a.ErrInvalidParams
 	}
 	msg := req.Message
-	if msg.Role != a2a.MessageRoleUser || strings.TrimSpace(msg.ID) == "" || len(msg.ID) > 256 {
+	if msg.Role != a2a.MessageRoleUser || !validKey(msg.ID) {
 		return nil, a2a.NewError(a2a.ErrInvalidParams, "a user message with a nonempty messageId (max 256 bytes) is required")
 	}
 	if msg.TaskID != "" || msg.ContextID != "" || len(msg.ReferenceTasks) != 0 || len(msg.Extensions) != 0 || len(msg.Metadata) != 0 || len(req.Metadata) != 0 {
@@ -67,8 +65,7 @@ func (b *Bus) SendMessage(ctx context.Context, req *a2a.SendMessageRequest) (a2a
 	}
 
 	// The reserved prefix cannot collide with UUIDs or hex-only CLI hashes.
-	hash := sha256.Sum256([]byte(scopedKey(callerID(ctx), msg.ID)))
-	id := ingressPrefix + hex.EncodeToString(hash[:30])
+	id := scopedID(ingressPrefix, callerID(ctx), msg.ID)
 	var d Delivery
 	var err error
 	if operation=="send"{
