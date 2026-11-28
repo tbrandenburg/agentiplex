@@ -14,12 +14,12 @@ shared state; no orchestration layer, no generated team roster.
 
 | Agent | Access | Policy | Port |
 |---|---|---|---|
-| `pm` (coordinator) | read | [coordinator.json](policies/coordinator.json): collaboration + delegation tools (`ask`, `send_message`, `broadcast`, `dispatch`) | 19081 |
+| `pm` (coordinator) | read | [coordinator.json](policies/coordinator.json): collaboration + blocking delegation (`ask`) | 19081 |
 | `architect`, `quality` | read | [reader.json](policies/reader.json): collaboration tools only | 19082, 19085 |
 | `developer`, `tester` | danger-full-access | [writer.json](policies/writer.json): collaboration tools only | 19083, 19084 |
 | daemon (dashboard `/ui/`, MCP `/mcp`) | - | [team.yaml](team.yaml) | 19080 |
 
-Only the coordinator is granted delegation tools by the MCP policies. Workers independently inspect the objective, shared notes and repository and return findings; the PM can request corrections. The grants are least-privilege hygiene, not an OS boundary (see the warning).
+Only the coordinator has explicit delegation grants. In ordinary mode the full-access workers' wildcard tool permissions can expose other tools from the enabled MCP server; their no-delegation rule is a working agreement, not enforced isolation. Workers independently inspect the objective, shared notes and repository and return findings; the PM can request corrections. The grants are least-privilege hygiene, not an OS boundary (see the warning).
 
 ## Quick start
 
@@ -31,7 +31,7 @@ From the Agentiplex checkout, edit [objective.md](objective.md) to describe the 
 Start the team, then submit the original objective and read the results:
 
 ```sh
-ACCEPT_FULL_ACCESS=yes bash examples/repository-team/up.sh /path/to/disposable/git/checkout
+ACCEPT_FULL_ACCESS=yes CONTRACT_MODE=yes bash examples/repository-team/up.sh /path/to/disposable/git/checkout
 export AGENTIPLEX_SERVER=http://127.0.0.1:19080
 OBJECTIVE="$(cat examples/repository-team/objective.md)"
 bin/agentiplex state put repository objective "$OBJECTIVE" --revision 0 &&
@@ -48,6 +48,96 @@ bash examples/down.sh /path/to/printed-run-directory
 Follow all deliveries on the [dashboard](http://127.0.0.1:19080/ui/). Ctrl-C during
 the wait detaches; `bin/agentiplex messages wait DELIVERY_ID` reattaches on the
 same daemon. Review the actual Git diff and run independent checks before accepting changes.
+
+## Contract-driven mode (opt in)
+
+Use a fresh disposable repository and fresh daemon storage. The existing five
+agents and gateway are reused. Set `CONTRACT_MODE=yes` to append the PM's shared
+[contract instructions](roles/contract-kernel.md) and launch developer and tester
+with [no MCP exceptions](policies/contract-worker.json). Full-access workers
+otherwise have wildcard tool permission, so omitting a grant alone is not a
+reliable restriction once MCP is enabled. The PM passes the approved objective
+with each request and persists the workers' returned evidence; the read-only
+quality reviewer can inspect files and the completed deliveries via MCP.
+This removes the normal MCP scheduling path, not OS-level network access.
+Review [the approved objective](objective.contract.md) and
+[the checklist](contract.json) before starting; this example is specifically
+for the synthetic Clamp defect used in CI (see the fixture in
+[team_verify_test.go](../../tests/examples/team_verify_test.go)).
+Requires Bash, jq, curl and GNU timeout in addition to the usual tools.
+
+```sh
+ACCEPT_FULL_ACCESS=yes CONTRACT_MODE=yes bash examples/repository-team/up.sh /path/to/disposable/git/checkout
+export AGENTIPLEX_SERVER=http://127.0.0.1:19080
+# Explicit approval; do not run the ordinary objective submission as well.
+bash examples/repository-team/run-contract.sh init
+bash examples/repository-team/run-contract.sh run
+# In another terminal: live checklist (raw state events)
+bin/agentiplex state watch repository
+```
+
+The runner prints the checklist after each bounded PM activation. Round one
+reproduces the failing check and checkpoints it before repair. Subsequent
+rounds work on open criteria, reverify after changes, and stop only when all
+criteria have evidence and all deliveries are completed, an explicit blocker
+occurs, or the eight-round budget is exhausted. Only the runner schedules PM
+rounds; an unexpected PM delivery or unfinished work pauses the run instead of
+reporting fulfillment. Completed PM delivery IDs are persisted in the cursor. The PM owns the checklist; owners supply independent evidence.
+The operator must still review the diff and run independent checks; delivery
+completion and model-reported evidence do not attest a test result.
+
+If the runner is interrupted, rerun `run-contract.sh run` with the same daemon
+storage and original example files. The persisted round and stable idempotency
+key reattach to the same delivery; never create a new key to retry an uncertain
+outcome. Only one runner at a time; don't modify contract state while work is
+active. Recovery is deliberately bounded to 24 hours with the default seven-day
+delivery retention. Partial initialization requires fresh storage; unresolved
+deliveries require inspection, not blind replay. An explicit blocker remains
+paused until the operator resolves it. Checklist ownership is a trusted-local
+working agreement, not enforced authorization.
+
+`make contract-check` runs provider-free runner regression tests (a fake CLI,
+not a simulated engineering result). The real-model `contract` scenario in
+[Examples / Live / Repository engineering team](https://github.com/tbrandenburg/agentiplex/actions/workflows/repository-team-live.yaml)
+uses the real daemon and gateways and independently verifies the actual patch.
+
+### Foundations and related work
+
+Here, contract-driven development means an operator-approved, persistent work
+specification: scope, acceptance criteria, responsible roles and verification
+evidence. Agents choose the next useful action within that scope. A completed
+agent turn is not a fulfilled contract; closure additionally requires verified
+criteria and no outstanding deliveries. The runner is a bounded application-level
+continuation mechanism, not a workflow engine or a formal verification system.
+
+Relevant original research and practitioner work:
+
+- Bertrand Meyer, [Applying Design by Contract](https://doi.org/10.1109/2.161279),
+  IEEE Computer 25(10), 1992 — explicit obligations, guarantees and invariants.
+- Bertrand Meyer, [Contract-Driven Development](https://doi.org/10.1007/978-3-540-71289-3_2),
+  FASE 2007 — combines Design by Contract, test-driven development, formal methods
+  and automated testing.
+- Andreas Leitner, Ilinca Ciupa, Manuel Oriol, Bertrand Meyer and Arno Fiva,
+  [Contract Driven Development = Test Driven Development – Writing Test Cases](https://doi.org/10.1145/1287624.1287685),
+  ESEC/FSE 2007 — using executable contracts to support automated testing and
+  regression detection.
+- Gojko Adzic, [Specification by Example](https://www.manning.com/books/specification-by-example),
+  Manning, 2011 — shared, concrete acceptance examples and living documentation.
+- Reid G. Smith, [The Contract Net Protocol: High-Level Communication and Control in a Distributed Problem Solver](https://doi.org/10.1109/TC.1980.1675516),
+  IEEE Transactions on Computers, 1980 — task allocation and coordination among
+  distributed problem solvers.
+- Edsger W. Dijkstra and Carel S. Scholten,
+  [Termination Detection for Diffusing Computations](https://doi.org/10.1016/0020-0190(80)90021-6),
+  Information Processing Letters 11(1), 1980 — distinguishing local completion
+  from termination of distributed work.
+
+The checklist applies the spirit of software contracts at the level of a
+development task, rather than implementing language-level executable
+preconditions, postconditions or invariants. The example uses explicit
+delegation, not Contract Net bidding, and a bounded delivery-state check in a
+dedicated single-runner environment, not the general Dijkstra–Scholten
+termination-detection algorithm. These references provide conceptual context;
+they are not claims of formal guarantees or protocol conformance.
 
 ## Native commands (without the convenience launcher)
 

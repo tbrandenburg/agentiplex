@@ -24,7 +24,7 @@ import (
 )
 
 // Explicit opt-in; ordinary go test ./... never starts real model runtimes.
-var liveScenario = flag.String("live", "", "provision, docs, defect, integration, autonomous or discussion")
+var liveScenario = flag.String("live", "", "provision, docs, defect, integration, contract, autonomous or discussion")
 var liveModel = flag.String("model", "", "OpenCode provider/model")
 var liveSeconds = flag.Int("seconds", 0, "objective deadline in seconds (default: 900 hybrid, 1200 repository)")
 var livePromptTimeout = flag.String("prompt-timeout", "", "gateway prompt deadline")
@@ -285,7 +285,20 @@ func (l *liveTeam) repository(scenario,prompt string,seconds int) {
 	}
 	want:=map[string]bool{}
 	for _,r:=range roles {
-		l.gateway(r.name,r.desc,ws,r.access,r.policy,r.port,prompt,"--system-prompt-file",filepath.Join(l.example,"roles",r.name+".md"))
+		rolePath:=filepath.Join(l.example,"roles",r.name+".md")
+		policy:=r.policy
+		if scenario=="contract" {
+			extra:=""
+			switch r.name {
+			case "pm": extra="contract-kernel.md"
+			case "developer","tester": extra="contract-worker.md"; policy="contract-worker"
+			}
+			if extra!="" {
+				rolePath=filepath.Join(l.run,r.name+".md")
+				writeTeamFile(l.t,rolePath,string(l.read("roles",r.name+".md"))+"\n"+string(l.read("roles",extra)))
+			}
+		}
+		l.gateway(r.name,r.desc,ws,r.access,policy,r.port,prompt,"--system-prompt-file",rolePath)
 		teamCLI[json.RawMessage](l,"register",r.name,"http://127.0.0.1:"+r.port)
 		want[r.name]=true
 	}
@@ -304,6 +317,10 @@ func (l *liveTeam) repository(scenario,prompt string,seconds int) {
 		var exit *exec.ExitError
 		if !errors.As(err,&exit) || exit.ExitCode()!=1 || !strings.Contains(string(out),"--- FAIL: TestClamp") { l.t.Fatalf("fixture must start with the expected failing check: %v\n%s",err,out) }
 		l.t.Log("Baseline local go test failed as expected.")
+	}
+	if scenario=="contract" {
+		l.contract(ws,base,seconds)
+		return
 	}
 	initial:=teamCLI[teamState](l,"state","put","repository","objective",objective,"--revision","0")
 	if initial.Value!=objective || initial.Revision==0 { l.t.Fatal("operator objective publication failed") }
@@ -355,7 +372,7 @@ func TestLiveTeam(t *testing.T) {
 	case "autonomous":
 		if prompt=="" { prompt="10m" }; if seconds==0 { seconds=900 }
 		newLiveTeam(t,"autonomous-team").autonomous(prompt,seconds)
-	case "provision","docs","defect","integration":
+	case "provision","docs","defect","integration","contract":
 		if prompt=="" { prompt="45m" }; if seconds==0 { seconds=1200 }
 		newLiveTeam(t,"repository-team").repository(*liveScenario,prompt,seconds)
 	default: t.Fatal("unknown live scenario")

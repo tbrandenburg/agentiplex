@@ -1,0 +1,37 @@
+{
+  "blocker": "",
+  "criteria": [
+    {
+      "id": "baseline",
+      "description": "Reproduce the existing Clamp regression before repair",
+      "owner": "tester",
+      "status": "pending",
+      "delivery": "",
+      "evidence": ""
+    },
+    {
+      "id": "implementation",
+      "description": "Repair Clamp without changing unrelated files or tests",
+      "owner": "developer",
+      "status": "pending",
+      "delivery": "",
+      "evidence": ""
+    },
+    {
+      "id": "tests",
+      "description": "Independently verify the repaired implementation with the original tests",
+      "owner": "tester",
+      "status": "pending",
+      "delivery": "",
+      "evidence": ""
+    },
+    {
+      "id": "quality",
+      "description": "Independently accept the actual diff and scope",
+      "owner": "quality",
+      "status": "pending",
+      "delivery": "",
+      "evidence": ""
+    }
+  ]
+}

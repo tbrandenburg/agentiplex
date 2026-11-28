@@ -95,7 +95,8 @@ func TestPoliciesAreLeastPrivilegeAndOnlyCoordinatorDelegates(t *testing.T) {
 				}
 			}
 			for _, d := range delegation {
-				if slices.Contains(tools, d) != (name == "coordinator") {
+				want := name == "coordinator" && (ex != "repository-team" || d == "ask")
+				if slices.Contains(tools, d) != want {
 					t.Fatalf("%s/%s: delegation tool %s grant mismatch", ex, name, d)
 				}
 			}
@@ -243,6 +244,13 @@ func sendAndComplete(t *testing.T, api, target string) {
 		}
 	}
 	t.Fatalf("delivery did not complete: %+v", d)
+}
+
+func TestContractExecutableWorkersHaveNoMCPExceptions(t *testing.T) {
+	base, tools := policyResources(t, "repository-team", "contract-worker")
+	if base != "full-access" || len(tools) != 0 {
+		t.Fatalf("contract executable workers must use the full-access base without MCP exceptions: %s %v", base, tools)
+	}
 }
 
 func TestRepositoryTeamHasRolePerAgentAndBoundedObjective(t *testing.T) {

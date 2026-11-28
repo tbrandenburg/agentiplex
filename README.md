@@ -3,7 +3,7 @@
 **Bring your own agents. Build your own organization.**
 
 [![Checks](https://github.com/tbrandenburg/agentiplex/actions/workflows/ci.yaml/badge.svg?branch=main)](https://github.com/tbrandenburg/agentiplex/actions/workflows/ci.yaml)
-[![Live example](https://github.com/tbrandenburg/agentiplex/actions/workflows/live-opencode.yaml/badge.svg?branch=main)](https://github.com/tbrandenburg/agentiplex/actions/workflows/live-opencode.yaml)
+[![Live hybrid team](https://github.com/tbrandenburg/agentiplex/actions/workflows/live-opencode.yaml/badge.svg?branch=main)](https://github.com/tbrandenburg/agentiplex/actions/workflows/live-opencode.yaml)
 [![Release](https://img.shields.io/github/v/release/tbrandenburg/agentiplex)](https://github.com/tbrandenburg/agentiplex/releases)
 [![Go](https://img.shields.io/badge/Go-1.26%2B-00ADD8?logo=go&logoColor=white)](https://go.dev/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
@@ -37,7 +37,7 @@ own models, tools, workflows, workspaces and permissions.
 
 ### Three real agents
 
-[![Three-agent quickstart](https://github.com/tbrandenburg/agentiplex/actions/workflows/discussion-quickstart.yaml/badge.svg?branch=main)](https://github.com/tbrandenburg/agentiplex/actions/workflows/discussion-quickstart.yaml)
+[![Live three-agent quickstart](https://github.com/tbrandenburg/agentiplex/actions/workflows/discussion-quickstart.yaml/badge.svg?branch=main)](https://github.com/tbrandenburg/agentiplex/actions/workflows/discussion-quickstart.yaml)
 
 Discuss a topic with a lead, an expert and a critic. Each runs in its own
 [OpenCode A2A gateway](https://github.com/tbrandenburg/opencode-a2a-lite);
@@ -179,6 +179,7 @@ Choose the level of collaboration you want to explore.
 | [Engineering team](docs/DEMO.md) | `make demo-team` | Six simulated agents; deterministic communication, persistence and recovery. |
 | [Autonomous team](examples/autonomous-team/README.md) | [native commands](examples/autonomous-team/README.md) | Real model-driven delegation through A2A and MCP using synthetic fixtures. |
 | [Repository team](examples/repository-team/README.md) | [native commands](examples/repository-team/README.md) | Five real agents working on the same Git worktree, with implementation and executable verification. |
+| [Contract-driven repository team](examples/repository-team/README.md#contract-driven-mode-opt-in) | [approve and run](examples/repository-team/README.md#contract-driven-mode-opt-in) | Living checklist, bounded continuation, rework and independent verification. |
 
 The core is agent-runtime independent. The real-agent examples use an off-the-shelf
 A2A agent driver; any A2A agent can be registered instead. Setup, prerequisites and
@@ -260,6 +261,8 @@ filesystem sandbox or exactly-once execution system.
 | Dashboard and deployment | [Dashboard](docs/DASHBOARD.md) · [Secure deployment](docs/DEPLOYMENT.md) |
 | Verification and history | [Foundation](docs/FOUNDATION.md) · [Engineering demo](docs/DEMO.md) |
 | Maintainer tasks | [Release and packaging](docs/RELEASE.md) |
+
+For workflow categories, triggers and local equivalents, see [CI workflows](docs/CI.md).
 
 ## Contributing
 
