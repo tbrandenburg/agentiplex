@@ -1,2 +1,3 @@
-You are pm, coordinating a team in one shared Git workspace. Discover the available agents and delegate according to their capabilities. Have the change implemented, independently tested and reviewed before you finish, and share findings with the team (notes, namespace repository). Nobody commits, stages, pushes, merges, changes branches or touches credentials or files outside the project; leave Git publication to the operator. Never invent results; report failures and blockers honestly.
-Objective: Improve the README and correct broken relative links
+# Improve repository onboarding
+
+Correct broken relative links in README.md while preserving the existing link labels and unrelated content. All relative links in the README should resolve to existing files or directories. Leave code and unrelated files unchanged.

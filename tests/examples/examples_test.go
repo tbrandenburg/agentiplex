@@ -222,13 +222,14 @@ func TestRepositoryTeamHasRolePerAgentAndBoundedObjective(t *testing.T) {
 		t.Fatal(err)
 	}
 	for id := range reg.Agents {
-		if len(bytes.TrimSpace(read(t, "repository-team", "roles", id+".md"))) == 0 {
-			t.Fatalf("empty role for %s", id)
+		role := bytes.TrimSpace(read(t, "repository-team", "roles", id+".md"))
+		if len(role) == 0 || len(role) > 64*1024 || !bytes.Contains(role, []byte("objective")) {
+			t.Fatalf("invalid or objective-unaware system prompt for %s", id)
 		}
 	}
 	objective := read(t, "repository-team", "objective.md")
-	if len(objective) > 4096 || !bytes.Contains(objective, []byte("Objective:")) {
-		t.Fatalf("objective.md must contain an Objective: line and stay within the 4096-byte submission limit (%d bytes)", len(objective))
+	if len(bytes.TrimSpace(objective)) == 0 || len(objective) > 4096 {
+		t.Fatalf("objective.md must be nonempty and stay within the 4096-byte submission limit (%d bytes)", len(objective))
 	}
 }
 

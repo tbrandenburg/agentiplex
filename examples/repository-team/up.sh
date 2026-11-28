@@ -10,16 +10,16 @@ RUN=$(mktemp -d); P=$RUN/policies            # mode 0700; the gateway rejects gr
 echo /opencode.json >> "$W/.git/info/exclude"
 cp -r "$EX/policies" "$P" && chmod 700 "$P" && chmod 600 "$P"/*
 make -C "$ROOT" build >/dev/null
-gw() {  # name port access policy [extra gateway flags]
-  A2A_NAME=$1 A2A_DESCRIPTION="$(cat "$EX/roles/$1.md")" A2A_TAGS=$1,real-opencode \
-    setsid opencode-a2a-lite --workspace "$W" --port "$2" --access "$3" --policy-file "$P/$4.json" --prompt-timeout 45m "${@:5}" >"$RUN/$1.log" 2>&1 &
+gw() {  # name port access policy description [extra gateway flags]
+  A2A_NAME=$1 A2A_DESCRIPTION="$5" A2A_TAGS=$1,real-opencode \
+    setsid opencode-a2a-lite --workspace "$W" --system-prompt-file "$EX/roles/$1.md" --port "$2" --access "$3" --policy-file "$P/$4.json" --prompt-timeout 45m "${@:6}" >"$RUN/$1.log" 2>&1 &
   echo $! >> "$RUN/pids"
 }
-gw pm 19081 read coordinator --no-env
-gw architect 19082 read reader --no-env
-gw developer 19083 danger-full-access writer
-gw tester 19084 danger-full-access writer
-gw quality 19085 read reader --no-env
+gw pm 19081 read coordinator "Engineering coordination and objective ownership" --no-env
+gw architect 19082 read reader "Architecture analysis and technical recommendations" --no-env
+gw developer 19083 danger-full-access writer "Repository implementation and repair"
+gw tester 19084 danger-full-access writer "Independent executable verification"
+gw quality 19085 read reader "Independent change and acceptance review" --no-env
 for port in 19081 19082 19083 19084 19085; do   # curl's own retry: the gateway preflight takes a minute or more
   curl -fs -o /dev/null --retry 120 --retry-delay 2 --retry-connrefused "http://127.0.0.1:$port/.well-known/agent-card.json" \
     || { echo "gateway on $port did not start; see $RUN/*.log (the preflight is flaky: run bash examples/down.sh $RUN from the repository root and retry)" >&2; exit 1; }
