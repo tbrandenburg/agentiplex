@@ -25,6 +25,8 @@ const diagnosticLogBytes = 32 << 10
 
 type diagnosticDelivery struct {
 	ID, Target, State, Detail, TaskID, ContextID string
+	Kind, Caller string
+	ContractRound bool
 	Attempts, Polls, PollFailures int
 	UpdatedAt time.Time
 	LastObservedAt *time.Time
@@ -34,6 +36,7 @@ type diagnosticDelivery struct {
 func deliveryDiagnostic(d core.Delivery) diagnosticDelivery {
 	out := diagnosticDelivery{
 		ID:d.ID, Target:d.Target, State:d.State, Detail:boundedDiagnostic(d.Detail,2048),
+		Kind:d.Kind, Caller:d.Caller, ContractRound:strings.HasPrefix(d.Text,"Contract round "),
 		TaskID:string(d.TaskID), ContextID:d.ContextID, Attempts:d.Attempts, Polls:d.Polls,
 		PollFailures:d.PollFailures, UpdatedAt:d.UpdatedAt, LastObservedAt:d.LastObservedAt,
 	}
@@ -175,8 +178,8 @@ func (l *liveTeam) reportFailure(namespace,scenario string) {
 	report:=l.collectFailure(namespace,scenario)
 	for _,d:=range report.Deliveries {
 		if d.State!="completed" {
-			l.t.Logf("Failure detail: target=%s id=%s state=%s task=%s attempts=%d polls=%d pollFailures=%d detail=%q downstream=%q message=%q",
-				d.Target,d.ID,d.State,d.TaskID,d.Attempts,d.Polls,d.PollFailures,d.Detail,d.DownstreamState,d.DownstreamMessage)
+			l.t.Logf("Failure detail: target=%s id=%s state=%s kind=%s caller=%q contract_round=%t task=%s attempts=%d polls=%d pollFailures=%d detail=%q downstream=%q message=%q",
+				d.Target,d.ID,d.State,d.Kind,d.Caller,d.ContractRound,d.TaskID,d.Attempts,d.Polls,d.PollFailures,d.Detail,d.DownstreamState,d.DownstreamMessage)
 		}
 	}
 	for _,p:=range report.Processes {
