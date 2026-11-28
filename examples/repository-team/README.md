@@ -97,13 +97,14 @@ The startup preflight can take a minute or more and fails intermittently ("capab
 Developer/tester gateways forward no provider keys unless you add `--pass-env <PROVIDER>_API_KEY` (an explicit variable name,
 never a value). Use free models only on public or synthetic code: free-model providers may retain prompts. For private code
 select an approved provider/model in `opencode.json`, pass only its key from your shell and use a provider-side budget.
-Agents are asked not to commit or push, but full-access gateways can do so. Keep role files and runtime configuration trusted and stable during a run. For an already prepared workspace, replace the `--system-prompt-file` argument with `--agent <name>` to select a native primary agent (never both); the same daemon and policies work unchanged.
+By default agents leave a patch for the operator. An objective may explicitly authorize local branch/commit/merge operations: see [integration objective](objective.integration.md) for the synthetic CI fixture. Remote publication and history rewriting remain forbidden. The developer prepares and integrates an authorized candidate after the PM confirms independent verification and review; the tester diagnoses and verifies failures but never writes or merges. The developer repairs in-scope CI failures without weakening checks. Full-access gateways can bypass these agreements; enforce external publication restrictions with isolation and credentials, not prompts. Keep role files and runtime configuration trusted and stable during a run. For an already prepared workspace, replace the `--system-prompt-file` argument with `--agent <name>` to select a native primary agent (never both); the same daemon and policies work unchanged.
 
 Timeouts: `--prompt-timeout` bounds one whole agent turn (the PM's turn, all `ask` calls summed, must fit); `timeout.execution`
 (ms) in `opencode.json` bounds one tool call, e.g. one `ask`. The daemon's `delivery.timeout` only bounds one HTTP operation to
 an agent, not agent execution (see [A2A](../../docs/A2A.md)). Live acceptance has a bounded 20-minute objective deadline; timing and success depend on model and host.
 
 ## 3. Inspect, verify, clean up
+For a patch-only objective, inspect the working-tree diff as below. For an authorized integration objective, record the starting commit (`BASE=$(git -C "$W" rev-parse HEAD)`) before submission and inspect `git -C "$W" log --graph --oneline "$BASE"..HEAD` and `git -C "$W" diff "$BASE" HEAD` afterwards; a clean merged tree has no uncommitted diff.
 ```sh
 git -C $W status --short && git -C $W diff HEAD     # the actual change; review untracked files separately
 python3 -B tests/examples/repository-team/verify.py --workspace $W --accept-run-code -- <your project's test command>
@@ -133,12 +134,13 @@ Private-CA forwarding was added upstream in gateway 0.9.1; the authenticated rea
 `make repository-provision-check` (five explicitly prompted real gateways on a synthetic Git workspace, no model task)
 live in [tests/examples](../../tests/examples).
 
-Full real-model acceptance is separate, in the path-filtered `Repository team live` workflow (also manually runnable). The same roles and synthetic repository are used for two distinct objectives, each with a fresh run. The tests publish the exact objective using the operator CLI and submit only that objective to the PM, require a completed implementer and independent reviewer, verify the original shared objective text and revision remain unchanged, require relevant notes, and independently check the expected change, Git scope/history and (for the defect) fixed test cases. They do not prove the semantic quality of every review or authenticate note authors. Raw evidence stays in the private run directory, not CI logs. Run locally only on a disposable host, with no secrets and an approved model:
+Full real-model acceptance is separate, in the path-filtered `Repository team live` workflow (also manually runnable). The same five roles and synthetic repository are used for three objectives, each with a fresh run: docs patch, defect patch, and an authorized local defect integration. No separate merge/CI agent is required; the PM coordinates review and integration, the developer fixes failures and integrates, and the tester and quality reviewer remain independent. The tests publish the exact objective using the operator CLI and submit only that objective to the PM, require a completed implementer and independent reviewer, verify the original shared objective text and revision remain unchanged, require relevant notes, and independently check the expected change, Git scope/history and (for defect/integration) fixed test cases. The integration case must start with a reproducibly failing check, finish on clean main without a remote, and contain a genuine two-parent merge of a retained feature branch descended from the original base; the operator reruns the original check and independent assertions on the merged tree. Both tester and quality results/notes are required for integration. The checker does not attest the order or content of model-reported pre-merge reviews or post-merge commands. They do not prove the semantic quality of every review or authenticate note authors. Raw evidence stays in the private run directory, not CI logs. Run locally only on a disposable host, with no secrets and an approved model:
 
 ```sh
 make dashboard-assets
 python3 -B tests/examples/repository-team/provision_check.py --live docs --model opencode/big-pickle
 python3 -B tests/examples/repository-team/provision_check.py --live defect --model opencode/big-pickle
+python3 -B tests/examples/repository-team/provision_check.py --live integration --model opencode/big-pickle
 ```
 
 A failed or timed-out run is not successful collaboration. Inspect the retained private evidence, actual Git diff and observed checks. These live scenarios are not part of `make check`.

@@ -81,6 +81,16 @@ class TeamEvidenceTests(unittest.TestCase):
         self.assertEqual(team.verify_evidence(self.root, self.deliveries, self.state, self.objective, 1),
                          ["developer", "quality"])
 
+    def test_integration_requires_both_independent_roles_and_notes(self):
+        with self.assertRaises(RuntimeError):
+            team.verify_evidence(self.root, self.deliveries, self.state, self.objective, 1, integration=True)
+        self.deliveries.append({"id": "test", "target": "tester", "state": "completed", "result": {"text": "tested"}})
+        with self.assertRaises(RuntimeError):
+            team.verify_evidence(self.root, self.deliveries, self.state, self.objective, 1, integration=True)
+        self.state.append({"key": "note-tester-fixture", "value": json.dumps({"text": "checked"}), "revision": 1})
+        self.assertEqual(team.verify_evidence(self.root, self.deliveries, self.state, self.objective, 1, integration=True),
+                         ["developer", "quality", "tester"])
+
     def test_missing_reviewer_altered_objective_failed_worker_and_missing_note(self):
         cases = []
         cases.append((self.deliveries[:-1], self.state))
@@ -105,7 +115,7 @@ class TeamWorkspaceTests(unittest.TestCase):
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
         self.ws = Path(tmp.name)
-        for args in (("init", "-q"), ("config", "user.name", "T"), ("config", "user.email", "t@example.invalid")):
+        for args in (("init", "-q", "-b", "main"), ("config", "user.name", "T"), ("config", "user.email", "t@example.invalid")):
             team.git(self.ws, *args)
         team.fixture(self.ws, None)
         team.git(self.ws, "add", ".")
@@ -134,6 +144,72 @@ class TeamWorkspaceTests(unittest.TestCase):
         team.git(self.ws, "add", "calc.py")
         with self.assertRaises(RuntimeError):
             self.check("defect")
+
+
+    def fix(self):
+        (self.ws / "calc.py").write_text("def clamp(value, lower, upper):\n    return min(upper, max(lower, value))\n")
+
+    def commit_candidate(self):
+        team.git(self.ws, "switch", "-c", "candidate")
+        self.fix()
+        team.git(self.ws, "add", "calc.py")
+        team.git(self.ws, "commit", "-qm", "fix clamp")
+        team.git(self.ws, "switch", "main")
+
+    def test_integration_accepts_real_merge_and_passing_checks(self):
+        self.commit_candidate()
+        team.git(self.ws, "merge", "--no-ff", "-m", "integrate reviewed fix", "candidate")
+        self.check("integration")
+        with self.assertRaises(RuntimeError):
+            self.check("defect")
+
+    def test_integration_rejects_patch_only_and_fast_forward(self):
+        self.fix()
+        with self.assertRaises(RuntimeError):
+            self.check("integration")
+        team.git(self.ws, "restore", "calc.py")
+        self.commit_candidate()
+        team.git(self.ws, "merge", "--ff-only", "candidate")
+        with self.assertRaises(RuntimeError):
+            self.check("integration")
+
+    def test_integration_rejects_modified_check_or_dirty_tree(self):
+        self.commit_candidate()
+        team.git(self.ws, "merge", "--no-ff", "-m", "integrate", "candidate")
+        (self.ws / "test_calc.py").write_text("pass\n")
+        with self.assertRaises(RuntimeError):
+            self.check("integration")
+        team.git(self.ws, "restore", "test_calc.py")
+        (self.ws / "untracked.txt").write_text("unexpected")
+        with self.assertRaises(RuntimeError):
+            self.check("integration")
+
+    def test_integration_rejects_committed_check_changes(self):
+        team.git(self.ws, "switch", "-c", "candidate")
+        self.fix()
+        (self.ws / "test_calc.py").write_text("pass\n")
+        team.git(self.ws, "add", "calc.py", "test_calc.py")
+        team.git(self.ws, "commit", "-qm", "fix and weaken check")
+        team.git(self.ws, "switch", "main")
+        team.git(self.ws, "merge", "--no-ff", "-m", "integrate", "candidate")
+        with self.assertRaises(RuntimeError):
+            self.check("integration")
+
+    def test_patch_rejects_unrequested_branch(self):
+        self.fix()
+        team.git(self.ws, "branch", "unexpected")
+        with self.assertRaises(RuntimeError):
+            self.check("defect")
+
+    def test_integration_rejects_incorrect_merged_fix(self):
+        team.git(self.ws, "switch", "-c", "candidate")
+        (self.ws / "calc.py").write_text("def clamp(value, lower, upper):\n    return lower\n")
+        team.git(self.ws, "add", "calc.py")
+        team.git(self.ws, "commit", "-qm", "wrong fix")
+        team.git(self.ws, "switch", "main")
+        team.git(self.ws, "merge", "--no-ff", "-m", "integrate", "candidate")
+        with self.assertRaises(RuntimeError):
+            self.check("integration")
 
 
 if __name__ == "__main__":

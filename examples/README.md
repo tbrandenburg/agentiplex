@@ -119,7 +119,7 @@ often not a configuration problem. Retry the launch before changing configuratio
 
 ## Operating tips
 - Gateway startup takes a minute or more (preflight). Run each process in its own terminal or detached; do not poll.
-- Agents are asked not to commit or push. Review the workspace diff, then open the PR yourself.
+- The repository-team defaults to an uncommitted patch; an explicit objective may authorize local integration in a disposable repository. Remote publication remains forbidden. Review the actual diff/history, then open the GitHub PR yourself. Autonomous-team stays read-only.
 - JetStream needs free disk (about 560 MB reserved): point `broker.storage` in `team.yaml` at a roomier or in-memory filesystem if needed.
 - Stop only the processes you started, by PID; delete the run directory afterwards.
 
