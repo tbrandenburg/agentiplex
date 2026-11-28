@@ -31,7 +31,7 @@ jobs:
           go mod tidy
           git diff --exit-code -- go.mod go.sum
           make check
-          helm lint charts/agentiplex
+          helm lint deploy/helm/agentiplex
       - name: Package native binaries and Helm
         run: bash scripts/package-release.sh "$GITHUB_REF_NAME"
       - uses: actions/upload-artifact@v4

@@ -31,7 +31,7 @@ esac
 next=v$major.$minor.$patch
 git show-ref --verify --quiet "refs/tags/$next" && die "Tag already exists: $next"
 echo "Release $latest -> $next at $(git rev-parse --short HEAD)"
-chart=charts/agentiplex/Chart.yaml
+chart=deploy/helm/agentiplex/Chart.yaml
 version=${next#v}
 git ls-files --error-unmatch "$chart" >/dev/null
 python3 "$script_dir/chart-version.py" preview "$version"

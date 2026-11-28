@@ -21,7 +21,7 @@ Historical note: this slice had no authentication; per-agent credentials now exi
 Requires Go 1.26 or newer. Direct and transitive dependency versions and go.sum are locked from the CI-generated module manifest.
 
 ```sh
-go run ./cmd/agentiplexd --config config.example.yaml
+go run ./cmd/agentiplexd --config deploy/config.example.yaml
 ```
 
 Separate shell:

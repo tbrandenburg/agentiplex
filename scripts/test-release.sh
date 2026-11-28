@@ -9,7 +9,7 @@ git init -q -b main "$tmp/work"
 cd "$tmp/work"
 git config user.name 'Release test'
 git config user.email 'release@example.invalid'
-chart=charts/agentiplex/Chart.yaml
+chart=deploy/helm/agentiplex/Chart.yaml
 mkdir -p "$(dirname "$chart")"
 cat > "$chart" <<'EOF'
 apiVersion: v2

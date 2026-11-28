@@ -5,7 +5,7 @@ import sys
 from pathlib import Path
 
 SEMVER = r"(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)"
-CHART = Path("charts/agentiplex/Chart.yaml")
+CHART = Path("deploy/helm/agentiplex/Chart.yaml")
 
 
 def main():

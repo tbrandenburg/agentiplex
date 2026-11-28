@@ -23,9 +23,9 @@ kubectl create secret tls nats-tls --cert=.demo-secrets/nats.crt --key=.demo-sec
 kubectl create secret generic agentiplex-broker --from-file=token=.demo-secrets/nats-token --from-file=.demo-secrets/ca.crt
 helm repo add nats https://nats-io.github.io/k8s/helm/charts/
 helm repo update nats
-helm upgrade --install nats nats/nats --version 2.15.2 -f deploy/nats-values.yaml --wait --timeout 5m
-helm lint charts/agentiplex --set 'agents={demo}'
-helm upgrade --install agentiplex charts/agentiplex --set 'agents={demo}' --set image.repository=agentiplex --set image.tag=ci --wait --timeout 5m
+helm upgrade --install nats nats/nats --version 2.15.2 -f deploy/helm/nats-values.yaml --wait --timeout 5m
+helm lint deploy/helm/agentiplex --set 'agents={demo}'
+helm upgrade --install agentiplex deploy/helm/agentiplex --set 'agents={demo}' --set image.repository=agentiplex --set image.tag=ci --wait --timeout 5m
 port_forward(){
   kubectl port-forward svc/agentiplex 18443:8080 >/tmp/agentiplex-port-forward.log 2>&1 &
   pf=$!

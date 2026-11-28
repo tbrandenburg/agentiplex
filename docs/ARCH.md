@@ -287,9 +287,11 @@ agentiplex/
 │   ├── observability/         # Logging/events; metrics later
 │   └── dashboard/             # Embedded static UI (P1)
 ├── deploy/
-│   ├── compose/
-│   ├── helm/agentiplex/
-│   └── systemd/
+│   ├── config.example.yaml
+│   ├── helm/
+│   │   ├── agentiplex/
+│   │   └── nats-values.yaml
+│   └── systemd/agentiplexd.service
 ├── examples/
 │   ├── simulated-agents/
 │   └── engineering-team/
@@ -303,7 +305,6 @@ agentiplex/
 │   └── adr/                   # Add decisions as needed
 ├── .github/workflows/
 ├── Dockerfile
-├── config.example.yaml
 ├── Makefile
 ├── go.mod
 ├── go.sum
