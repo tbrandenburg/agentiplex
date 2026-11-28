@@ -9,6 +9,27 @@
 
 These are single-daemon deployments, not HA. Never run a second daemon in the same JetStream namespace. Network policies/firewalls, resource sizing, backup, broker accounts/ACLs, certificate issuance, secret rotation and operational hardening remain operator responsibilities.
 
+## Daemon storage
+
+With the embedded broker, the native daemon defaults to
+`$XDG_STATE_HOME/agentiplex` when XDG_STATE_HOME is absolute, otherwise
+`$HOME/.local/state/agentiplex`. Newly created default directories are private
+(mode 0700 on Unix). The resolved path is logged on startup. A missing usable
+state/home directory requires an explicit storage path.
+
+Override the default using `--storage PATH`, `AGENTIPLEX_BROKER_STORAGE`, or
+`broker.storage` in YAML, in that precedence order. Explicit relative paths
+remain relative to the working directory. External NATS does not use this path.
+Docker, Helm and other deployments with an explicit path are unchanged.
+
+**Upgrade from the previous `./data` default:** no existing data is moved,
+merged or deleted. To retain the old state, start with `--storage /absolute/path/to/data`
+or configure that path explicitly before upgrading. Do not accidentally start
+new work against an empty store while older work remains unresolved. Use
+separate storage paths for independent daemon instances or demonstrations.
+The Go library's `core.DefaultConfig()` remains unchanged; this default is
+specific to the daemon executable.
+
 ## Distributed deployment (agents on other hosts)
 
 ```

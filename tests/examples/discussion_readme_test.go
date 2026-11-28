@@ -125,8 +125,8 @@ func TestDiscussionREADMECommands(t *testing.T) {
 	if !strings.HasPrefix(setup, strings.Join(blocks[0], "\n")+"\n") {
 		t.Fatal("CI setup commands differ from the README")
 	}
-	if blocks[1][0] != "cd examples/discussion-team" || blocks[2][0] != `agentiplexd --mcp --storage "$HOME/.local/state/agentiplex-discussion"` {
-		t.Fatal("quickstart must use the existing example directory and private HOME storage")
+	if blocks[1][0] != "cd examples/discussion-team" || blocks[2][0] != "agentiplexd --mcp" {
+		t.Fatal("quickstart must use the existing example directory and default daemon storage")
 	}
 	for i, role := range discussionRoles {
 		if !strings.HasPrefix(blocks[3][i], "opencode-a2a-lite --name "+role+" ") ||

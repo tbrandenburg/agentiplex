@@ -92,11 +92,15 @@ cd examples/discussion-team
 ```
 
 **Start.** Run the daemon in one terminal and wait for its ready log.
-Use a new storage directory for a fresh discussion; the example keeps state outside the checkout:
+State is stored in the user's standard state directory, outside the checkout:
 
 ```sh
-agentiplexd --mcp --storage "$HOME/.local/state/agentiplex-discussion"
+agentiplexd --mcp
 ```
+
+By default, storage is `$XDG_STATE_HOME/agentiplex` or `~/.local/state/agentiplex`.
+Use `--storage` with a fresh path for a separate discussion; do not reuse unrelated work.
+[Storage and upgrade notes](docs/DEPLOYMENT.md#daemon-storage).
 
 Run one gateway command per other terminal, and wait for all three ready URLs:
 

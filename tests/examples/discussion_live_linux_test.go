@@ -4,6 +4,7 @@ package examples_test
 
 import (
 	"encoding/json"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -49,6 +50,13 @@ func runDiscussionQuickstart(t *testing.T) {
 	if err := l.waitReady(l.daemon, l.api+"/readyz", 2*time.Minute); err != nil {
 		t.Fatal(err)
 	}
+	// newLiveRun supplies a private HOME and does not forward XDG_STATE_HOME.
+	// Verify the actual installed daemon uses that isolated default.
+	storage := filepath.Join(l.run, "home", ".local", "state", "agentiplex")
+	if info, err := os.Stat(storage); err != nil || !info.IsDir() || info.Mode().Perm()&0077 != 0 {
+		t.Fatalf("expected private default storage %s: %v", storage, err)
+	}
+	t.Log("Default daemon storage:", storage)
 	procs := make([]*liveProcess, len(discussionRoles))
 	// These are the three independent terminals in the README.
 	for i, role := range discussionRoles {

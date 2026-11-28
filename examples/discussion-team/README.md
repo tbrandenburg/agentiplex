@@ -20,7 +20,8 @@ configuration or orchestration code is needed.
   A read-only profile is not an OS sandbox. Policies must be outside the
   workspace, operator-owned, canonical and not group/world-writable.
 - Run directly from a trusted, disposable checkout. The daemon stores data in
-  the explicit directory under HOME, not in the agent workspace. For another
+  the default XDG state directory (fallback: ~/.local/state/agentiplex), not
+  in the agent workspace. Use an explicit --storage path for isolated runs. For another
   discussion, choose a fresh storage path and restart the daemon, or choose
   a different note namespace in all role prompts. New CLI submissions generate
   their own key; reuse a printed key with `--idempotency-key` only to retry.
