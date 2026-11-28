@@ -44,7 +44,10 @@ class Procs:
         end = time.monotonic() + seconds
         while time.monotonic() < end:
             if proc.poll() is not None:
-                raise RuntimeError(name + " exited; see " + os.path.join(self.logdir, name + ".log"))
+                path = os.path.join(self.logdir, name + ".log")
+                with open(path, errors="replace") as log:
+                    tail = "".join("\n  log: " + line.rstrip()[:300] for line in log.readlines()[-15:])
+                raise RuntimeError(name + " exited; see " + path + tail)
             try:
                 return get(url)
             except (OSError, ValueError):
