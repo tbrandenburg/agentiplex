@@ -5,7 +5,7 @@ The Actions sidebar uses the following categories. Workflow filenames and existi
 | Workflow | Category | Coverage | Trigger / local equivalent |
 | --- | --- | --- | --- |
 | [Checks](../.github/workflows/ci.yaml) | Required, provider-free | Build, formatting, unit/race tests, integration, example configuration and durable continuation regressions | PR / main; `make check`, `make examples-check`, `make contract-check` |
-| [Examples / Live / Three-agent quickstart](../.github/workflows/discussion-quickstart.yaml) | Live examples | README setup, ordinary discussion and native until-done read-only contract | Relevant PR / main / manual |
+| [Examples / Live / Three-agent quickstart](../.github/workflows/discussion-quickstart.yaml) | Live examples | README setup, ordinary discussion, native until-done and actor-owned read-only contracts | Relevant PR / main / manual |
 | [Examples / Live / Hybrid autonomous team](../.github/workflows/live-opencode.yaml) | Live examples | Shared provisioning and autonomous hybrid collaboration | Relevant PR / main / manual; `make live-check` |
 | [Examples / Live / Repository engineering team](../.github/workflows/repository-team-live.yaml) | Live examples | Five real agents on synthetic repositories; docs, defect, integration and contract scenarios | Relevant PR / manual |
 | [Release](../.github/workflows/release.yaml) | Publication | Tagged, checked native binaries, Helm packages, OCI image and GitHub release | Version tags only |

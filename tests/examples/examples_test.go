@@ -282,8 +282,8 @@ func TestDiscussionExampleReadOnly(t *testing.T) {
 	for _,name:=range []string{"coordinator","reader"}{
 		base,tools:=policyResources(t,"discussion-team",name)
 		if base!="read-only"{t.Fatal("discussion must be read-only")}
-		expected:=[]string{"agentiplex","note","read_notes"}
-		if name=="coordinator"{expected=append(expected,"discover_agents","get_delivery","ask","get_state","put_state","resolve_request")}
+		expected:=[]string{"agentiplex","note","read_notes","get_state","put_state","send_message"}
+		if name=="coordinator"{expected=append(expected,"discover_agents","get_delivery","ask","resolve_request")}
 		slices.Sort(expected)
 		slices.Sort(tools)
 		if !slices.Equal(tools,expected){t.Fatalf("%s unexpected grants %v",name,tools)}

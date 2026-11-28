@@ -24,7 +24,7 @@ concurrency:
 jobs:
   readme-live:
     runs-on: ubuntu-24.04
-    timeout-minutes: 40
+    timeout-minutes: 55
     steps:
       - uses: actions/checkout@v4
         with:
@@ -46,11 +46,11 @@ jobs:
           test "$(opencode --version)" = 'opencode v2.4.1'
           test "$(opencode-a2a-lite --version)" = '0.9.3'
           test "$(bun --version)" = '1.4.4'
-      - name: Execute ordinary and until-done README commands with three real read-only agents
+      - name: Execute ordinary, until-done and actor-owned README commands with three real read-only agents
         shell: bash
         run: |
           home=$(mktemp -d)
           trap 'rm -rf "$home"' EXIT
           env -i PATH="$PATH" HOME="$home" LANG=C.UTF-8 USER="$(id -un)" \
             GOMODCACHE="$(go env GOMODCACHE)" GOCACHE="$(go env GOCACHE)" \
-            go test -count=1 -v -timeout 35m ./tests/examples -run '^TestLiveTeam$' -args -live discussion
+            go test -count=1 -v -timeout 50m ./tests/examples -run '^TestLiveTeam$' -args -live discussion
