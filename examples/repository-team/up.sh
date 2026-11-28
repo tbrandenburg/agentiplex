@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Convenience only: runs the README commands (section 2) in the background. No other logic.
+# Convenience only: runs the README native commands in the background. No other logic.
 # Usage: ACCEPT_FULL_ACCESS=yes up.sh <disposable-git-workspace>
 set -euo pipefail
 EX=$(cd "$(dirname "$0")" && pwd); ROOT=$EX/../..
@@ -14,18 +14,17 @@ setsid "$ROOT/bin/agentiplexd" --config "$EX/team.yaml" --storage "$RUN/jetstrea
 echo $! >> "$RUN/pids"
 curl -fs -o /dev/null --retry 60 --retry-delay 1 --retry-connrefused http://127.0.0.1:19080/readyz || { echo "daemon failed; see $RUN/daemon.log" >&2; exit 1; }
 gw() {  # name port access policy description [extra gateway flags]
-  A2A_NAME=$1 A2A_DESCRIPTION="$5" A2A_TAGS=$1,real-opencode \
-    setsid opencode-a2a-lite --workspace "$W" --system-prompt-file "$EX/roles/$1.md" --port "$2" --access "$3" --policy-file "$P/$4.json" --prompt-timeout 45m "${@:6}" >"$RUN/$1.log" 2>&1 &
+  setsid opencode-a2a-lite --name "$1" --description "$5" --workspace "$W" --system-prompt-file "$EX/roles/$1.md" --port "$2" --access "$3" --policy-file "$P/$4.json" --prompt-timeout 45m "${@:6}" >"$RUN/$1.log" 2>&1 &
   echo $! >> "$RUN/pids"
   curl -fs -o /dev/null --retry 120 --retry-delay 2 --retry-connrefused "http://127.0.0.1:$2/.well-known/agent-card.json" \
     || { echo "gateway $1 did not start; see $RUN/$1.log; stop with bash examples/down.sh $RUN" >&2; exit 1; }
   "$ROOT/bin/agentiplex" --server http://127.0.0.1:19080 register "$1" "http://127.0.0.1:$2" >/dev/null
 }
-gw pm 19081 read coordinator "Engineering coordination and objective ownership" --no-env
-gw architect 19082 read reader "Architecture analysis and technical recommendations" --no-env
-gw developer 19083 danger-full-access writer "Repository implementation and repair"
-gw tester 19084 danger-full-access writer "Independent executable verification"
-gw quality 19085 read reader "Independent change and acceptance review" --no-env
+gw pm 19081 read coordinator "Engineering coordinator" --no-env
+gw architect 19082 read reader "Architecture reviewer" --no-env
+gw developer 19083 danger-full-access writer "Repository implementation and repair" --no-env
+gw tester 19084 danger-full-access writer "Independent executable verification" --no-env
+gw quality 19085 read reader "Independent acceptance review" --no-env
 printf 'Team up (dashboard http://127.0.0.1:19080/ui/).\nRUN=%q\n' "$RUN"
-printf '%s\n' 'From the repository root, publish and submit the same objective:' '  OBJECTIVE="$(cat examples/repository-team/objective.md)"' '  bin/agentiplex --server http://127.0.0.1:19080 state put repository objective "$OBJECTIVE" --revision 0 &&' '  bin/agentiplex --server http://127.0.0.1:19080 send pm "$OBJECTIVE" --idempotency-key repository-objective'
+printf '%s\n' 'From the repository root, publish and submit the same objective:' '  OBJECTIVE="$(cat examples/repository-team/objective.md)"' '  bin/agentiplex --server http://127.0.0.1:19080 state put repository objective "$OBJECTIVE" --revision 0 &&' '  bin/agentiplex --server http://127.0.0.1:19080 send pm "$OBJECTIVE" --idempotency-key repository-objective --wait' '  bin/agentiplex --server http://127.0.0.1:19080 notes list repository'
 printf 'Stop with: bash examples/down.sh %q\n' "$RUN"

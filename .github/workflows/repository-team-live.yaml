@@ -38,7 +38,7 @@ jobs:
           bun-version: '1.4.4'
       - name: Install verified native-role runtime
         run: |
-          npm install --global @opencode/cli@2.4.1 @tbrandenburg/opencode-a2a-lite@0.9.2
+          npm install --global @opencode/cli@2.4.1 @tbrandenburg/opencode-a2a-lite@0.9.3
           opencode --version
           opencode-a2a-lite --version
           test "$(bun --version)" = "1.4.4"

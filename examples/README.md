@@ -8,26 +8,26 @@ full-access OpenCode agents with their **native commands**; each example has one
 Ports are fixed loopback ports (daemon 19080, agents 19081 and up); both examples use 19080, so run one at a time and check `ss -ltn` first.
 Trusted-local means unauthenticated loopback HTTP; for secure operation use an operator-owned copy of `team.yaml`.
 
-Quick start from the repository root: use the example's `up.sh` ([repository-team](repository-team/README.md#quick-start) or
-[autonomous-team](autonomous-team/README.md#quick-start)), submit its objective using the native `bin/agentiplex` CLI, and stop
-with `bash examples/down.sh <run-dir>` (the directory printed as `RUN=...`). The scripts only run the documented native commands
-in the background; prompts are plain files (`roles/`, `objective.md`, `profiles/`). The repository-team launcher still requires
-explicit `ACCEPT_FULL_ACCESS=yes` and a disposable Git workspace. The former six Makefile lifecycle targets are removed.
+Choose [repository-team](repository-team/README.md#quick-start) or [autonomous-team](autonomous-team/README.md#quick-start).
+Both show a short convenience-launcher path and readable native commands without the launcher. Submit with `send --wait`,
+read results with `notes list` (and the autonomous team's plan/findings via `state get`), and reattach with `messages wait ID`.
+The existing launchers remain optional and print a private run directory for `bash examples/down.sh <run-dir>`.
+The repository-team launcher still requires explicit `ACCEPT_FULL_ACCESS=yes` and a disposable Git workspace.
 
 ## Setup
 - Go 1.26+, Git, Make, Node/npm, and Bun 1.4.4 (the gateway needs `bun` on PATH). The acceptance tests use the same Go toolchain; live verification requires explicit opt-in.
-- For the two larger engineering examples below, use `opencode` 2.4.1 and gateway 0.9.2, the upstream verified native-role pair; both and `bun` must be on PATH:
+- Use `opencode` 2.4.1 and gateway 0.9.3, the same native-role runtime as the three-agent quickstart; both and `bun` must be on PATH:
   ```sh
-  npm install --global @opencode/cli@2.4.1 @tbrandenburg/opencode-a2a-lite@0.9.2
+  npm install --global @opencode/cli@2.4.1 @tbrandenburg/opencode-a2a-lite@0.9.3
   ```
-  (`npx @tbrandenburg/opencode-a2a-lite@0.9.2 ...` also works, but stopping the npx wrapper can orphan the real gateway.)
+  (`npx @tbrandenburg/opencode-a2a-lite@0.9.3 ...` also works, but stopping the npx wrapper can orphan the real gateway.)
 - Gateway policy files (`--policy-file`) must be outside the workspace, owned by you and neither they nor any ancestor
   directory may be group/world-writable. If your checkout or umask makes them group-writable, use private copies as the READMEs do.
-  See the upstream [native role evidence](https://github.com/tbrandenburg/opencode-a2a-lite/blob/v0.9.2/docs/native-roles.md) for verified versions.
+  See the upstream [native role evidence](https://github.com/tbrandenburg/opencode-a2a-lite/blob/v0.9.3/docs/native-roles.md) for verified versions.
 
 ## Secure mode (verified HTTPS + per-agent tokens)
 
-> **Status: secure real-team acceptance remains open (#41).** Earlier gateway 0.9.0 could not forward private-CA trust; gateway 0.9.1 added operator-controlled `NODE_EXTRA_CA_CERTS` forwarding, also present in 0.9.2. The earlier real PM + worker authentication was reproduced with a locally patched gateway only; the released gateway still needs a secure end-to-end run. Daemon-side authentication and TLS were verified independently.
+> **Status: secure real-team acceptance remains open (#41).** Earlier gateway 0.9.0 could not forward private-CA trust; gateway 0.9.1 added operator-controlled `NODE_EXTRA_CA_CERTS` forwarding, also present in 0.9.3. The earlier real PM + worker authentication was reproduced with a locally patched gateway only; the released gateway still needs a secure end-to-end run. Daemon-side authentication and TLS were verified independently.
 
 Trusted-local HTTP (the default of these examples) stays separate: secure mode never falls back to HTTP, there is no
 skip-verify, and an untrusted certificate or a wrong/missing token is rejected.
@@ -70,7 +70,7 @@ security:
 `"oauth": false` and `"headers": {"Authorization": "Bearer {env:AGENTIPLEX_TOKEN}"}`. No token is in the file. Give **each
 gateway process its own token from its file** and forward only that name, e.g. for `pm`:
 ```sh
-AGENTIPLEX_TOKEN=$(cat /secure/pm) NODE_EXTRA_CA_CERTS=/secure/ca.crt A2A_NAME=pm ... opencode-a2a-lite ... --pass-env AGENTIPLEX_TOKEN
+AGENTIPLEX_TOKEN=$(cat /secure/pm) NODE_EXTRA_CA_CERTS=/secure/ca.crt opencode-a2a-lite --name pm ... --pass-env AGENTIPLEX_TOKEN
 ```
 (Use an absolute trusted CA path; skip it with a system-trusted CA.) Never pass the
 operator token to an agent, never put a token in arguments or prompts, and keep policy files outside the workspace (see Setup).
@@ -107,7 +107,7 @@ weak evidence of collaboration; review actual results.
   execution. This relies on the restart policy of [DEPLOYMENT](../docs/DEPLOYMENT.md) (#31) or an operator restart.
   A model turn that was in flight in an agent is not resumed.
 - Automated verification (not the normal usage path) lives in [tests/examples](../tests/examples): `make examples-check`,
-  `make repository-provision-check`, `make live-check` (inference with a free model).
+  `make repository-provision-check`, `make live-check` (inference with a free model). The real-model tests also reattach to the verified PM result with `messages wait --json` and read the notes with `notes list --json`.
 
 ## Failed repository-team live runs
 
