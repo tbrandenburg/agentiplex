@@ -17,78 +17,91 @@ itself with the MCP tools it is granted. No orchestration layer, no generated te
 **loopback without authentication (trusted-local)**. For authenticated TLS operation use an operator-owned copy of
 `team.yaml` (see [docs/DEPLOYMENT.md](../../docs/DEPLOYMENT.md)). Never expose these ports.
 
-## Prerequisites
-Linux, Go 1.26+, Node 22+, Bun 1.4.4, OpenCode 2.4.1 and `opencode-a2a-lite` 0.9.2
-(`npm install --global @tbrandenburg/opencode-a2a-lite`). See [../README.md](../README.md). Ports 19080-19086 must be free
-(check with `ss -ltn`); to use others, change them consistently in `team.yaml`, the commands below and the MCP `url` in
-`profiles/*/opencode.json` (`http://127.0.0.1:19080/mcp`).
-JetStream needs free disk: edit `broker.storage` in `team.yaml` (default `/tmp/agentiplex-autonomous/jetstream`) if needed.
-
 ## Quick start
-Run these commands from the repository root. Start the team only once and set `RUN` to the directory printed by the launcher before stopping it.
-`up.sh` and `down.sh` only run the commands of "Run it" below in the background (no other logic). The objective is the plain file
-[objective.md](objective.md); the agents' role prompts are the `system` text in [profiles/](profiles/).
+
+Install the [common tools](../README.md#setup) once (OpenCode 2.4.1, gateway 0.9.3, Bun 1.4.4).
+Use a disposable host, free ports 19080–19086 and sufficient disk for JetStream.
+From the Agentiplex checkout:
 
 ```sh
-bash examples/autonomous-team/up.sh  # prints RUN=<dir>
-# Set RUN to the printed directory before using the stop command.
-bin/agentiplex --server http://127.0.0.1:19080 send pm "$(cat examples/autonomous-team/objective.md)" --idempotency-key review
-bin/agentiplex --server http://127.0.0.1:19080 messages status <id>   # until a terminal state; also http://127.0.0.1:19080/ui/
-bash examples/down.sh "$RUN"                   # stops exactly the recorded processes
-```
-Verified: the PM completed and delegated to the architect and the `testers` pool by itself (opencode 2.4.1, gateway 0.9.0, free model).
-
-## Run it (by hand)
-Use the commands from the repository root; run each long-lived process in its own terminal.
-
-```sh
-make build                                   # bin/agentiplexd, bin/agentiplex
-go build -o bin/ ./examples/simulated-agent
+bash examples/autonomous-team/up.sh
 export AGENTIPLEX_SERVER=http://127.0.0.1:19080
-EX=$PWD/examples/autonomous-team RUN=$(mktemp -d)
-
-# private run directory (mode 0700): the gateway rejects policy files in group-writable directories, so use copies
-cp -r $EX/policies $RUN/policies && chmod 700 $RUN/policies && chmod 600 $RUN/policies/*
-# private workspaces: the profile config plus the synthetic fixture only
-for r in pm architect; do mkdir $RUN/$r; cp $EX/profiles/$r/opencode.json $RUN/$r/; cp -r $EX/fixture $RUN/$r/; done
-
-# 1. the four simulated workers
-bin/simulated-agent --name developer --skill development --port 19083
-bin/simulated-agent --name tester-1   --skill testing     --port 19084
-bin/simulated-agent --name tester-2   --skill testing     --port 19085
-bin/simulated-agent --name quality    --skill quality     --port 19086
-
-# 2. the two real agents (identity via A2A_*; the startup preflight can take a minute or more)
-A2A_NAME=pm A2A_DESCRIPTION="Read-only planning coordinator" A2A_TAGS=planning,real-opencode \
-  opencode-a2a-lite --workspace $RUN/pm --port 19081 --access read --no-env \
-  --policy-file $RUN/policies/coordinator.json --prompt-timeout 10m
-A2A_NAME=architect A2A_DESCRIPTION="Read-only architecture reviewer" A2A_TAGS=architecture,real-opencode \
-  opencode-a2a-lite --workspace $RUN/architect --port 19082 --access read --no-env \
-  --policy-file $RUN/policies/worker.json --prompt-timeout 10m
-
-# 3. the daemon registers all six endpoints, the group and the pool at startup
-bin/agentiplexd --config $EX/team.yaml
-
-# 4. discover, send ONE objective to the coordinator, inspect
-bin/agentiplex agents list
-bin/agentiplex send pm "$(cat $EX/objective.md)" --idempotency-key review
-bin/agentiplex messages status <id-printed-by-send>   # repeat until a terminal state
-bin/agentiplex state list review                      # notes and plans the agents wrote
+bin/agentiplex send pm "$(cat examples/autonomous-team/objective.md)" --idempotency-key review --wait
+bin/agentiplex state get review pm
+bin/agentiplex state get review architect
+bin/agentiplex notes list review
 ```
 
-Watch the live registry, deliveries and events at <http://127.0.0.1:19080/ui/>. The PM's reply and every delegation
-are delivery records (`bin/agentiplex messages status <id>`); the agents collaborate themselves, you submit nothing else.
+The PM returns the assessment. The plan and architectural findings are stored as
+ordinary state; additional append-only notes are optional. Inspect the
+[dashboard](http://127.0.0.1:19080/ui/) for all deliveries. Ctrl-C during the wait
+detaches; `bin/agentiplex messages wait DELIVERY_ID` reattaches.
+The launcher prints a private `RUN` directory. Stop its processes with:
 
-Use only the bundled synthetic fixture with free models: free-model providers may retain prompts. OpenCode picks its
-default model; to choose one add `"model": {"providerID": "opencode", "model": "big-pickle"}` to the two
-`$RUN/<role>/opencode.json` copies. For a credentialed model replace `--no-env` by `--pass-env <PROVIDER>_API_KEY`
-(never put a key value in a file or command line).
+```sh
+bash examples/down.sh /path/to/printed-run-directory
+```
 
-**Cleanup is yours:** stop only the processes you started (Ctrl+C in each terminal, or `kill <pid>`), then delete `$RUN`
-and the storage directory. The gateway is not an OS sandbox; use a disposable host or user.
+## Native commands (without the convenience launcher)
 
-**Known flaky startup:** the gateway preflight sometimes fails with "capability policy was dropped, overridden or weakened"
-(see [../README.md](../README.md)). Retry the same command before changing configuration.
+### Prepare once
+
+From the Agentiplex checkout, put its `bin/` directory on PATH in all terminals.
+Copy the prepared profiles, policies and synthetic fixture into a private directory:
+
+```sh
+make build
+go build -o bin/ ./examples/simulated-agent
+mkdir -m 700 ~/agentiplex-autonomous
+cp -R examples/autonomous-team/. ~/agentiplex-autonomous/
+cd ~/agentiplex-autonomous
+cp -R fixture profiles/pm/
+cp -R fixture profiles/architect/
+```
+
+The profiles select native primary agents and the MCP server. To select the CI
+free model, add `"model": {"providerID": "opencode", "model": "big-pickle"}`
+to both copied `opencode.json` files. Use only the bundled synthetic fixture with
+free models. For an approved credentialed model add `--pass-env PROVIDER_API_KEY`
+(the variable name, never its value). The gateway is not an OS sandbox;
+all policies and ancestors must be trusted, canonical and not group/world-writable.
+
+### Start the agents and daemon
+
+Run each long-lived process in a separate terminal in `~/agentiplex-autonomous`.
+Start the four simulated workers and two real gateways:
+
+```sh
+simulated-agent --name developer --skill development --port 19083
+simulated-agent --name tester-1 --skill testing --port 19084
+simulated-agent --name tester-2 --skill testing --port 19085
+simulated-agent --name quality --skill quality --port 19086
+opencode-a2a-lite --name pm --description "Read-only planning coordinator" --port 19081 --workspace profiles/pm --policy-file policies/coordinator.json --no-env --prompt-timeout 10m
+opencode-a2a-lite --name architect --description "Read-only architecture reviewer" --port 19082 --workspace profiles/architect --policy-file policies/worker.json --no-env --prompt-timeout 10m
+```
+
+After all six endpoints are ready, start the daemon. The existing `team.yaml`
+registers every endpoint, the engineering group and the testers pool at startup:
+
+```sh
+agentiplexd --config team.yaml --storage data
+```
+
+### Submit and inspect
+
+After the daemon is ready, in another terminal in the same directory:
+
+```sh
+export AGENTIPLEX_SERVER=http://127.0.0.1:19080
+agentiplex send pm "$(cat objective.md)" --idempotency-key review --wait
+agentiplex state get review pm
+agentiplex state get review architect
+agentiplex notes list review
+```
+
+Use fresh storage for a new objective. Stop only the processes you started
+(Ctrl-C in each terminal), then delete the disposable directory after review.
+If a preflight exits, inspect its error; see the [startup notes](../README.md#known-issue-flaky-startup-preflight).
 
 ## Customize
 - **Add a team member:** add `name: {url: ...}` under `registry.agents` (and to `groups`/`pools`) in `team.yaml`, start one more
@@ -104,16 +117,16 @@ Private-CA forwarding is now available upstream (0.9.1+), but secure real-agent 
 [../README.md](../README.md#secure-mode-verified-https--per-agent-tokens). For this team: copy `team.yaml`, add the `server` TLS
 fields and `security` tokens and a `token_file` for all six `registry.agents` entries (including the simulated ones; the
 simulated agents are plain loopback HTTP endpoints and need no token themselves), use `https://localhost:19080/mcp` plus the
-`oauth`/`headers` entries in the `mcp` block of both `$RUN/pm` and `$RUN/architect` copies of `opencode.json`, start the two gateways with their own
+`oauth`/`headers` entries in the `mcp` block of both copied profile `opencode.json` files, start the two gateways with their own
 `AGENTIPLEX_TOKEN` and `--pass-env AGENTIPLEX_TOKEN` instead of `--no-env`, start `bin/agentiplexd --config <your copy>` and use the operator CLI flags.
 
-## Provider-free verification (no model)
+## Verification
 ```sh
 make examples-check                          # real daemon + simulated agents on each team.yaml, policy checks
 make live-check LIVE_ARGS=-provision-only   # real PM + architect gateways registered, no model task
 make live-check                              # real free-model run with independent evidence check (uses inference)
 ```
-The harness in [tests/examples](../../tests/examples) starts the processes above and
+The [Live example CI workflow](https://github.com/tbrandenburg/agentiplex/actions/workflows/live-opencode.yaml) and harness in [tests/examples](../../tests/examples) use the same native runtime options and profiles (not the manual copy/launcher commands verbatim), and
 verifies from the daemon's records that the PM completed, at least one real worker produced a result, no delivery is
 unresolved and the PM and a worker persisted state. It is test infrastructure, not the normal usage path. Delivery records
 show who was asked, not which MCP tool was used, and a model claiming a result without a completed delivery fails.

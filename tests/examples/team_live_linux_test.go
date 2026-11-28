@@ -183,15 +183,14 @@ func (l *liveTeam) configureModel(path string) {
 	writeTeamFile(l.t,path,string(raw)+"\n")
 }
 
-func (l *liveTeam) gateway(name,desc,tags,workspace,access,policy,port,prompt string,extra ...string) {
+func (l *liveTeam) gateway(name,desc,workspace,access,policy,port,prompt string,extra ...string) {
 	l.t.Helper()
 	assertFreeTeamPort(l.t,"127.0.0.1:"+port)
 	gw,err:=exec.LookPath("opencode-a2a-lite")
 	if err!=nil { l.t.Fatal("install the pinned gateway; see examples/README.md") }
-	env:=append(append([]string(nil),l.env...),"A2A_NAME="+name,"A2A_DESCRIPTION="+desc,"A2A_TAGS="+tags+",real-opencode")
-	args:=append([]string{gw,"--workspace",workspace,"--port",port,"--access",access,"--policy-file",filepath.Join(l.run,"policies",policy+".json"),"--prompt-timeout",prompt,"--no-env"},extra...)
+	args:=append([]string{gw,"--name",name,"--description",desc,"--workspace",workspace,"--port",port,"--access",access,"--policy-file",filepath.Join(l.run,"policies",policy+".json"),"--prompt-timeout",prompt,"--no-env"},extra...)
 	for attempt:=0;attempt<=*liveStartupRetries;attempt++ {
-		p:=l.spawn(name+"-"+strconv.Itoa(attempt),workspace,env,args...)
+		p:=l.spawn(name+"-"+strconv.Itoa(attempt),workspace,l.env,args...)
 		err=l.waitReady(p,"http://127.0.0.1:"+port+"/.well-known/agent-card.json",10*time.Minute)
 		if err==nil { return }
 		if !errors.Is(err,errLiveProcessExited) || attempt==*liveStartupRetries { l.t.Fatal(err) }
@@ -258,6 +257,13 @@ func (l *liveTeam) awaitEvidence(id,namespace,objective string,revision uint64,s
 	if err!=nil { l.t.Fatal(err) }
 	writeTeamFile(l.t,filepath.Join(l.run,"evidence.json"),string(raw))
 	if err=verifyTeamEvidence(root,deliveries,state,objective,revision,scenario);err!=nil { l.t.Fatal(err) }
+	// Exercise the documented result commands against the already verified
+	// durable work. Reattaching must not create another submission.
+	waited:=teamCLI[teamDelivery](l,"messages","wait",id,"--json")
+	if waited.ID!=id || waited.State!="completed" || !waited.hasResult() { l.t.Fatal("reattached CLI wait did not return the completed PM result") }
+	notes:=teamCLI[[]core.Note](l,"notes","list",namespace,"--json")
+	if scenario!="autonomous" && len(notes)==0 { l.t.Fatal("CLI notes list lost the repository notes") }
+	l.t.Logf("CLI wait and notes list verified: %d recent notes",len(notes))
 	l.t.Log("Verified durable evidence; trusted-local note topics are not authenticated authors or tool-call attestations.")
 }
 
@@ -271,15 +277,15 @@ func (l *liveTeam) repository(scenario,prompt string,seconds int) {
 	// MCP must exist first; then register the five live endpoints.
 	l.startDaemon()
 	roles:=[]struct{name,desc,access,policy,port string}{
-		{"pm","Engineering coordination and objective ownership","read","coordinator","19081"},
-		{"architect","Architecture analysis and technical recommendations","read","reader","19082"},
+		{"pm","Engineering coordinator","read","coordinator","19081"},
+		{"architect","Architecture reviewer","read","reader","19082"},
 		{"developer","Repository implementation and repair","danger-full-access","writer","19083"},
 		{"tester","Independent executable verification","danger-full-access","writer","19084"},
-		{"quality","Independent change and acceptance review","read","reader","19085"},
+		{"quality","Independent acceptance review","read","reader","19085"},
 	}
 	want:=map[string]bool{}
 	for _,r:=range roles {
-		l.gateway(r.name,r.desc,r.name,ws,r.access,r.policy,r.port,prompt,"--system-prompt-file",filepath.Join(l.example,"roles",r.name+".md"))
+		l.gateway(r.name,r.desc,ws,r.access,r.policy,r.port,prompt,"--system-prompt-file",filepath.Join(l.example,"roles",r.name+".md"))
 		teamCLI[json.RawMessage](l,"register",r.name,"http://127.0.0.1:"+r.port)
 		want[r.name]=true
 	}
@@ -326,7 +332,7 @@ func (l *liveTeam) autonomous(prompt string,seconds int) {
 		if err=os.CopyFS(ws,os.DirFS(filepath.Join(l.example,"profiles",r.name)));err!=nil { l.t.Fatal(err) }
 		if err=os.CopyFS(filepath.Join(ws,"fixture"),os.DirFS(filepath.Join(l.example,"fixture")));err!=nil { l.t.Fatal(err) }
 		l.configureModel(filepath.Join(ws,"opencode.json"))
-		l.gateway(r.name,"Read-only engineering "+r.skill,r.skill,ws,"read",r.policy,port(r.name),prompt)
+		l.gateway(r.name,"Read-only engineering "+r.skill,ws,"read",r.policy,port(r.name),prompt)
 	}
 	l.startDaemon()
 	want:=map[string]bool{}
