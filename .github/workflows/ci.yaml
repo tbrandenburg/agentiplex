@@ -39,10 +39,8 @@ jobs:
           node --check internal/dashboard/static/bootstrap.js
           node --check examples/engineering-team/browser-check.mjs
           make demo-check DEMO_ARGS=--browser-check
-      - name: Shared repository example regression tests
-        run: make repository-check
-      - name: Autonomous team configuration and provider-free startup
-        run: make autonomous-check
+      - name: Native example configuration, policies and provider-free startup
+        run: make examples-check
       - name: Save resolved dependency manifest
         if: always()
         uses: actions/upload-artifact@v4
@@ -74,7 +72,7 @@ jobs:
           exit 1
       - name: Secure Compose deployment and recovery
         run: |
-          bash -n scripts/demo-secrets.sh scripts/compose-check.sh scripts/helm-check.sh scripts/package-release.sh
+          bash -n examples/down.sh examples/repository-team/up.sh examples/autonomous-team/up.sh scripts/demo-secrets.sh scripts/compose-check.sh scripts/helm-check.sh scripts/package-release.sh
           bash scripts/compose-check.sh
       - name: Helm deployment on kind
         run: |

@@ -174,11 +174,11 @@ The native NATS client performs TLS verification and credential authentication. 
 
 ## Compose
 
-From the repository root, with Docker Compose v2 and OpenSSL:
+The static fixture is [examples/engineering-team/compose.yaml](../examples/engineering-team/compose.yaml) (see its [README](../examples/engineering-team/README.md)). From the repository root, with Docker Compose v2 and OpenSSL:
 
 ```sh
 bash scripts/demo-secrets.sh
-docker compose up -d --build --wait
+docker compose -f examples/engineering-team/compose.yaml up -d --build --wait
 # Or: make compose-up (generates demo secrets only if absent)
 ```
 
@@ -198,13 +198,13 @@ Use the CLI built from the checkout (or docker compose exec agentiplex agentiple
 
 ## Helm
 
-Use a supported Kubernetes cluster, Helm and the [official NATS Helm chart](https://github.com/nats-io/k8s). Create Secrets in the chosen namespace: agentiplex-auth (operator, viewer, and `agent-<id>` per entry of the chart value `agents`), agentiplex-tls (tls.crt, tls.key), nats-tls (broker TLS keypair) and agentiplex-broker (token or credentials, ca.crt). Provision certificates with DNS SANs matching the broker service and daemon advertised hostname. The test script illustrates creation from disposable development secrets.
+Use a supported Kubernetes cluster, Helm and the [official NATS Helm chart](https://github.com/nats-io/k8s). Create Secrets in the chosen namespace: agentiplex-auth (operator, viewer, and `agent-<id>` per entry of the chart value `agents`, which is empty by default; set e.g. `--set 'agents={demo}'`), agentiplex-tls (tls.crt, tls.key), nats-tls (broker TLS keypair) and agentiplex-broker (token or credentials, ca.crt). Provision certificates with DNS SANs matching the broker service and daemon advertised hostname. The test script illustrates creation from disposable development secrets.
 
 ```sh
 helm repo add nats https://nats-io.github.io/k8s/helm/charts/
 helm repo update nats
 helm upgrade --install nats nats/nats --version 2.15.2 -f deploy/nats-values.yaml --wait
-helm upgrade --install agentiplex charts/agentiplex --set image.tag=v0.1.0 --wait
+helm upgrade --install agentiplex charts/agentiplex --set 'agents={demo}' --set image.tag=v0.1.0 --wait
 kubectl port-forward svc/agentiplex 18443:8080
 ```
 

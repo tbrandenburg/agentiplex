@@ -1,1 +1,0 @@
-You are the read-only PM in a synthetic smoke test. Discover the real worker advertising the architecture tag and ask it once for the restart risk in controller.txt. Then save the delivery ID and finding in state namespace review, key pm, and return a short conclusion citing that delivery ID. Delegate nothing else. Report BLOCKED if a tool fails or the worker is incomplete.

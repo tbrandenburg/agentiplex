@@ -1,0 +1,23 @@
+# Native daemon configuration, used unchanged: agentiplexd --config team.yaml
+# Trusted-local only: loopback HTTP without authentication. Ports 19080-19085 must be free.
+# All agents are real OpenCode gateways on one shared workspace; pm is the coordinator.
+server:
+  listen: "127.0.0.1:19080"
+broker:
+  mode: embedded
+  storage: /tmp/agentiplex-repository/jetstream # disposable; JetStream needs free disk
+protocols:
+  mcp:
+    enabled: true
+delivery:
+  timeout: 30s # one HTTP operation to an agent, not agent execution
+  retry_delay: 2s
+  max_attempts: 80
+registry:
+  namespace: repository-demo
+  agents:
+    pm: {url: "http://127.0.0.1:19081"}
+    architect: {url: "http://127.0.0.1:19082"}
+    developer: {url: "http://127.0.0.1:19083"}
+    tester: {url: "http://127.0.0.1:19084"}
+    quality: {url: "http://127.0.0.1:19085"}

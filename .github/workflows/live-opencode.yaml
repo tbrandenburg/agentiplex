@@ -5,6 +5,7 @@ on:
     paths: &paths
       - 'examples/autonomous-team/**'
       - 'examples/repository-team/**'
+      - 'tests/examples/**'
       - 'internal/adapters/**'
       - 'internal/api/**'
       - 'internal/daemon/**'
@@ -25,7 +26,7 @@ concurrency:
 jobs:
   hybrid-free-model:
     env:
-      # CI pins the free model; the launchers otherwise use the OpenCode default.
+      # CI pins the free model; the checks otherwise use the OpenCode default.
       CI_MODEL: opencode/big-pickle
     runs-on: ubuntu-24.04
     timeout-minutes: 25
@@ -52,37 +53,15 @@ jobs:
       - name: Shared repository provisioning (no model inference)
         shell: bash
         run: |
-          work=$(mktemp -d)
           home=$(mktemp -d)
-          trap 'rm -rf "$work" "$home"' EXIT
-          git -C "$work" init -q
-          git -C "$work" config user.name "Repository example CI"
-          git -C "$work" config user.email "ci@example.invalid"
-          printf 'Synthetic repository\n' > "$work/README.md"
-          cat > "$work/opencode.json" <<EOF
-          {
-            "model": {"providerID": "${CI_MODEL%%/*}", "model": "${CI_MODEL#*/}"},
-            "mcp": {"timeout": {"execution": 2700000}, "servers": {"agentiplex": {"type": "remote", "url": "http://127.0.0.1:19180/mcp", "protocol": "auto", "codemode": false}}}
-          }
-          EOF
-          git -C "$work" add README.md opencode.json
-          git -C "$work" commit -qm "synthetic fixture"
+          trap 'rm -rf "$home"' EXIT
           env -i PATH="$PATH" HOME="$home" LANG=C.UTF-8 USER="$(id -un)" \
             GOMODCACHE="$(go env GOMODCACHE)" GOCACHE="$(go env GOCACHE)" \
-            make repository-team WORKSPACE="$work" REPOSITORY_ARGS="--check --accept-full-access --headless --seconds 180 --port 19180"
-          test -z "$(git -C "$work" status --porcelain)"
-          # Keep the fixed workspace check off the hybrid test's 19080-19086 ports.
-          # A second startup uses a clean independent clone/worktree and a kernel-selected port.
-          git -C "$work" rm opencode.json
-          git -C "$work" commit -qm 'remove local config for clone mode'
-          env -i PATH="$PATH" HOME="$home" LANG=C.UTF-8 USER="$(id -un)" \
-            GOMODCACHE="$(go env GOMODCACHE)" GOCACHE="$(go env GOCACHE)" \
-            make repository-team REPO="$work" MODEL="$CI_MODEL" REPOSITORY_ARGS="--check --accept-full-access --headless --seconds 180"
-          test -z "$(git -C "$work" status --porcelain)"
+            make repository-provision-check
       - name: Credential-free live hybrid acceptance
         shell: bash
         run: |
-          # No credential forwarding; isolate the launcher from ambient keys
+          # No credential forwarding; isolate the test from ambient keys
           # and OpenCode home/config. Only the synthetic fixture is reviewed.
           home=$(mktemp -d)
           trap 'rm -rf "$home"' EXIT

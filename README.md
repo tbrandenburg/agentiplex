@@ -108,8 +108,8 @@ Choose the level of collaboration you want to explore.
 | Example | Command | What it demonstrates |
 | --- | --- | --- |
 | [Engineering team](docs/DEMO.md) | `make demo-team` | Six simulated agents; deterministic communication, persistence and recovery. |
-| [Autonomous team](examples/autonomous-team/README.md) | `make live-check` | Real model-driven delegation through A2A and MCP using synthetic fixtures. |
-| [Repository team](examples/repository-team/README.md) | `make repository-team` with options | Six real agents working on the same Git worktree, with implementation and executable verification. |
+| [Autonomous team](examples/autonomous-team/README.md) | [native commands](examples/autonomous-team/README.md) | Real model-driven delegation through A2A and MCP using synthetic fixtures. |
+| [Repository team](examples/repository-team/README.md) | [native commands](examples/repository-team/README.md) | Five real agents working on the same Git worktree, with implementation and executable verification. |
 
 The core is agent-runtime independent. The real-agent examples use an off-the-shelf
 A2A agent driver; any A2A agent can be registered instead. Setup, prerequisites and
@@ -164,7 +164,7 @@ from source using `make build` (binaries in `bin/`).
 | Deployment | Guide |
 | --- | --- |
 | Native daemon with embedded or external NATS | [Configuration and deployment](docs/DEPLOYMENT.md) |
-| OCI image and secure Docker Compose | [Container deployment](docs/DEPLOYMENT.md) |
+| OCI image and secure Docker Compose | [Container deployment](docs/DEPLOYMENT.md), [Compose fixture](examples/engineering-team/) |
 | Agents on other hosts (routed network/VPN, one daemon) | [Distributed deployment](docs/DEPLOYMENT.md#distributed-deployment-agents-on-other-hosts) |
 | Single-replica Kubernetes / Helm | [Helm chart](charts/agentiplex/) and [deployment guide](docs/DEPLOYMENT.md) |
 
@@ -207,8 +207,8 @@ make check      # Go tests, vet, Python and release-script tests
 make demo-check # Deterministic end-to-end demo
 ```
 
-For focused integration checks, use `make autonomous-check`,
-`make repository-check` or the explicitly opt-in `make live-check`.
+For focused integration checks, use `make examples-check`,
+`make repository-provision-check` or the explicitly opt-in `make live-check`.
 The Go dependencies are pinned in `go.mod` and `go.sum`.
 Make is the single development entry point.
 
