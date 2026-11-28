@@ -2,7 +2,7 @@
 
 Applies to `repository-team` and `autonomous-team`. These start real, partly
 full-access OpenCode agents with their **native commands**; each example has one `team.yaml` that is passed unchanged to
-`agentiplexd --config team.yaml`. No orchestration layer is needed: follow the example README. The core middleware does not depend on any of this.
+`agentiplexd --config team.yaml`. The prompted repository-team starts MCP first and registers live gateways with native CLI commands; autonomous-team uses declarative registry provisioning. No orchestration layer is needed: follow the example README. The core middleware does not depend on any of this.
 Ports are fixed loopback ports (daemon 19080, agents 19081 and up); both examples use 19080, so run one at a time and check `ss -ltn` first.
 Trusted-local means unauthenticated loopback HTTP; for secure operation use an operator-owned copy of `team.yaml`.
 
@@ -15,25 +15,18 @@ explicit `ACCEPT_FULL_ACCESS=yes` and a disposable Git workspace. The former six
 ## Setup
 - Go 1.26+, Git, Make, Node/npm, and Bun 1.4.4 (the gateway needs `bun` on PATH). Python 3.10+ is only needed for the
   optional verification scripts in [tests/examples](../tests/examples).
-- `opencode` (2.3.2 or newer) and `bun` must be on PATH, plus the gateway `opencode-a2a-lite` (0.9.0 or newer):
+- Use `opencode` 2.4.1 and gateway 0.9.2, the upstream verified native-role pair; both and `bun` must be on PATH:
   ```sh
-  npm install --global @tbrandenburg/opencode-a2a-lite
+  npm install --global @opencode/cli@2.4.1 @tbrandenburg/opencode-a2a-lite@0.9.2
   ```
-  (`npx @tbrandenburg/opencode-a2a-lite@^0.9.0 ...` also works, but stopping the npx wrapper can orphan the real gateway.)
+  (`npx @tbrandenburg/opencode-a2a-lite@0.9.2 ...` also works, but stopping the npx wrapper can orphan the real gateway.)
 - Gateway policy files (`--policy-file`) must be outside the workspace, owned by you and neither they nor any ancestor
   directory may be group/world-writable. If your checkout or umask makes them group-writable, use private copies as the READMEs do.
-  "OpenCode 2.3.2 or newer" is accepted, but 2.4.1 is no more reliable than 2.3.2 (see below).
+  See the upstream [native role evidence](https://github.com/tbrandenburg/opencode-a2a-lite/blob/v0.9.2/docs/native-roles.md) for verified versions.
 
 ## Secure mode (verified HTTPS + per-agent tokens)
 
-> **Status: NOT a complete working demonstration on stock gateways.** `opencode-a2a-lite` 0.9.0 builds the OpenCode
-> child environment from scratch: `NODE_EXTRA_CA_CERTS`/`SSL_CERT_FILE` are rejected by `--pass-env` and ignored in the
-> gateway's own environment, so OpenCode cannot trust a private CA and fails closed (`unable to verify the first certificate`,
-> no Agentiplex tools). Real PM + worker authentication (`caller=pm` observed) was reproduced **only with a locally patched
-> copy** of the gateway that forwards an operator-set absolute `NODE_EXTRA_CA_CERTS` from the gateway's own environment; that
-> change is **not yet released**. Without it you need a CA already trusted by the system store of the host (root required; untested).
-> Daemon-side behavior (below) was verified without the patch and without a model. Tested: OpenCode 2.4.1, gateway 0.9.0
-> (+ local patch), Bun 1.4.4, `agentiplexd` from this repository.
+> **Status: secure real-team acceptance remains open (#41).** Earlier gateway 0.9.0 could not forward private-CA trust; gateway 0.9.1 added operator-controlled `NODE_EXTRA_CA_CERTS` forwarding, also present in 0.9.2. The earlier real PM + worker authentication was reproduced with a locally patched gateway only; the released gateway still needs a secure end-to-end run. Daemon-side authentication and TLS were verified independently.
 
 Trusted-local HTTP (the default of these examples) stays separate: secure mode never falls back to HTTP, there is no
 skip-verify, and an untrusted certificate or a wrong/missing token is rejected.
@@ -44,7 +37,7 @@ file each for `operator`, `viewer` (dashboard) and every agent. [scripts/demo-se
 openssl/`openssl rand -hex 32` steps used by the repo's tests; field semantics are in
 [DEPLOYMENT](../docs/DEPLOYMENT.md#static-credentials-and-tls).
 
-**Edit an operator-owned copy of `team.yaml`** (the committed file stays unchanged; the roster is not duplicated):
+**Edit an operator-owned copy of `team.yaml`** (the committed file stays unchanged). For autonomous-team, use the static registry credential fields shown below. For the prompted repository-team, keep its empty declarative roster and put all five agent IDs and token-file paths in `security.agent_token_files` instead; start the HTTPS daemon first, start the prompted gateways, and register the endpoints with the authenticated operator CLI. Credential identity and endpoint registration are independent. Do not configure both credential fields for the same ID. The released-gateway authenticated real-team run remains unverified (#41).
 ```yaml
 server:   # add to the existing block
   public_url: "https://localhost:19080"
@@ -59,13 +52,26 @@ security:
 ```
 Agent endpoints may stay loopback HTTP; only agent-to-daemon traffic is TLS.
 
+For repository-team use this alternative credential mapping rather than `registry.agents`:
+```yaml
+security:
+  operator_token_file: /secure/operator
+  viewer_token_file: /secure/viewer
+  agent_token_files:
+    pm: /secure/pm
+    architect: /secure/architect
+    developer: /secure/developer
+    tester: /secure/tester
+    quality: /secure/quality
+```
+
 **Shared `opencode.json`**: change the MCP entry to `"url": "https://localhost:19080/mcp"` and add
 `"oauth": false` and `"headers": {"Authorization": "Bearer {env:AGENTIPLEX_TOKEN}"}`. No token is in the file. Give **each
 gateway process its own token from its file** and forward only that name, e.g. for `pm`:
 ```sh
 AGENTIPLEX_TOKEN=$(cat /secure/pm) NODE_EXTRA_CA_CERTS=/secure/ca.crt A2A_NAME=pm ... opencode-a2a-lite ... --pass-env AGENTIPLEX_TOKEN
 ```
-(`NODE_EXTRA_CA_CERTS` only helps with the patched gateway described above; skip it with a system-trusted CA.) Never pass the
+(Use an absolute trusted CA path; skip it with a system-trusted CA.) Never pass the
 operator token to an agent, never put a token in arguments or prompts, and keep policy files outside the workspace (see Setup).
 
 **Operator CLI** (separate credential): `bin/agentiplex --server https://localhost:19080 --ca-file /secure/ca.crt --token-file /secure/operator agents list`
@@ -94,8 +100,7 @@ weak evidence of collaboration; review actual results.
 ## Collaboration model
 - Agents collaborate through the MCP tools of the daemon. The coordinator (PM) discovers the team and delegates with the tools it is
   granted (typically the blocking `ask`); mechanics such as idempotency keys and re-attaching are in the tool contract, not the prompt. Findings are shared with `note`/`read_notes`.
-- Each team is the `registry` block of its `team.yaml` (agents, groups, pools) plus one native runtime config per role and
-  static gateway policy files. A new member is one more registry entry and one more native runtime.
+- Team membership comes from native CLI registrations (repository-team) or the `registry` block of `team.yaml` (autonomous-team), plus native runtime configuration and static gateway policies. Repository-team uses standalone role files passed as actual system prompts; autonomous-team uses native prepared profiles. A new member is one more registry entry and one more native runtime.
 - **Restart expectation:** if the daemon is killed (even SIGKILL) mid-run and restarted on the same storage and port, the run
   continues: the PM's failed `ask` is repeated and re-attaches to the same delivery, with no duplicate downstream
   execution. This relies on the restart policy of [DEPLOYMENT](../docs/DEPLOYMENT.md) (#31) or an operator restart.
@@ -105,7 +110,7 @@ weak evidence of collaboration; review actual results.
 
 ## Known issue: flaky startup preflight
 The gateway checks the private policy with `opencode --standalone debug agents`. OpenCode
-intermittently omits the policy, and the gateway retries only 3 times. Measured probe pass
+intermittently omits the policy, and the gateway retries within a bounded startup budget (improved in 0.9.1 and 0.9.2). Historical 0.9.0 probe pass
 rates: 5/12 on 2.3.2 with a reused data dir, 1/12 with a fresh one, 3/12 on 2.4.1. Roughly 30% of
 launches pass on 2.3.2.
 

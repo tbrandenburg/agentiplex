@@ -8,7 +8,7 @@ import time
 import urllib.request
 
 OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}))
-GATEWAY = "@tbrandenburg/opencode-a2a-lite@^0.9.0"
+GATEWAY = "@tbrandenburg/opencode-a2a-lite@0.9.2"
 
 
 def get(url, timeout=3):

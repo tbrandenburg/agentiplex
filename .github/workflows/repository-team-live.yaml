@@ -1,0 +1,53 @@
+name: Repository team live
+on:
+  pull_request:
+    paths:
+      - 'examples/repository-team/**'
+      - 'tests/examples/repository-team/**'
+      - 'tests/examples/procs.py'
+      - '.github/workflows/repository-team-live.yaml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: repository-team-live-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  prompted-team:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        objective: [docs, defect]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.x'
+          cache: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: '1.4.4'
+      - name: Install verified native-role runtime
+        run: |
+          npm install --global @opencode/cli@2.4.1 @tbrandenburg/opencode-a2a-lite@0.9.2
+          opencode --version
+          opencode-a2a-lite --version
+          test "$(bun --version)" = "1.4.4"
+          make dashboard-assets
+      - name: Five real agents on synthetic repository (no credentials)
+        env:
+          OBJECTIVE: ${{ matrix.objective }}
+        shell: bash
+        run: |
+          home=$(mktemp -d)
+          trap 'rm -rf "$home"' EXIT
+          env -i PATH="$PATH" HOME="$home" LANG=C.UTF-8 USER="$(id -un)" \
+            GOMODCACHE="$(go env GOMODCACHE)" GOCACHE="$(go env GOCACHE)" \
+            python3 -B tests/examples/repository-team/provision_check.py --live "$OBJECTIVE" --model opencode/big-pickle

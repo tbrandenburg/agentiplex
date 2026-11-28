@@ -1,6 +1,7 @@
 # Native daemon configuration, used unchanged: agentiplexd --config team.yaml
 # Trusted-local only: loopback HTTP without authentication. Ports 19080-19085 must be free.
-# All agents are real OpenCode gateways on one shared workspace; pm is the coordinator.
+# Start MCP first, then launch gateways and register their endpoints with the native CLI.
+# Explicit native roles open an ACP session before gateway readiness.
 server:
   listen: "127.0.0.1:19080"
 broker:
@@ -15,9 +16,3 @@ delivery:
   max_attempts: 80
 registry:
   namespace: repository-demo
-  agents:
-    pm: {url: "http://127.0.0.1:19081"}
-    architect: {url: "http://127.0.0.1:19082"}
-    developer: {url: "http://127.0.0.1:19083"}
-    tester: {url: "http://127.0.0.1:19084"}
-    quality: {url: "http://127.0.0.1:19085"}

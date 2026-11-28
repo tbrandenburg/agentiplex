@@ -18,7 +18,7 @@ itself with the MCP tools it is granted. No orchestration layer, no generated te
 `team.yaml` (see [docs/DEPLOYMENT.md](../../docs/DEPLOYMENT.md)). Never expose these ports.
 
 ## Prerequisites
-Linux, Go 1.26+, Node 22+, Bun 1.4.4, OpenCode 2.3.2 or newer, `opencode-a2a-lite` 0.9.0 or newer
+Linux, Go 1.26+, Node 22+, Bun 1.4.4, OpenCode 2.4.1 and `opencode-a2a-lite` 0.9.2
 (`npm install --global @tbrandenburg/opencode-a2a-lite`). See [../README.md](../README.md). Ports 19080-19086 must be free
 (check with `ss -ltn`); to use others, change them consistently in `team.yaml`, the commands below and the MCP `url` in
 `profiles/*/opencode.json` (`http://127.0.0.1:19080/mcp`).
@@ -100,7 +100,7 @@ and the storage directory. The gateway is not an OS sandbox; use a disposable ho
   not an OS boundary.
 
 ## Secure mode (verified HTTPS + per-agent tokens)
-Not complete on stock gateway 0.9.0 (private CA cannot reach OpenCode); prerequisites, blocker, edits and evidence are in
+Private-CA forwarding is now available upstream (0.9.1+), but secure real-agent acceptance on the released gateway remains open (#41); prerequisites and evidence are in
 [../README.md](../README.md#secure-mode-verified-https--per-agent-tokens). For this team: copy `team.yaml`, add the `server` TLS
 fields and `security` tokens and a `token_file` for all six `registry.agents` entries (including the simulated ones; the
 simulated agents are plain loopback HTTP endpoints and need no token themselves), use `https://localhost:19080/mcp` plus the
