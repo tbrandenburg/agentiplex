@@ -246,6 +246,13 @@ func sendAndComplete(t *testing.T, api, target string) {
 	t.Fatalf("delivery did not complete: %+v", d)
 }
 
+func TestContractExecutableWorkersHaveNoMCPExceptions(t *testing.T) {
+	base, tools := policyResources(t, "repository-team", "contract-worker")
+	if base != "full-access" || len(tools) != 0 {
+		t.Fatalf("contract executable workers must use the full-access base without MCP exceptions: %s %v", base, tools)
+	}
+}
+
 func TestRepositoryTeamHasRolePerAgentAndBoundedObjective(t *testing.T) {
 	for _, id := range repositoryIDs {
 		role := bytes.TrimSpace(read(t, "repository-team", "roles", id+".md"))
