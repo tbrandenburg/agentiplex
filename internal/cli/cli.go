@@ -83,27 +83,28 @@ func Command()*cobra.Command{
  var nudgeAfter,deadline time.Duration
  send:=&cobra.Command{Use:"send TARGET [TEXT]",Args:cobra.RangeArgs(1,2),RunE:func(c *cobra.Command,a []string)error{
   text,err:=messageInput(c,a[1:],file);if err!=nil{return err}
-  in:=map[string]any{"target":a[0],"text":text,"idempotencyKey":key}
+  in:=map[string]any{"target":a[0],"text":text}
   if untilDone {
    if maxTurns<1||maxTurns>100||deadline<time.Second||deadline>24*time.Hour||deadline%time.Second!=0||nudgeAfter<0||nudgeAfter>24*time.Hour||nudgeAfter%time.Second!=0{return fmt.Errorf("invalid continuation limits (1–100 turns, whole seconds, deadline 1s–24h)")}
    in["follow"]=map[string]int{"maxTurns":maxTurns,"timeoutSeconds":int(deadline/time.Second),"nudgeSeconds":int(nudgeAfter/time.Second)}
   }else if c.Flags().Changed("max-turns")||c.Flags().Changed("timeout")||c.Flags().Changed("nudge-after"){return fmt.Errorf("continuation limits require --until-done")}
-		if !sendWait{return print(c,"POST","/api/v1/messages",in)}
-		raw,err:=r.call(c.Context(),"POST","/api/v1/messages",in);if err!=nil{return err}
+		submission,err:=submissionKey(c,key);if err!=nil{return err}
+		in["idempotencyKey"]=submission
+		raw,err:=r.call(c.Context(),"POST","/api/v1/messages",in);if err!=nil{return submissionError(submission,err)}
+		if !sendWait{_,err=fmt.Fprintln(c.OutOrStdout(),strings.TrimSpace(string(raw)));return err}
 		var receipt struct{ID string}
-		if err=json.Unmarshal(raw,&receipt);err!=nil{return err}
-		if receipt.ID==""{return fmt.Errorf("invalid delivery receipt")}
+		if err=json.Unmarshal(raw,&receipt);err!=nil{return submissionError(submission,err)}
+		if receipt.ID==""{return submissionError(submission,fmt.Errorf("invalid delivery receipt"))}
 		fmt.Fprintf(c.ErrOrStderr(),"Delivery %s admitted; waiting (Ctrl-C detaches, not cancels).\n",receipt.ID)
 		return waitAndPrint(c,r,receipt.ID,false)
 	}}
-	send.Flags().StringVar(&key,"idempotency-key","","required stable caller-generated key, created once per intended operation and reused only to retry")
+	send.Flags().StringVar(&key,"idempotency-key","","stable key for retrying the same operation (generated automatically if omitted)")
 	send.Flags().BoolVar(&sendWait,"wait",false,"wait for the admitted message's selected completion lifecycle")
  send.Flags().StringVar(&file,"file","","read message content from a file, or - for stdin")
  send.Flags().BoolVar(&untilDone,"until-done",false,"continue across turns until explicit resolution or intervention (dedicated daemon)")
  send.Flags().IntVar(&maxTurns,"max-turns",20,"maximum coordinator activations, including initial turn")
  send.Flags().DurationVar(&deadline,"timeout",2*time.Hour,"durable continuation deadline, not a wait timeout")
  send.Flags().DurationVar(&nudgeAfter,"nudge-after",0,"optional inactivity watchdog interval (0 disables)")
-	_ = send.MarkFlagRequired("idempotency-key")
 	root.AddCommand(send)
 	for _,kind:=range []string{"group","pool"}{
 		path:="/api/v1/"+kind+"s"
@@ -119,10 +120,12 @@ func Command()*cobra.Command{
 		if kind=="dispatch"{path="/api/v1/dispatches"}
 		var key string
 		cmd:=&cobra.Command{Use:kind+" TARGET TEXT",Args:cobra.ExactArgs(2),RunE:func(c *cobra.Command,a []string)error{
-			return print(c,"POST",path,map[string]string{"target":a[0],"text":a[1],"idempotencyKey":key})
+			submission,err:=submissionKey(c,key);if err!=nil{return err}
+			raw,err:=r.call(c.Context(),"POST",path,map[string]string{"target":a[0],"text":a[1],"idempotencyKey":submission})
+			if err!=nil{return submissionError(submission,err)}
+			_,err=fmt.Fprintln(c.OutOrStdout(),strings.TrimSpace(string(raw)));return err
 		}}
-		cmd.Flags().StringVar(&key,"idempotency-key","","required stable caller-generated key, created once per intended operation and reused only to retry")
-		_ = cmd.MarkFlagRequired("idempotency-key")
+		cmd.Flags().StringVar(&key,"idempotency-key","","stable key for retrying the same operation (generated automatically if omitted)")
 		root.AddCommand(cmd)
 	}
 	messages:=&cobra.Command{Use:"messages"}

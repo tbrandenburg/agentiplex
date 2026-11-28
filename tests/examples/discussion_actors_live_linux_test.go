@@ -22,11 +22,12 @@ import (
 func runDiscussionActors(l *liveTeam,dir string) {
 	t:=l.t;t.Helper()
 	lines:=discussionActorCommands(t)
-	run:=func(command string,deadline time.Duration){
+	run:=func(command string,deadline time.Duration)string{
 		t.Helper()
 		out,err:=commandOutput(dir,deadline,l.env,"bash","-ec",command)
 		t.Logf("Actor-owned README command: %.4000q",out)
 		if err!=nil {t.Fatalf("native actor command: %v",err)}
+		return string(out)
 	}
 	var before []core.DeliverySummary
 	if err:=l.get(l.api+"/api/v1/deliveries?limit=100",&before);err!=nil || len(before)>=80 {t.Fatal("cannot inspect prior deliveries",err)}
@@ -77,7 +78,19 @@ func runDiscussionActors(l *liveTeam,dir string) {
 		}
 	}()
 	select{case <-ready:case e:=<-watchErr:t.Fatal(e);case <-time.After(15*time.Second):t.Fatal("state watch not ready")}
-	run(lines[2],4*time.Minute)
+	output:=run(lines[2],4*time.Minute)
+	// The initial README submission uses a CLI-generated key. Capture the
+	// actual key from stderr (combined output) for exact receipt checks.
+	rootKey:=""
+	for _,line:=range strings.Split(output,"\n"){
+		if key,ok:=strings.CutPrefix(line,"Idempotency key: ");ok{
+			if rootKey!="" || !strings.HasPrefix(key,"cli-") || len(key)!=36{t.Fatal("invalid generated key",key)}
+			rootKey=key
+		}
+	}
+	if rootKey==""{t.Fatal("missing generated key")}
+	// Only the generated hex key is interpolated into the retry command.
+	for _,ch:=range strings.TrimPrefix(rootKey,"cli-"){if !strings.ContainsRune("0123456789abcdef",ch){t.Fatal("invalid generated key")}}
 	for current.Status!="done"{
 		select{
 		case e:=<-watchErr:t.Fatal(e)
@@ -115,7 +128,7 @@ func runDiscussionActors(l *liveTeam,dir string) {
 		if all{break}
 		time.Sleep(250*time.Millisecond)
 	}
-	if err:=verifyDiscussionActorReceipts(current,deliveries,*objective.Value);err!=nil{t.Fatal(err)}
+	if err:=verifyDiscussionActorReceipts(current,deliveries,*objective.Value,rootKey);err!=nil{t.Fatal(err)}
 	var final core.StateEntry
 	if err:=l.get(l.api+"/api/v1/state/discussion-actors/contract",&final);err!=nil || final.Value==nil || final.Revision!=revision{t.Fatal("closed contract rewritten",err)}
 	closed,err:=parseDiscussionActorMarkdown(*final.Value)
@@ -123,7 +136,7 @@ func runDiscussionActors(l *liveTeam,dir string) {
 	t.Logf("Final living Markdown contract:\n%s",*final.Value)
 	var unchanged core.StateEntry
 	if err:=l.get(l.api+"/api/v1/state/discussion-actors/objective",&unchanged);err!=nil || unchanged.Value==nil || *unchanged.Value!=*objective.Value || unchanged.Revision!=objective.Revision{t.Fatal("approved objective changed",err)}
-	run(lines[2],30*time.Second)
+	run(lines[2]+" --idempotency-key "+rootKey,30*time.Second)
 	var after []core.DeliverySummary
 	if err:=l.get(l.api+"/api/v1/deliveries?limit=100",&after);err!=nil || len(after)!=len(prior)+len(deliveries){t.Fatal("reattachment created additional work",err)}
 	if err:=l.get(l.api+"/api/v1/state/discussion-actors/contract",&unchanged);err!=nil || unchanged.Revision!=revision || unchanged.Value==nil || *unchanged.Value!=*final.Value{t.Fatal("closed contract changed after reattachment",err)}

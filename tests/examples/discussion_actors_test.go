@@ -155,7 +155,7 @@ func discussionActorCommands(t *testing.T) []string {
 	want := []string{
 		"agentiplex state put discussion-actors objective --file objective-actors.md --revision 0",
 		"agentiplex state put discussion-actors contract --file contract-actors.md --revision 0",
-		"agentiplex send lead --file objective-actors.md --idempotency-key discussion-actors-1 --wait",
+		"agentiplex send lead --file objective-actors.md --wait",
 	}
 	if !reflect.DeepEqual(lines, want) { t.Fatal("expected ordinary native submission:", lines) }
 	return lines
@@ -259,10 +259,10 @@ func verifyDiscussionActorTransition(old, next discussionActorContract) error {
 	return nil
 }
 
-func verifyDiscussionActorReceipts(a discussionActorContract, deliveries []core.Delivery, objective string) error {
+func verifyDiscussionActorReceipts(a discussionActorContract, deliveries []core.Delivery, objective, rootKey string) error {
 	if len(deliveries)!=len(a.Handoffs)+1 {return fmt.Errorf("extra or missing ordinary deliveries")}
 	expected:=map[string]struct{target,text string}{
-		discussionActorID("discussion-actors-1"):{"lead",objective},
+		discussionActorID(rootKey):{"lead",objective},
 	}
 	for _,h:=range a.Handoffs {
 		expected[discussionActorID(fmt.Sprintf("discussion-actors-handoff-%d",h.Seq))]=struct{target,text string}{h.To,discussionActorText(h.Seq)}
@@ -335,9 +335,9 @@ func TestDiscussionActorContractTransitions(t *testing.T) {
 	for _,h:=range closed.Handoffs{
 		ds=append(ds,core.Delivery{ID:discussionActorID(fmt.Sprintf("discussion-actors-handoff-%d",h.Seq)),Target:h.To,Text:discussionActorText(h.Seq),State:"completed",Result:result})
 	}
-	if err:=verifyDiscussionActorReceipts(closed,ds,objective);err!=nil{t.Fatal(err)}
+	if err:=verifyDiscussionActorReceipts(closed,ds,objective,"discussion-actors-1");err!=nil{t.Fatal(err)}
 	ds[1].State="uncertain"
-	if verifyDiscussionActorReceipts(closed,ds,objective)==nil{t.Fatal("accepted uncertain receipt")}
+	if verifyDiscussionActorReceipts(closed,ds,objective,"discussion-actors-1")==nil{t.Fatal("accepted uncertain receipt")}
 	ds[1].State="completed";ds[1].ID=ds[0].ID
-	if verifyDiscussionActorReceipts(closed,ds,objective)==nil{t.Fatal("accepted duplicate receipt")}
+	if verifyDiscussionActorReceipts(closed,ds,objective,"discussion-actors-1")==nil{t.Fatal("accepted duplicate receipt")}
 }

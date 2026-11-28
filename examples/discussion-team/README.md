@@ -22,7 +22,8 @@ configuration or orchestration code is needed.
 - Run directly from a trusted, disposable checkout. The daemon stores data in
   the explicit directory under HOME, not in the agent workspace. For another
   discussion, choose a fresh storage path and restart the daemon, or choose
-  a different note namespace in all role prompts and use a new idempotency key.
+  a different note namespace in all role prompts. New CLI submissions generate
+  their own key; reuse a printed key with `--idempotency-key` only to retry.
   Repeating an identical key/payload while retained reattaches to the same
   work; it does not start a new discussion.
 - `agentiplex notes list discussion expert` filters notes by topic;

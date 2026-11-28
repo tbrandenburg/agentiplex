@@ -36,8 +36,8 @@ func TestWaitAndSendWait(t *testing.T){
 		}
 	}))
 	defer s.Close()
-	out,diag,err:=runObservationCLI(t,s.URL,"send","lead","topic","--idempotency-key","one","--wait")
-	if err!=nil||!strings.Contains(out,"A useful verdict")||strings.ContainsRune(out,27)||!strings.Contains(diag,id){t.Fatalf("send --wait: %q %q %v",out,diag,err)}
+	out,diag,err:=runObservationCLI(t,s.URL,"send","lead","topic","--wait")
+	if err!=nil||!strings.Contains(out,"A useful verdict")||strings.ContainsRune(out,27)||(!strings.Contains(diag,id)||!strings.Contains(diag,"Idempotency key: cli-")){t.Fatalf("send --wait: %q %q %v",out,diag,err)}
 	out,_,err=runObservationCLI(t,s.URL,"messages","wait",id,"--json")
 	if err!=nil||!strings.Contains(out,"\"artifacts\""){t.Fatalf("wait JSON: %q %v",out,err)}
 	if posts.Load()!=1||gets.Load()!=2{t.Fatalf("posts=%d gets=%d",posts.Load(),gets.Load())}

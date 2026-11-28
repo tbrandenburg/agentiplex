@@ -87,7 +87,7 @@ func discussionContractCommand(t *testing.T) string {
 	command = strings.TrimPrefix(command, "\x60\x60\x60sh\n")
 	command = strings.TrimSuffix(command, "\n\x60\x60\x60")
 	if strings.Contains(command, "\n") || !strings.HasPrefix(command, "agentiplex send lead --file contract.md ") ||
-		!strings.Contains(command, " --idempotency-key discussion-contract-1 ") ||
+		strings.Contains(command, " --idempotency-key") ||
 		!strings.Contains(command, " --until-done ") ||
 		!strings.HasSuffix(command, " --wait") || strings.Contains(command, "--nudge-after") {
 		t.Fatal("unexpected native contract quickstart")
@@ -138,7 +138,7 @@ func TestDiscussionREADMECommands(t *testing.T) {
 		}
 	}
 	if !strings.Contains(blocks[4][3], "send lead \""+discussionTopic+"\"") ||
-		!strings.Contains(blocks[4][3], " --wait") ||
+		!strings.Contains(blocks[4][3], " --wait") || strings.Contains(blocks[4][3], " --idempotency-key") ||
 		blocks[4][4] != "agentiplex notes list discussion" {
 		t.Fatal("README must submit the test topic and retrieve the verdict and notes using the native CLI")
 	}

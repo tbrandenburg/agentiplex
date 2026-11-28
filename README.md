@@ -20,15 +20,19 @@ connect MCP tools, and let your agents own their work.
 
 ```sh
 agentiplex discover --skill architecture
-agentiplex send architect "Review requirement 42" --idempotency-key review-42 --wait
+agentiplex send architect "Review requirement 42" --wait
 agentiplex messages list
 ```
+
+The CLI generates an idempotency key for each new submission. Reuse the key printed
+on stderr with `--idempotency-key` to retry the same operation; use `messages wait ID`
+to reconnect to admitted work. [Retry semantics](docs/COLLABORATION.md#cli).
 
 With registered agents, configured groups and pools, you can also:
 
 ```sh
-agentiplex broadcast engineering "Contract updated" --idempotency-key release-1
-agentiplex dispatch testers "Verify requirement 42" --idempotency-key verify-42
+agentiplex broadcast engineering "Contract updated"
+agentiplex dispatch testers "Verify requirement 42"
 agentiplex state watch engineering
 ```
 
@@ -108,7 +112,7 @@ opencode-a2a-lite --name critic --port 8003 --workspace workspace --system-promp
 agentiplex register lead http://127.0.0.1:8001
 agentiplex register expert http://127.0.0.1:8002
 agentiplex register critic http://127.0.0.1:8003
-agentiplex send lead "Should we use event sourcing?" --idempotency-key discussion-1 --wait
+agentiplex send lead "Should we use event sourcing?" --wait
 agentiplex notes list discussion
 ```
 <!-- discussion-quickstart:end -->
@@ -128,7 +132,7 @@ Review the [decision contract](examples/discussion-team/contract.md) first.
 
 <!-- discussion-contract:start -->
 ```sh
-agentiplex send lead --file contract.md --idempotency-key discussion-contract-1 --until-done --max-turns 6 --timeout 12m --wait
+agentiplex send lead --file contract.md --until-done --max-turns 6 --timeout 12m --wait
 ```
 <!-- discussion-contract:end -->
 
@@ -156,7 +160,7 @@ With the same three running agents and no outstanding deliveries, review the
 ```sh
 agentiplex state put discussion-actors objective --file objective-actors.md --revision 0
 agentiplex state put discussion-actors contract --file contract-actors.md --revision 0
-agentiplex send lead --file objective-actors.md --idempotency-key discussion-actors-1 --wait
+agentiplex send lead --file objective-actors.md --wait
 ```
 <!-- discussion-actors:end -->
 
@@ -218,7 +222,7 @@ make demo-agent
 
 ```sh
 agentiplex register architect http://127.0.0.1:8001
-agentiplex send architect "Review requirement 42" --idempotency-key demo-42 --wait
+agentiplex send architect "Review requirement 42" --wait
 ```
 
 Use the same registration command with any existing A2A endpoint.
