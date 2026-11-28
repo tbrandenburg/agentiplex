@@ -1,6 +1,7 @@
 package daemon
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
 	"github.com/tbrandenburg/agentiplex/internal/security"
@@ -30,7 +31,7 @@ func Command() *cobra.Command {
 	d:=core.DefaultConfig()
 	defaults:=map[string]any{
 		"server.listen":"127.0.0.1:8080","server.public_url":"","server.trusted_network":false,"protocols.mcp.enabled":false,"observability.dashboard":true,"observability.dashboard_schema":"","observability.dashboard_theme":"cxd","observability.dashboard_refresh_interval":2*time.Second,
-		"security.operator_token_file":"","security.agent_token_files":map[string]string{},"security.viewer_token_file":"","server.tls_cert_file":"","server.tls_key_file":"","broker.token_file":"","broker.credentials_file":"","broker.ca_file":"","delivery.token_files":map[string]string{},"delivery.ca_file":"",
+		"security.operator_token_file":"","security.agent_token_files":map[string]string{},"security.viewer_token_file":"","server.tls_cert_file":"","server.tls_key_file":"","broker.token_file":"","broker.credentials_file":"","broker.ca_file":"","delivery.ca_file":"",
 		"broker.mode":d.BrokerMode,"broker.url":"","broker.storage":d.Storage,"broker.replicas":d.Replicas,"broker.sync":"always",
 		"registry.namespace":d.Namespace,"registry.health_interval":d.HealthInterval,"delivery.allowed_origins":[]string{},"delivery.timeout":d.Timeout,
 		"delivery.workers":d.Workers,"delivery.retry_delay":d.RetryDelay,"delivery.max_attempts":d.MaxAttempts,"delivery.task_poll_interval":d.TaskPollInterval,"delivery.retention":7*24*time.Hour,
@@ -38,16 +39,21 @@ func Command() *cobra.Command {
 	for k,value:=range defaults{v.SetDefault(k,value)}
 	var config string
 	cmd:=&cobra.Command{Use:"agentiplexd",Short:"Agentiplex collaboration daemon",SilenceUsage:true,Args:cobra.NoArgs,RunE:func(cmd *cobra.Command,args []string)error{
-		if config!=""{v.SetConfigFile(config);if err:=v.ReadInConfig();err!=nil{return err}}
-		cfg:=core.Config{BrokerMode:v.GetString("broker.mode"),BrokerURL:v.GetString("broker.url"),BrokerTokenFile:v.GetString("broker.token_file"),BrokerCredentialsFile:v.GetString("broker.credentials_file"),BrokerCAFile:v.GetString("broker.ca_file"),OutboundTokenFiles:v.GetStringMapString("delivery.token_files"),OutboundCAFile:v.GetString("delivery.ca_file"),Storage:v.GetString("broker.storage"),Replicas:v.GetInt("broker.replicas"),Namespace:v.GetString("registry.namespace"),AllowedOrigins:v.GetStringSlice("delivery.allowed_origins"),Timeout:v.GetDuration("delivery.timeout"),RetryDelay:v.GetDuration("delivery.retry_delay"),Workers:v.GetInt("delivery.workers"),MaxAttempts:v.GetInt("delivery.max_attempts"),TaskPollInterval:v.GetDuration("delivery.task_poll_interval"),HealthInterval:v.GetDuration("registry.health_interval"),Retention:v.GetDuration("delivery.retention")}
+		var raw []byte
+		if config!=""{
+			var err error
+			raw,err=os.ReadFile(config);if err!=nil{return err}
+		}
+		files,err:=outboundTokenFiles(raw,os.Getenv("AGENTIPLEX_DELIVERY_TOKEN_FILES"));if err!=nil{return err}
+		if config!=""{v.SetConfigFile(config);if err=v.ReadConfig(bytes.NewReader(raw));err!=nil{return err}}
+		cfg:=core.Config{BrokerMode:v.GetString("broker.mode"),BrokerURL:v.GetString("broker.url"),BrokerTokenFile:v.GetString("broker.token_file"),BrokerCredentialsFile:v.GetString("broker.credentials_file"),BrokerCAFile:v.GetString("broker.ca_file"),OutboundCAFile:v.GetString("delivery.ca_file"),Storage:v.GetString("broker.storage"),Replicas:v.GetInt("broker.replicas"),Namespace:v.GetString("registry.namespace"),AllowedOrigins:v.GetStringSlice("delivery.allowed_origins"),Timeout:v.GetDuration("delivery.timeout"),RetryDelay:v.GetDuration("delivery.retry_delay"),Workers:v.GetInt("delivery.workers"),MaxAttempts:v.GetInt("delivery.max_attempts"),TaskPollInterval:v.GetDuration("delivery.task_poll_interval"),HealthInterval:v.GetDuration("registry.health_interval"),Retention:v.GetDuration("delivery.retention")}
 		var reg core.Registry
 		if config!=""{
-			raw,err:=os.ReadFile(config);if err!=nil{return err}
 			if reg,err=core.ParseRegistry(raw);err!=nil{return err}
 		}
 		secure:=v.GetString("security.operator_token_file")!=""
 		agentFiles,err:=reg.AgentTokenFiles(v.GetStringMapString("security.agent_token_files"),secure);if err!=nil{return err}
-		if cfg.OutboundTokenFiles,err=reg.OutboundTokenFiles(cfg.OutboundTokenFiles);err!=nil{return err}
+		if cfg.OutboundTokenFiles,err=reg.OutboundTokenFiles(files);err!=nil{return err}
 		sync,err:=parseSync(v.GetString("broker.sync"));if err!=nil{return err}
 		cfg.BrokerSync=sync
 		if cfg.BrokerMode=="external"&&v.GetString("broker.sync")!="always"{slog.Warn("broker.sync is ignored with broker.mode=external")}

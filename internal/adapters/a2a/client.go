@@ -34,30 +34,16 @@ func NewWithCredentials(allowed []string,timeout time.Duration,tokenFiles map[st
 	tlsConfig,err:=security.TLSConfig(caFile);if err!=nil{return nil,err}
 	c := &Client{allowed: map[string]bool{}, timeout: timeout,tokens:map[string]string{},tls:tlsConfig}
 	for _, raw := range allowed {
-		u, err := parse(raw)
-		if err != nil || (u.Path != "" && u.Path != "/") { return nil, errors.New("allowed origins must be HTTP(S) origins") }
-		c.allowed[origin(u)] = true
+		u, err := security.ParseHTTPURL(raw)
+		if err != nil || (u.Path != "" && u.Path != "/") || u.RawPath != "" { return nil, errors.New("allowed origins must be HTTP(S) origins") }
+		c.allowed[security.HTTPOrigin(u)] = true
 	}
-	for raw,path:=range tokenFiles{
-		u,err:=c.check(raw);if err!=nil||u.Scheme!="https"||(u.Path!=""&&u.Path!="/"){return nil,errors.New("outbound credentials require an allowed HTTPS origin")}
-		key:=origin(u);if c.tokens[key]!=""{return nil,errors.New("duplicate outbound credential origin")}
+	normalized,err:=security.NormalizeOutboundTokenFiles(tokenFiles);if err!=nil{return nil,err}
+	for key,path:=range normalized{
+		if _,err:=c.check(key);err!=nil{return nil,errors.New("outbound credentials require an allowed HTTPS origin")}
 		token,err:=security.ReadToken(path);if err!=nil{return nil,err};c.tokens[key]=token
 	}
 	return c, nil
-}
-
-func parse(raw string) (*url.URL, error) {
-	u, err := url.Parse(raw)
-	if err != nil || u == nil || (u.Scheme != "http" && u.Scheme != "https") || u.Hostname() == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || u.Opaque != "" {
-		return nil, errors.New("expected HTTP(S) URL without credentials, query or fragment")
-	}
-	return u, nil
-}
-
-func origin(u *url.URL) string {
-	port := u.Port()
-	if port == "" { if u.Scheme == "https" { port = "443" } else { port = "80" } }
-	return u.Scheme + "://" + net.JoinHostPort(strings.ToLower(u.Hostname()), port)
 }
 
 func loopback(host string) bool {
@@ -67,15 +53,15 @@ func loopback(host string) bool {
 }
 
 func (c *Client) check(raw string) (*url.URL,error) {
-	u,err := parse(raw)
+	u,err := security.ParseHTTPURL(raw)
 	if err != nil { return nil,err }
-	if !loopback(u.Hostname()) && !c.allowed[origin(u)] { return nil,errors.New("endpoint origin not allowed") }
+	if !loopback(u.Hostname()) && !c.allowed[security.HTTPOrigin(u)] { return nil,errors.New("endpoint origin not allowed") }
 	return u,nil
 }
 
 type limitedTransport struct { base *http.Transport; origin string; token string }
 func (t limitedTransport) RoundTrip(r *http.Request) (*http.Response,error) {
-	if origin(r.URL) != t.origin { return nil,errors.New("unexpected request origin") }
+	if security.HTTPOrigin(r.URL) != t.origin { return nil,errors.New("unexpected request origin") }
 	if t.token!=""{r=r.Clone(r.Context());r.Header.Set("Authorization","Bearer "+t.token)}
 	resp,err := t.base.RoundTrip(r)
 	if err == nil { resp.Body = http.MaxBytesReader(nil, resp.Body, 256<<10) }
@@ -99,7 +85,7 @@ func (c *Client) httpClient(u *url.URL) (*http.Client, func()) {
 		}
 		return nil,last
 	}, TLSClientConfig:c.tls.Clone(), TLSHandshakeTimeout:5*time.Second, ResponseHeaderTimeout:c.timeout, DisableKeepAlives:true}
-	return &http.Client{Transport:limitedTransport{base:t,origin:origin(u),token:c.tokens[origin(u)]},Timeout:c.timeout,CheckRedirect:func(*http.Request,[]*http.Request)error{return http.ErrUseLastResponse}},t.CloseIdleConnections
+	return &http.Client{Transport:limitedTransport{base:t,origin:security.HTTPOrigin(u),token:c.tokens[security.HTTPOrigin(u)]},Timeout:c.timeout,CheckRedirect:func(*http.Request,[]*http.Request)error{return http.ErrUseLastResponse}},t.CloseIdleConnections
 }
 
 func (c *Client) Resolve(ctx context.Context, raw string) (*proto.AgentCard,string,string,error) {
@@ -119,7 +105,7 @@ func (c *Client) Resolve(ctx context.Context, raw string) (*proto.AgentCard,stri
 	for _,iface:=range card.SupportedInterfaces{
 		if iface==nil||iface.ProtocolVersion!=proto.Version||iface.ProtocolBinding!=proto.TransportProtocolJSONRPC||iface.Tenant!=""{continue}
 		endpoint,e:=c.check(iface.URL)
-		if e==nil&&origin(endpoint)==origin(u){return card,u.String(),endpoint.String(),nil}
+		if e==nil&&security.HTTPOrigin(endpoint)==security.HTTPOrigin(u){return card,u.String(),endpoint.String(),nil}
 	}
 	return nil,"","",errors.New("no supported same-origin A2A 1.0 JSON-RPC interface")
 }

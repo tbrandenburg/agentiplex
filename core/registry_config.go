@@ -5,11 +5,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net"
 	"net/url"
 	"reflect"
 	"sort"
-	"strings"
 
 	"github.com/tbrandenburg/agentiplex/internal/security"
 	"go.yaml.in/yaml/v3"
@@ -52,21 +50,13 @@ func (r Registry) ids()[]string{
 	return ids
 }
 
-func httpOrigin(raw string)(*url.URL,string,error){
-	u,err:=url.Parse(raw)
-	if err!=nil||(u.Scheme!="http"&&u.Scheme!="https")||u.Hostname()==""||u.User!=nil||u.RawQuery!=""||u.Fragment!=""{return nil,"",errors.New("expected HTTP(S) URL without credentials, query or fragment")}
-	port:=u.Port()
-	if port==""{port="80";if u.Scheme=="https"{port="443"}}
-	return u,u.Scheme+"://"+net.JoinHostPort(strings.ToLower(u.Hostname()),port),nil
-}
-
 // Validate checks the declaration itself, without touching files or stored state.
 func (r Registry) Validate()error{
 	for _,id:=range r.ids(){
 		s:=r.Agents[id]
 		if !validID.MatchString(id){return fmt.Errorf("registry.agents.%q: invalid agent ID",id)}
 		if s.URL==""{return fmt.Errorf("registry.agents.%s: url is required",id)}
-		if _,_,err:=httpOrigin(s.URL);err!=nil{return fmt.Errorf("registry.agents.%s.url: %v",id,err)}
+		if _,err:=security.ParseHTTPURL(s.URL);err!=nil{return fmt.Errorf("registry.agents.%s.url: %v",id,err)}
 	}
 	for kind,m:=range map[string]map[string][]string{"groups":r.Groups,"pools":r.Pools}{
 		if len(m)>maxCollections{return fmt.Errorf("registry.%s: more than %d collections",kind,maxCollections)}
@@ -104,21 +94,14 @@ func (r Registry) AgentTokenFiles(existing map[string]string,secure bool)(map[st
 // OutboundTokenFiles merges declared outbound credentials by approved HTTPS origin.
 // Two different secrets for one origin are a conflict; the same secret is shared.
 func (r Registry) OutboundTokenFiles(existing map[string]string)(map[string]string,error){
-	out:=map[string]string{}
-	for raw,f:=range existing{
-		_,o,err:=httpOrigin(raw);if err!=nil{out[raw]=f;continue}
-		out[o]=f
-	}
+	out,err:=security.NormalizeOutboundTokenFiles(existing)
+	if err!=nil{return nil,fmt.Errorf("delivery.token_files: %w",err)}
 	for _,id:=range r.ids(){
 		f:=r.Agents[id].OutboundTokenFile
 		if f==""{continue}
-		u,o,_:=httpOrigin(r.Agents[id].URL)
-		if u.Scheme!="https"{return nil,fmt.Errorf("registry.agents.%s: outbound_token_file requires an HTTPS url",id)}
-		prev,ok:=out[o]
-		if !ok{out[o]=f;continue}
-		a,err:=security.ReadToken(prev);if err!=nil{return nil,err}
-		b,err:=security.ReadToken(f);if err!=nil{return nil,err}
-		if a!=b{return nil,fmt.Errorf("registry.agents.%s: conflicting outbound credential for origin %s",id,o)}
+		u,err:=security.ParseHTTPURL(r.Agents[id].URL)
+		if err!=nil||u.Scheme!="https"{return nil,fmt.Errorf("registry.agents.%s: outbound_token_file requires a valid HTTPS url",id)}
+		if err=security.MergeOutboundTokenFile(out,security.HTTPOrigin(u),f);err!=nil{return nil,fmt.Errorf("registry.agents.%s: %w",id,err)}
 	}
 	return out,nil
 }
