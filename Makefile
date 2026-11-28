@@ -1,4 +1,4 @@
-.PHONY: help fmt lint dashboard-assets build test check clean run demo-agent demo-team demo-check examples-check live-check repository-provision-check docker compose-up compose-down release release-plan
+.PHONY: help fmt lint dashboard-assets build test check clean run demo-agent demo-team demo-check examples-check contract-check live-check repository-provision-check docker compose-up compose-down release release-plan
 .DEFAULT_GOAL := help
 export bump
 
@@ -27,6 +27,7 @@ help:
 		'  make demo-check       Noninteractive simulated demo' \
 		'  Real-agent start/send/stop: see examples/README.md' \
 		'  make examples-check   Provider-free native example checks (real daemon, simulated agents)' \
+		'  make contract-check   Provider-free contract runner regression (Python 3, jq)' \
 		'  make live-check       Verification: real PM+architect autonomous team (MODEL optional; Linux; see examples/README.md)' \
 		'  make repository-provision-check Verification: start the repository team gateways, no model task' \
 		'Deployment:' \
@@ -73,8 +74,11 @@ demo-team:
 demo-check:
 	bash examples/engineering-team/demo.sh --check $(DEMO_ARGS)
 
-examples-check: dashboard-assets
+examples-check: dashboard-assets contract-check
 	go test $(GO_TEST_FLAGS) ./tests/examples/
+
+contract-check:
+	python3 tests/examples/contract_runner_test.py -v
 
 live-check: dashboard-assets
 	go test -count=1 -v -timeout 45m ./tests/examples -run '^TestLiveTeam$$' -args -live autonomous $(if $(MODEL),-model $(MODEL)) $(LIVE_ARGS)
