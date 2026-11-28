@@ -1,4 +1,4 @@
-name: Three-agent quickstart
+name: 'Examples / Live / Three-agent quickstart'
 on:
   push:
     branches: [main]
