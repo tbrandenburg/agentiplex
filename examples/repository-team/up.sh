@@ -27,5 +27,5 @@ gw developer 19083 danger-full-access writer "Repository implementation and repa
 gw tester 19084 danger-full-access writer "Independent executable verification"
 gw quality 19085 read reader "Independent change and acceptance review" --no-env
 printf 'Team up (dashboard http://127.0.0.1:19080/ui/).\nRUN=%q\n' "$RUN"
-printf '%s\n' 'From the repository root, submit the objective:' '  bin/agentiplex --server http://127.0.0.1:19080 send pm "$(cat examples/repository-team/objective.md)" --idempotency-key repository-objective'
+printf '%s\n' 'From the repository root, publish and submit the same objective:' '  OBJECTIVE="$(cat examples/repository-team/objective.md)"' '  bin/agentiplex --server http://127.0.0.1:19080 state put repository objective "$OBJECTIVE" --revision 0 &&' '  bin/agentiplex --server http://127.0.0.1:19080 send pm "$OBJECTIVE" --idempotency-key repository-objective'
 printf 'Stop with: bash examples/down.sh %q\n' "$RUN"

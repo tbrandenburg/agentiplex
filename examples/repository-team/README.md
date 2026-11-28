@@ -35,7 +35,9 @@ Run these commands from the repository root. Start the team only once and set `R
 ```sh
 ACCEPT_FULL_ACCESS=yes bash examples/repository-team/up.sh /path/to/disposable/git/checkout  # prints RUN=<dir>
 # Set RUN to the printed directory before using the stop command.
-bin/agentiplex --server http://127.0.0.1:19080 send pm "$(cat examples/repository-team/objective.md)" --idempotency-key repository-objective
+OBJECTIVE="$(cat examples/repository-team/objective.md)"
+bin/agentiplex --server http://127.0.0.1:19080 state put repository objective "$OBJECTIVE" --revision 0 &&
+  bin/agentiplex --server http://127.0.0.1:19080 send pm "$OBJECTIVE" --idempotency-key repository-objective
 bin/agentiplex --server http://127.0.0.1:19080 messages status <id>   # until a terminal state; also http://127.0.0.1:19080/ui/
 bash examples/down.sh "$RUN"                   # stops exactly the recorded processes
 ```
@@ -60,7 +62,7 @@ timeout); it carries no credentials. It omits `model`, so OpenCode's default is 
 `mcp` block by hand instead.
 
 ## 2. Start the daemon, the agents, register and send the objective (by hand)
-Each [role file](roles/) is an actual native OpenCode system prompt passed using `--system-prompt-file`; the short `A2A_DESCRIPTION` is only discovery metadata. The [objective](objective.md) contains only the desired outcome and acceptance criteria (4096-byte A2A submission limit). The PM publishes the original objective into shared state `repository/objective`; all workers read it before contributing. Notes use role topics in `repository`. The team chooses which roles are needed and may revise its plan; there is no scripted task sequence. Run one fresh daemon/storage and five gateways per objective. Run each long-lived process in its own terminal, from the repository root.
+Each [role file](roles/) is an actual native OpenCode system prompt passed using `--system-prompt-file`; the short `A2A_DESCRIPTION` is only discovery metadata. The [objective](objective.md) contains only the desired outcome and acceptance criteria (4096-byte A2A submission limit). The operator publishes the exact objective into shared state `repository/objective` with the native create-only state command, then sends the same text to the PM. All agents read the shared objective before contributing and treat it as read-only. This avoids model transcription errors. A failed create blocks submission; use fresh storage for a new objective. Shared state is not a per-key security boundary. Notes use role topics in `repository`. The team chooses which roles are needed and may revise its plan; there is no scripted task sequence. Run one fresh daemon/storage and five gateways per objective. Run each long-lived process in its own terminal, from the repository root.
 
 ```sh
 export AGENTIPLEX_SERVER=http://127.0.0.1:19080 W=$RUN/workspace P=$RUN/policies
@@ -81,7 +83,9 @@ bin/agentiplex register developer http://127.0.0.1:19083
 bin/agentiplex register tester http://127.0.0.1:19084
 bin/agentiplex register quality http://127.0.0.1:19085
 bin/agentiplex agents list
-bin/agentiplex send pm "$(cat $EX/objective.md)" --idempotency-key repository-objective
+OBJECTIVE="$(cat "$EX/objective.md")"
+bin/agentiplex state put repository objective "$OBJECTIVE" --revision 0 &&
+  bin/agentiplex send pm "$OBJECTIVE" --idempotency-key repository-objective
 bin/agentiplex messages status <id-printed-by-send>   # repeat until a terminal state; the dashboard shows all deliveries
 bin/agentiplex state get repository objective         # exact original objective
 bin/agentiplex state list repository                  # shared notes
@@ -129,7 +133,7 @@ Private-CA forwarding was added upstream in gateway 0.9.1; the authenticated rea
 `make repository-provision-check` (five explicitly prompted real gateways on a synthetic Git workspace, no model task)
 live in [tests/examples](../../tests/examples).
 
-Full real-model acceptance is separate, in the path-filtered `Repository team live` workflow (also manually runnable). The same roles and synthetic repository are used for two distinct objectives, each with a fresh run. The tests submit only one objective to the PM, require a completed implementer and independent reviewer, verify the exact shared objective and notes, and independently check the expected change, Git scope/history and (for the defect) fixed test cases. They do not prove the semantic quality of every review or authenticate note authors. Raw evidence stays in the private run directory, not CI logs. Run locally only on a disposable host, with no secrets and an approved model:
+Full real-model acceptance is separate, in the path-filtered `Repository team live` workflow (also manually runnable). The same roles and synthetic repository are used for two distinct objectives, each with a fresh run. The tests publish the exact objective using the operator CLI and submit only that objective to the PM, require a completed implementer and independent reviewer, verify the original shared objective text and revision remain unchanged, require relevant notes, and independently check the expected change, Git scope/history and (for the defect) fixed test cases. They do not prove the semantic quality of every review or authenticate note authors. Raw evidence stays in the private run directory, not CI logs. Run locally only on a disposable host, with no secrets and an approved model:
 
 ```sh
 make dashboard-assets

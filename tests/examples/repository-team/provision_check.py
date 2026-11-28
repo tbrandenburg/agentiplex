@@ -49,7 +49,17 @@ def fixture(ws, model):
     (ws / "opencode.json").write_text(json.dumps(cfg, indent=2) + "\n")
 
 
-def verify_evidence(root, deliveries, state, objective):
+def submit_objective(cli, objective):
+    # Copy exact bytes deterministically using native create-only state before
+    # sending the same text to the PM. No model is responsible for transcription.
+    initial = cli("state", "put", "repository", "objective", objective, "--revision", "0")
+    revision = initial.get("revision", 0)
+    if initial.get("value") != objective or revision <= 0:
+        raise RuntimeError("operator objective publication failed")
+    return cli("send", "pm", objective, "--idempotency-key", "repository-objective")["id"], revision
+
+
+def verify_evidence(root, deliveries, state, objective, objective_revision):
     # Local mode has no authenticated author. Topics are evidence, not identity attestation.
     if root["target"] != "pm" or root["state"] != "completed" or not root.get("result") or root.get("text") != objective:
         raise RuntimeError("coordinator did not produce a completed result")
@@ -60,8 +70,8 @@ def verify_evidence(root, deliveries, state, objective):
     reviewers = workers & {"tester", "quality"}
     if "developer" not in workers or not reviewers:
         raise RuntimeError("missing real implementer or independent reviewer delivery")
-    if not any(s["key"] == "objective" and s.get("value") == objective and s.get("revision", 0) > 0 for s in state):
-        raise RuntimeError("original shared objective missing or altered")
+    if not any(s["key"] == "objective" and s.get("value") == objective and s.get("revision") == objective_revision for s in state):
+        raise RuntimeError("original shared objective missing, altered or rewritten")
     topics = {role for role in {"pm", "developer", *reviewers}
               if any(s["key"].startswith("note-" + role + "-") and s.get("value") and s.get("revision", 0) > 0
                      and json.loads(s["value"]).get("text", "").strip() for s in state)}
@@ -97,7 +107,7 @@ def live_check(args, run, ws, api, daemon, head, branch):
                                                        env=procs.clean_env(), timeout=30))
     objective = ((EX / "objective.md").read_text().rstrip("\n") if args.live == "docs" else
                  "Fix clamp(value, lower, upper) in calc.py for lower <= upper so it returns the value bounded by the inclusive limits. Preserve its signature and leave unrelated files unchanged.")
-    root_id = cli("send", "pm", objective, "--idempotency-key", "repository-objective")["id"]
+    root_id, objective_revision = submit_objective(cli, objective)
     end = time.monotonic() + args.seconds
     while time.monotonic() < end:
         if daemon.poll() is not None:
@@ -116,7 +126,7 @@ def live_check(args, run, ws, api, daemon, head, branch):
     root = next(d for d in deliveries if d["id"] == root_id)
     state = [cli("state", "get", "repository", s["key"]) for s in cli("state", "list", "repository")]
     # Keep raw synthetic evidence private in the run directory, never print it in CI.
-    (run / "evidence.json").write_text(json.dumps({"root": root, "deliveries": deliveries, "state": state}, indent=2))
+    (run / "evidence.json").write_text(json.dumps({"root": root, "deliveries": deliveries, "state": state, "objective_revision": objective_revision}, indent=2))
     print("Delivery summary:", json.dumps([{"id": d["id"], "target": d["target"], "state": d["state"],
                                               "has_result": bool(d.get("result"))} for d in deliveries]), flush=True)
     print("Shared state keys:", json.dumps(sorted(s["key"] for s in state)), flush=True)
@@ -124,7 +134,7 @@ def live_check(args, run, ws, api, daemon, head, branch):
     result_text = json.dumps(root.get("result", {})).lower()
     print("PM result indicators:", json.dumps({term: term in result_text for term in
           ("blocked", "mcp", "not available", "unavailable", "connection", "cannot", "permission")}), flush=True)
-    workers = verify_evidence(root, deliveries, state, objective)
+    workers = verify_evidence(root, deliveries, state, objective, objective_revision)
     verify_workspace(ws, head, branch, args.live)
     print("PASS:", args.live, "objective; completed worker deliveries:", ", ".join(workers),
           "; original objective and notes persisted; independent workspace check passed.")

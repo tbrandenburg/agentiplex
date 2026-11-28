@@ -42,7 +42,7 @@ class VerifyTests(unittest.TestCase):
 
 class TeamEvidenceTests(unittest.TestCase):
     def setUp(self):
-        self.objective = "Correct the broken link."
+        self.objective = "# Correct the broken link\n\nPreserve labels and unrelated text."
         self.root = {"id": "root", "target": "pm", "state": "completed", "text": self.objective, "result": {"text": "reviewed"}}
         self.deliveries = [self.root, {"id": "dev", "target": "developer", "state": "completed", "result": {"text": "changed"}},
                            {"id": "review", "target": "quality", "state": "completed", "result": {"text": "checked"}}]
@@ -50,8 +50,35 @@ class TeamEvidenceTests(unittest.TestCase):
         for role in ("pm", "developer", "quality"):
             self.state.append({"key": "note-" + role + "-fixture", "value": json.dumps({"text": "finding"}), "revision": 1})
 
+    def test_operator_publishes_exact_multiline_objective_before_send(self):
+        calls = []
+
+        def cli(*args):
+            calls.append(args)
+            if args[0] == "state":
+                return {"value": self.objective, "revision": 7}
+            return {"id": "root"}
+
+        self.assertEqual(team.submit_objective(cli, self.objective), ("root", 7))
+        self.assertEqual(calls, [
+            ("state", "put", "repository", "objective", self.objective, "--revision", "0"),
+            ("send", "pm", self.objective, "--idempotency-key", "repository-objective"),
+        ])
+
+    def test_publication_mismatch_blocks_submission(self):
+        calls = []
+
+        def cli(*args):
+            calls.append(args)
+            return {"value": "different", "revision": 7}
+
+        with self.assertRaisesRegex(RuntimeError, "publication failed"):
+            team.submit_objective(cli, self.objective)
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(calls[0][0], "state")
+
     def test_completed_independent_deliveries_and_shared_objective(self):
-        self.assertEqual(team.verify_evidence(self.root, self.deliveries, self.state, self.objective),
+        self.assertEqual(team.verify_evidence(self.root, self.deliveries, self.state, self.objective, 1),
                          ["developer", "quality"])
 
     def test_missing_reviewer_altered_objective_failed_worker_and_missing_note(self):
@@ -60,13 +87,17 @@ class TeamEvidenceTests(unittest.TestCase):
         changed = copy.deepcopy(self.state)
         changed[0]["value"] = "different objective"
         cases.append((self.deliveries, changed))
+        rewritten = copy.deepcopy(self.state)
+        rewritten[0]["revision"] = 2
+        cases.append((self.deliveries, rewritten))
+        cases.append((self.deliveries, self.state[1:]))
         failed = copy.deepcopy(self.deliveries)
         failed[1]["state"] = "failed"
         cases.append((failed, self.state))
         cases.append((self.deliveries, self.state[:-1]))
         for deliveries, state in cases:
             with self.assertRaises(RuntimeError):
-                team.verify_evidence(self.root, deliveries, state, self.objective)
+                team.verify_evidence(self.root, deliveries, state, self.objective, 1)
 
 
 class TeamWorkspaceTests(unittest.TestCase):
