@@ -25,6 +25,7 @@ type FollowThrough struct {
  StartedAt time.Time `json:"startedAt"`
  Deadline time.Time `json:"deadline"`
  Turns []string `json:"turns"`
+ TurnReason string `json:"turnReason,omitempty"`
  Resolution *FollowResolution `json:"resolution,omitempty"`
 }
 
@@ -68,6 +69,7 @@ func (b *Bus) SendUntilDone(ctx context.Context,target,text,key string,o FollowO
  d:=Delivery{ID:id,Kind:"until-done",Caller:callerID(ctx),Target:target,Text:text,Endpoint:a.Endpoint,CardURL:a.CardURL,State:"continuing",UpdatedAt:now,Follow:&FollowThrough{Options:o,StartedAt:now,Deadline:now.Add(time.Duration(o.TimeoutSeconds)*time.Second),Turns:[]string{}}}
  raw,err:=json.Marshal(d);if err!=nil{return Delivery{},err}
  if _,err=b.store.Deliveries.Create(id,raw);err!=nil{return Delivery{},err}
+ b.followID=id
  b.emit("delivery.state",id,d.State,d.Caller)
  b.wakeFollow()
  return d,nil
@@ -82,12 +84,10 @@ func (b *Bus) wakeFollow() {
 // a dedicated follow-through request is open. Other direct worker calls use
 // the normal durable path.
 func (b *Bus) guardFollow(target,endpoint string,collection bool)error {
- ks,err:=keys(b.store.Deliveries);if err!=nil{return err}
- for _,id:=range ks {
-  d,e:=b.rawDelivery(id);if e!=nil{return e}
-  if d.Kind=="until-done" && d.State=="continuing" && (collection || d.Target==target || d.Endpoint==endpoint) {
-   return fmt.Errorf("%w: active until-done request reserves coordinator and dedicated scope",ErrConflict)
-  }
+ if b.followID==""{return nil}
+ d,err:=b.rawDelivery(b.followID);if err!=nil{return err}
+ if d.State=="continuing" && (collection || d.Target==target || d.Endpoint==endpoint) {
+  return fmt.Errorf("%w: active until-done request reserves coordinator and dedicated scope",ErrConflict)
  }
  return nil
 }
@@ -125,24 +125,49 @@ func (b *Bus) NudgeFollow(ctx context.Context,id string)(Delivery,error) {
  b.mu.Lock();defer b.mu.Unlock()
  d,err:=b.rawDelivery(id);if err!=nil{return Delivery{},err}
  if d.Follow==nil{return Delivery{},ErrInvalid}
- if err=b.advanceFollow(ctx,&d,time.Now().UTC());err!=nil{return Delivery{},err}
+ if err=b.advanceFollow(ctx,&d,time.Now().UTC(),"manual nudge");err!=nil{return Delivery{},err}
  return d,nil
+}
+
+// The only in-memory index is reconstructed on startup. A wake is a hint;
+// periodic reconciliation recovers missed events and enforces deadlines.
+func (b *Bus) restoreFollow()error {
+ ks,err:=keys(b.store.Deliveries);if err!=nil{return err}
+ for _,id:=range ks {
+  d,e:=b.rawDelivery(id);if e!=nil{return e}
+  if d.Kind=="until-done"&&d.State=="continuing" {
+   if b.followID!=""||d.Follow==nil{return fmt.Errorf("invalid persisted follow-through scope")}
+   b.followID=id
+  }
+ }
+ return nil
+}
+
+func (b *Bus) followLoop(ctx context.Context) {
+ ticker:=time.NewTicker(500*time.Millisecond)
+ defer ticker.Stop()
+ for ctx.Err()==nil {
+  b.reconcileFollows(ctx)
+  select {case <-ctx.Done():return;case <-ticker.C:case <-b.followWake:}
+ }
 }
 
 func (b *Bus) reconcileFollows(ctx context.Context) {
  b.mu.Lock();defer b.mu.Unlock()
- ks,err:=keys(b.store.Deliveries);if err!=nil{return}
- for _,id:=range ks {
-  if ctx.Err()!=nil{return}
-  d,e:=b.rawDelivery(id);if e!=nil||d.Kind!="until-done"||d.State!="continuing"{continue}
-  if e=b.advanceFollow(ctx,&d,time.Now().UTC());e!=nil{slog.Warn("follow-through reconciliation pending","id",id)}
+ if b.followID==""{return}
+ d,err:=b.rawDelivery(b.followID)
+ if err!=nil{slog.Warn("follow-through record unavailable");return}
+ if d.State!="continuing"{b.followID="";return}
+ if err=b.advanceFollow(ctx,&d,time.Now().UTC(),"continuation");err!=nil{slog.Warn("follow-through reconciliation pending","id",d.ID)}
+ if terminalState(d.State){ // confirm persistence before releasing the cached reservation
+  if current,e:=b.rawDelivery(d.ID);e==nil&&terminalState(current.State){b.followID=""}
  }
 }
 
 // advanceFollow runs only under the single-daemon admission mutex. Persist
 // each deterministic child intent in the parent before creating/publishing it.
 // A crash anywhere in that sequence recovers the SAME child, never a new turn.
-func (b *Bus) advanceFollow(ctx context.Context,d *Delivery,now time.Time)error {
+func (b *Bus) advanceFollow(ctx context.Context,d *Delivery,now time.Time,reason string)error {
  if d.State!="continuing"{return nil}
  f:=d.Follow
  if f==nil{return ErrInvalid}
@@ -194,6 +219,8 @@ func (b *Bus) advanceFollow(ctx context.Context,d *Delivery,now time.Time)error 
  // is reflected in the activation reason if the last turn has stalled that long.
  if !last.UpdatedAt.IsZero()&&now.Sub(last.UpdatedAt)<250*time.Millisecond{return nil}
  n:=len(f.Turns)+1
+ if n==1{reason="initial activation"}else if reason=="continuation"&&f.Options.NudgeSeconds>0&&now.Sub(last.UpdatedAt)>=time.Duration(f.Options.NudgeSeconds)*time.Second{reason="inactivity watchdog"}
+ f.TurnReason=reason
  f.Turns=append(f.Turns,scopedID("ft-","",fmt.Sprintf("%s:%d",d.ID,n)))
  if err=b.save(d,"continuing","activation intent recorded");err!=nil{return err}
  return b.admitFollowTurn(ctx,d,n)
@@ -201,7 +228,7 @@ func (b *Bus) advanceFollow(ctx context.Context,d *Delivery,now time.Time)error 
 
 func (b *Bus) admitFollowTurn(ctx context.Context,d *Delivery,n int)error {
  id:=d.Follow.Turns[n-1]
- text:=fmt.Sprintf("Agentiplex until-done request %s; activation %s; turn %d. This is a continuation of the SAME objective, not permission to replay completed or uncertain work. Read persisted progress before acting. When the objective is fulfilled or blocked, call agentiplex_resolve_request with requestId, activationId, outcome (done or blocked), and result; otherwise return after a bounded turn. Do not schedule yourself.\n\nOriginal objective:\n%s",d.ID,id,n,d.Text)
+ text:=fmt.Sprintf("Agentiplex until-done request %s; activation %s; turn %d (%s). This is a continuation of the SAME objective, not permission to replay completed or uncertain work. Read persisted progress before acting. When the objective is fulfilled or blocked, call agentiplex_resolve_request with requestId, activationId, outcome (done or blocked), and result; otherwise return after a bounded turn. Do not schedule yourself.\n\nOriginal objective:\n%s",d.ID,id,n,d.Follow.TurnReason,d.Text)
  child:=Delivery{ID:id,ParentID:d.ID,Caller:d.Caller,Target:d.Target,Text:text,Endpoint:d.Endpoint,CardURL:d.CardURL,State:"preparing",UpdatedAt:time.Now().UTC()}
  raw,err:=json.Marshal(child);if err!=nil{return err}
  if _,err=b.store.Deliveries.Create(id,raw);err!=nil{return err}

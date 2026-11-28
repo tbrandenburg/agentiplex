@@ -97,8 +97,7 @@ func (b *Bus) recoverFanouts(ctx context.Context){
 				if e==nil&&d.Kind=="broadcast"&&d.State=="fanout"{b.reconcileBroadcast(ctx,d)}
 			}
 		}
-		b.reconcileFollows(ctx)
-		select{case<-ctx.Done():return;case<-ticker.C:case<-b.followWake:}
+		select{case<-ctx.Done():return;case<-ticker.C:}
 	}
 }
 
