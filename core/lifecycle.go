@@ -90,11 +90,6 @@ func (b *Bus) observeAgents(ctx context.Context){
 	}
 }
 
-func pendingState(state string)bool{
-	switch state{case "preparing","queued","attempting","accepted","fanout":return true}
-	return false
-}
-
 // RemoveAgent is conservative: do not silently discard a recipient or
 // change an admitted recipient snapshot. Historical terminal deliveries and
 // application state remain inspectable. Collections must be edited first.

@@ -111,10 +111,10 @@ func (b *Bus) broadcastView(d Delivery)(Delivery,error){
 			view.State=child.State
 			view.Detail=child.Detail
 			if child.UpdatedAt.After(d.UpdatedAt){d.UpdatedAt=child.UpdatedAt}
-			switch child.State{
-			case "completed":complete++
-			case "failed","uncertain","input-required","auth-required":failed++
-			case "preparing","queued":pending++
+			switch {
+			case child.State=="completed":complete++
+			case terminalState(child.State):failed++
+			case child.State=="preparing"||child.State=="queued":pending++
 			default:active++
 			}
 		}

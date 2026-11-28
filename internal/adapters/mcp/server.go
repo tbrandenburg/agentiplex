@@ -111,7 +111,6 @@ func NewServer(b *core.Bus)*sdk.Server{
 	add(s,"get_agent_health","Read cached timestamped card reachability and bus-tracked busy state; does not probe or execute work.",true,false,false,false,func(_ context.Context,in agentInput)(any,error){return b.AgentHealth(in.ID)})
 	submit:=func(kind string,fn func(context.Context,string,string,string)(core.Delivery,error))func(context.Context,submitInput)(any,error){
 		return func(ctx context.Context,in submitInput)(any,error){
-			if strings.TrimSpace(in.Key)==""||len(in.Key)>256{return nil,core.ErrInvalid}
 			d,err:=fn(ctx,in.Target,in.Text,in.Key)
 			if err!=nil{return nil,err}
 			return receipt{ID:d.ID,Kind:kind,Target:d.Target,State:d.State,AssignedAgent:d.AssignedAgent},nil

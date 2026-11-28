@@ -118,9 +118,8 @@ func(b *Bus) process(ctx context.Context,m *nats.Msg){
 	b.mu.Unlock()
 	if errors.Is(err,ErrNotFound){_ = m.Term();return}
 	if err!=nil{_ = m.NakWithDelay(b.cfg.RetryDelay);return}
+	if terminalState(d.State){_ = m.AckSync();return}
 	switch d.State{
-	case "completed","failed","uncertain","input-required","auth-required":
-		_ = m.AckSync();return
 	case "attempting":
 		// A previous process might have sent a prompt before crashing.
 		b.settle(m,&d,"uncertain","previous send outcome unknown; no automatic replay");return

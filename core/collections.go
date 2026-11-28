@@ -31,8 +31,7 @@ func (b *Bus) SetCollection(ctx context.Context, kind,id string,members []string
 		if i>0&&members[i-1]==m{return Collection{},fmt.Errorf("%w: duplicate member",ErrInvalid)}
 		if _,err:=b.Agent(m);err!=nil{return Collection{},err}
 	}
-	existing,err:=b.Collection(kind,id)
-	_ = existing
+	_,err:=b.Collection(kind,id)
 	if errors.Is(err,ErrNotFound){
 		all,e:=b.Collections(kind);if e!=nil{return Collection{},e}
 		if len(all)>=maxCollections{return Collection{},fmt.Errorf("%w: collection limit",ErrInvalid)}
