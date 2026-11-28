@@ -93,8 +93,11 @@ jobs:
           node-version: '22'
       - name: Dry-run native and Helm release packaging
         run: |
-          helm lint charts/agentiplex
+          helm lint deploy/helm/agentiplex
           bash scripts/package-release.sh v0.0.0-ci
+          for archive in dist/*.tar.gz; do
+            tar -xOzf "$archive" ./config.example.yaml | cmp - deploy/config.example.yaml
+          done
           (cd dist && sha256sum -c SHA256SUMS)
       - uses: actions/upload-artifact@v4
         with:

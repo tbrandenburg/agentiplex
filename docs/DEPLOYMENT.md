@@ -196,6 +196,8 @@ agentiplex broadcast engineering "Contract update" --idempotency-key release-1
 
 Use the CLI built from the checkout (or docker compose exec agentiplex agentiplex with mounted credential paths). Dashboard: https://localhost:18443/ui/. Agent tasks use the separate `agent-demo` credential (agent ID `demo`). `make compose-down` (Compose down) preserves JetStream volume and existing credentials; down -v **deletes all stored data**. Stop/start Quality and restart the daemon without deleting volumes to observe durable recovery. CI's isolated scripts/compose-check.sh generates its own credentials and destroys its test project and volume; refuses to run if .demo-secrets already exists.
 
+For native deployment, use the [example daemon configuration](../deploy/config.example.yaml) as a starting point.
+
 ## Helm
 
 Use a supported Kubernetes cluster, Helm and the [official NATS Helm chart](https://github.com/nats-io/k8s). Create Secrets in the chosen namespace: agentiplex-auth (operator, viewer, and `agent-<id>` per entry of the chart value `agents`, which is empty by default; set e.g. `--set 'agents={demo}'`), agentiplex-tls (tls.crt, tls.key), nats-tls (broker TLS keypair) and agentiplex-broker (token or credentials, ca.crt). Provision certificates with DNS SANs matching the broker service and daemon advertised hostname. The test script illustrates creation from disposable development secrets.
@@ -203,8 +205,8 @@ Use a supported Kubernetes cluster, Helm and the [official NATS Helm chart](http
 ```sh
 helm repo add nats https://nats-io.github.io/k8s/helm/charts/
 helm repo update nats
-helm upgrade --install nats nats/nats --version 2.15.2 -f deploy/nats-values.yaml --wait
-helm upgrade --install agentiplex charts/agentiplex --set 'agents={demo}' --set image.tag=v0.1.0 --wait
+helm upgrade --install nats nats/nats --version 2.15.2 -f deploy/helm/nats-values.yaml --wait
+helm upgrade --install agentiplex deploy/helm/agentiplex --set 'agents={demo}' --set image.tag=v0.1.0 --wait
 kubectl port-forward svc/agentiplex 18443:8080
 ```
 
@@ -228,7 +230,7 @@ The daemon keeps its durable record in JetStream, so a crashed or killed daemon 
 
 - Compose: `agentiplex` and `nats` use `restart: unless-stopped`; the daemon healthcheck runs `agentiplex status` (GET `/readyz`) against the TLS endpoint. `scripts/compose-check.sh` SIGKILLs the daemon process from the host PID namespace and verifies it restarts healthy with state intact (`docker kill` does not exercise the restart policy).
 - Helm: the kubelet restarts a crashed container (default `restartPolicy: Always`); liveness uses `/healthz`, readiness and startup use `/readyz`, and the Deployment uses `Recreate` with one replica.
-- systemd: [deploy/agentiplexd.service](../deploy/agentiplexd.service) sets `Restart=on-failure`; verify with `systemd-analyze verify deploy/agentiplexd.service`.
+- systemd: [deploy/systemd/agentiplexd.service](../deploy/systemd/agentiplexd.service) sets `Restart=on-failure`; verify with `systemd-analyze verify deploy/systemd/agentiplexd.service`.
 
 Downtime assumption: one daemon per namespace, no HA. While the daemon is down it accepts nothing and clients must retry; queued work waits in JetStream, and after restart accepted tasks are monitored again and queued deliveries resume.
 

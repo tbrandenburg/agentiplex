@@ -166,7 +166,7 @@ from source using `make build` (binaries in `bin/`).
 | Native daemon with embedded or external NATS | [Configuration and deployment](docs/DEPLOYMENT.md) |
 | OCI image and secure Docker Compose | [Container deployment](docs/DEPLOYMENT.md), [Compose fixture](examples/engineering-team/) |
 | Agents on other hosts (routed network/VPN, one daemon) | [Distributed deployment](docs/DEPLOYMENT.md#distributed-deployment-agents-on-other-hosts) |
-| Single-replica Kubernetes / Helm | [Helm chart](charts/agentiplex/) and [deployment guide](docs/DEPLOYMENT.md) |
+| Single-replica Kubernetes / Helm | [Helm chart](deploy/helm/agentiplex/) and [deployment guide](docs/DEPLOYMENT.md) |
 
 Agentiplex supports authenticated TLS deployments. Multiple replicas sharing
 one namespace are not supported.

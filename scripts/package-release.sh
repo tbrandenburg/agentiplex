@@ -18,12 +18,12 @@ for platform in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64; do
   trap 'rm -rf "$tmp"' EXIT
   CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" go build -mod=readonly -trimpath -o "$tmp/agentiplexd" ./cmd/agentiplexd
   CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" go build -mod=readonly -trimpath -o "$tmp/agentiplex" ./cmd/agentiplex
-  cp LICENSE README.md config.example.yaml "$tmp/"
+  cp LICENSE README.md deploy/config.example.yaml "$tmp/"
   mkdir -p "$tmp/third_party/amis"
   cp third_party/amis/LICENSE "$tmp/third_party/amis/"
   tar -czf "dist/$name.tar.gz" -C "$tmp" .
   rm -rf "$tmp"
   trap - EXIT
 done
-helm package charts/agentiplex --version "$version" --app-version "$version" --destination dist
+helm package deploy/helm/agentiplex --version "$version" --app-version "$version" --destination dist
 (cd dist && sha256sum ./*.tar.gz ./*.tgz > SHA256SUMS)

@@ -9,6 +9,7 @@ and `docs/` (start with `docs/ARCH.md`); do not duplicate them here.
 ## Layout
 - Root `*.go`: core library. `cmd/`: `agentiplex` CLI and `agentiplexd` daemon.
 - `internal/`: adapters, api, catalog, cli, daemon, dashboard, nats, security, simagent.
+- `deploy/`: sample daemon configuration, Helm and systemd assets.
 - `examples/`: operator-side demos, outside the core. Do not add example logic to the core.
 - `tests/integration/`: integration tests.
 
